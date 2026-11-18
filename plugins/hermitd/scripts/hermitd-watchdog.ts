@@ -2540,15 +2540,16 @@ export async function awaitUpgrade(hermitRoot: string, expected: Record<string, 
   }
 }
 
-/** A boundary that waits only for the turn running at its first check to end; a later turn never holds it. */
+/** A boundary that waits for the turn that stamped the versions to end: the turn running at its first
+ *  check, held only when it started no later than the last `config.json` write. */
 export function turnEnded(): typeof passesExecutionBoundary {
-  let first = true;
-  let held: string | null = null;
+  let held: string | null | undefined;
   return (hermitRoot) => {
     const execution = readExecution(hermitRoot);
-    if (first) {
-      first = false;
-      held = execution.state === 'in_flight' ? execution.turn_id : null;
+    if (held === undefined) {
+      let stamped = Infinity;
+      try { stamped = fs.statSync(path.join(hermitRoot, 'config.json')).mtimeMs; } catch {}
+      held = execution.state === 'in_flight' && execution.at && Date.parse(execution.at) <= stamped ? execution.turn_id : null;
     }
     return held !== null && execution.state === 'in_flight' && execution.turn_id === held
       ? { ok: false, reason: 'execution-not-idle' } : { ok: true };

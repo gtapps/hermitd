@@ -933,7 +933,9 @@ case "$CMD" in
       [ -n "$CORE_VERSION" ] && REQUEST_ARGS+=(--expect-version "$CORE_VERSION")
       REQUEST_OUT=$(_harness_request "${REQUEST_ARGS[@]}" --source update --wait 300 --purpose upgrade)
       IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(bun -e 'try { const r = JSON.parse(process.argv[1]); console.log((r.status ?? "unknown") + "\t" + (r.reason ?? "") + (r.text ? " (" + r.text + ")" : "")); } catch { console.log("unknown\tno_output"); }' "$REQUEST_OUT")"
-      if [ "$REQUEST_STATUS" = ok ]; then
+      # A wait timeout leaves the batch queued behind the running turn, so evolve is still awaited
+      # rather than cut off by the bounce.
+      if [ "$REQUEST_STATUS" = ok ] || [ "$REQUEST_REASON" = wait_timeout ]; then
         RELOAD_PLUGINS_SENT=true
         EVOLVE_SENT=$BATCH
       else

@@ -381,7 +381,8 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   [ "$SELF_RUN" = true ] || REQUEST_ARGS+=(--wait 300)
   REQUEST_ARGS+=(--purpose upgrade)
   IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(_request_status "$(_harness_request "${REQUEST_ARGS[@]}")")"
-  if [ "$REQUEST_STATUS" = queued ] || [ "$REQUEST_STATUS" = ok ]; then
+  # A wait timeout leaves the batch queued behind the running turn, so evolve is still awaited.
+  if [ "$REQUEST_STATUS" = queued ] || [ "$REQUEST_STATUS" = ok ] || [ "$REQUEST_REASON" = wait_timeout ]; then
     RELOAD_PLUGINS_SENT=true
     EVOLVE_SENT=$BATCH
   else

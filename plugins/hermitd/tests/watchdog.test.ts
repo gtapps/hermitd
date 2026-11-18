@@ -5674,19 +5674,23 @@ test('legacy resident-missing stamp does not prevent restart without RESIDENT.md
 
 
 describe('await-upgrade', () => {
-  test('turnEnded waits only for the turn running at its first check', withHermit(async (h) => {
+  test('turnEnded waits only for the turn that stamped the versions', withHermit(async (h) => {
     const root = path.join(h.dir, '.hermit');
-    const at = new Date().toISOString();
-    const execution = (state: string, turn: string | null) => writeState(h, 'execution.json', { state, turn_id: turn, at, source: null, cc_session_id: 's', reason: null });
-    execution('idle', 't1');
+    const stamp = new Date(Date.now() - 60000);
+    fs.writeFileSync(path.join(root, 'config.json'), JSON.stringify({ _hermit_versions: { hermitd: 'new' } }));
+    fs.utimesSync(path.join(root, 'config.json'), stamp, stamp);
+    const execution = (state: string, turn: string, startedMs: number) => writeState(h, 'execution.json', { state, turn_id: turn, at: new Date(startedMs).toISOString(), source: null, cc_session_id: 's', reason: null });
+    execution('idle', 't1', stamp.getTime() - 1000);
     expect(turnEnded()(root)).toEqual({ ok: true });
-    execution('in_flight', 't1');
+    execution('in_flight', 't1', stamp.getTime() - 1000);
     const evolve = turnEnded();
     expect(evolve(root)).toEqual({ ok: false, reason: 'execution-not-idle' });
-    execution('idle', 't1');
+    execution('idle', 't1', stamp.getTime() - 1000);
     expect(evolve(root)).toEqual({ ok: true });
-    execution('in_flight', 't2');
+    execution('in_flight', 't2', stamp.getTime() + 1000);
     expect(evolve(root)).toEqual({ ok: true });
+    // A turn that started after the stamp is never held, even on the first check.
+    expect(turnEnded()(root)).toEqual({ ok: true });
   }));
   test('a quiet restart is ready, replaced, or timed out', withHermit(async (h) => {
     const root = path.join(h.dir, '.hermit');

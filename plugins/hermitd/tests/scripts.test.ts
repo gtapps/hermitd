@@ -626,7 +626,7 @@ const listDuplicateScopes = (proj: string, suffix = '') => JSON.stringify([
 ]);
 
 describe('hermitd-docker update plugin loop', () => {
-  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'plugins-only', 'full', 'cc-only', 'evolve-timeout', 'evolve-ready', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only', 'engine-held', 'symlink-log', 'symlink-state']) {
+  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'plugins-only', 'full', 'cc-only', 'evolve-timeout', 'evolve-ready', 'evolve-pending', 'evolve-suffix', 'old-watchdog', 'below-floor', 'below-floor-plugins-only', 'engine-held', 'symlink-log', 'symlink-state']) {
   test(`quiet update: ${scenario}`, async () => {
     const wd = setupWorkdir();
     const dockerHome = freshDockerHome();
@@ -712,7 +712,7 @@ case "$*" in
     fi ;;
   *"harness-request"*)
     if [ "$UPDATE_SCENARIO" = evolve-ready ]; then printf 'services: {}\\n' > docker-compose.override.yml; fi
-    echo '{"status":"ok"}' ;;
+    if [ "$UPDATE_SCENARIO" = evolve-pending ]; then echo '{"status":"unknown","reason":"wait_timeout"}'; else echo '{"status":"ok"}'; fi ;;
   *"npm view"*) echo '2.1.302' ;;
   *"ps --status running"*) echo hermit ;;
   *"claude plugin list --json"*) cat "$DOCKER_STUB_LIST" ;;
@@ -771,7 +771,7 @@ exit 0
       expect(r.stderr.includes('doctor check could not run; run `hermitd doctor`')).toBe(scenario.startsWith('doctor-'));
       expect(entry.restarted).toBe(!timeout && !blocked);
       expect(entry.await.status).toBe(timeout ? 'timeout' : blocked ? 'blocked' : 'ready');
-      expect(entry.image_built).toBe(!['plugins-only', 'timeout-first', 'evolve-timeout', 'below-floor-plugins-only'].includes(scenario));
+      expect(entry.image_built).toBe(!['plugins-only', 'evolve-timeout', 'below-floor-plugins-only'].includes(scenario));
       expect(idx(' down') >= 0).toBe(!timeout && !blocked);
       expect(idx(' up -d') >= 0).toBe(!timeout && !blocked);
       if (timeout) {
@@ -785,7 +785,11 @@ exit 0
         expect(r.stdout).not.toContain('/reload-plugins not sent');
       } else {
         expect(calls).toContain('HERMIT_RESUME=1');
-        if (idx('await-upgrade') >= 0) expect(idx('await-upgrade')).toBeLessThan(idx(' down'));
+        // Every scenario that queues evolve waits for it before the bounce.
+        if (scenario.startsWith('evolve-') || scenario === 'old-watchdog') {
+          expect(idx('await-upgrade')).toBeGreaterThan(-1);
+          expect(idx('await-upgrade')).toBeLessThan(idx(' down'));
+        }
       }
       if (scenario === 'evolve-timeout') expect(r.stdout).toContain('Update paused');
       if (scenario === 'cc-only') {
@@ -812,7 +816,8 @@ exit 0
         expect(r.stdout).not.toContain('Waiting for');
         expect(idx('await-upgrade')).toBe(-1);
       }
-      if (scenario === 'evolve-ready') {
+      if (scenario === 'evolve-pending') expect(r.stderr).not.toContain('did not complete');
+      if (scenario === 'evolve-ready' || scenario === 'evolve-pending') {
         expect(idx('harness-request')).toBeLessThan(idx('await-upgrade --expect'));
         expect(idx('await-upgrade --expect')).toBeLessThan(idx(' build '));
       }
@@ -942,7 +947,7 @@ describe('hermitd-update host path', () => {
     return { wd, proj, recFile, mpRecFile, env: { HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, HOME: proj, CLAUDE_CONFIG_DIR: path.join(proj, 'config'), CLAUDE_CODE_PLUGIN_CACHE_DIR: path.join(proj, 'plugins'), PATH: `${stub}:${process.env.PATH}` } };
   }
 
-  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'ready', 'timeout-evolve', 'stop-fails', 'old-watchdog', 'self-run', 'suffix-gap', 'suffix-current', 'below-floor']) {
+  for (const scenario of ['doctor-fails', 'doctor-no-report', 'verdict-fail', 'interrupted', 'ready', 'request-pending', 'timeout-evolve', 'stop-fails', 'old-watchdog', 'self-run', 'suffix-gap', 'suffix-current', 'below-floor']) {
     test(`live host update: ${scenario}`, async () => {
       const f = fixture({ listJson: proj => {
         const list = JSON.parse(listDuplicateScopes(proj, scenario.startsWith('suffix-') ? '-467be32f41fc' : ''));
@@ -984,6 +989,7 @@ fi
         write(path.join(bin, 'hermitd-run'), `#!/usr/bin/env bash
 ${doctorPassStub}if [ "$1" = harness-request ]; then
   printf '%s\\n' "$*" >> "$LIVE_CALLS"
+  if [ "$LIVE_SCENARIO" = request-pending ]; then echo '{"status":"unknown","reason":"wait_timeout"}'; exit 0; fi
   case " $* " in *" --wait "*) echo '{"status":"ok"}' ;; *) echo '{"status":"queued","id":"q1"}' ;; esac
   exit 0
 fi
@@ -1046,6 +1052,7 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
           expect(fs.existsSync(hermit(f.proj, 'state/update-in-progress.json'))).toBe(false);
           return;
         }
+        if (scenario === 'request-pending') expect(r.stderr).not.toContain('did not complete');
         if (scenario === 'ready') {
           expect(r.stderr).not.toContain('Update interrupted');
           expect(r.stdout).not.toContain('Waiting for a quiet boundary');
