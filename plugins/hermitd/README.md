@@ -65,7 +65,18 @@ curl -fsSL https://gtapps.github.io/hermitd/install.sh | bash
 
 </details>
 
-Both options set up the agent in this folder. Hatch guides you through the agent’s purpose and preferences, then shows how to start it. Choose Quick for defaults you can adjust later.
+<details>
+<summary>Prefer a coding assistant? Send it a prompt</summary>
+
+Open Claude Code, Codex or another coding assistant anywhere on the machine and send:
+
+```text
+Set up a hermitd agent by following the Set up and Keep it running sections of https://github.com/gtapps/hermitd#quick-start. First ask me which folder the agent should live in. Install or update what's missing, then hand me each Claude Code command I have to type myself, starting with hatch in that folder. Stop and tell me when something needs my login or approval.
+```
+
+</details>
+
+Each option sets up the agent in the folder you pick. Hatch guides you through the agent’s purpose and preferences, then shows how to start it. Choose Quick for defaults you can adjust later.
 
 ## Keep it running
 
