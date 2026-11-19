@@ -169,8 +169,10 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       const input = JSON.parse(payload) as { at: number; reason: string };
       const { observeExecution } = await import('./lib/tasks');
       // The open operator-turn marker would otherwise hold monitor-delivered routines for its TTL.
-      if (observeExecution(dir, 'idle', sessionId, null, input.reason, input.at)) {
-        try { fs.unlinkSync(path.join(dir, 'state', 'operator-turn-open.json')); } catch {}
+      // A marker newer than the reported end is the next prompt's, opened while this chain ran.
+      const marker = path.join(dir, 'state', 'operator-turn-open.json');
+      if (observeExecution(dir, 'idle', sessionId, null, input.reason, input.at) && !(Date.parse(readJson(marker)?.at ?? '') > input.at)) {
+        try { fs.unlinkSync(marker); } catch {}
       }
       return { decision: 'ok' };
     }

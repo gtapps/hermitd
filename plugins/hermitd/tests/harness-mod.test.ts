@@ -721,7 +721,12 @@ test('turn-end clears the open operator turn only when it ends the turn', async 
   fs.writeFileSync(marker, JSON.stringify({ at: new Date(at + 50).toISOString() }));
   await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
   expect(fs.existsSync(marker)).toBe(true);
+  // The next prompt opened its marker after the turn-end check passed: the marker stays.
   stamp(-1000);
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(fs.existsSync(marker)).toBe(true);
+  stamp(-1000);
+  fs.writeFileSync(marker, JSON.stringify({ at: new Date(at - 1000).toISOString() }));
   await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
   expect(fs.existsSync(marker)).toBe(false);
 });

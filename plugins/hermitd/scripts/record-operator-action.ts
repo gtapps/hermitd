@@ -86,7 +86,8 @@ export function recordOperatorTurnEnd(nowMs: number): void {
 }
 
 // Marks "an operator turn is in flight" for `routines.ts due`'s defer gate. The pipeline
-// calls this at hook exit for kept, non-blocked prompts; stop-pipeline.ts clears it at Stop,
+// calls this at hook exit for kept, non-blocked prompts; stop-pipeline.ts clears it at Stop
+// (harness-mod.ts `turn-end` on an interrupt),
 // with a 60-min TTL as a backstop so a failed Stop cannot starve routines forever.
 export function openTurnMarker() {
   writeMarker(TURN_TMP, TURN_PATH);
