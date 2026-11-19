@@ -46,7 +46,7 @@ exit \${WRAPPER_EXIT:-0}
   write(path.join(bin, 'claude'), `#!/bin/sh
 if [ "$1" = agents ]; then printf "claude|%s|%s|%s\\n" "$PWD" "$CLAUDE_CONFIG_DIR" "$*" >> "$CALLS"; exit "\${AGENTS_EXIT:-0}"; fi
 if [ "$1" = --setting-sources ]; then printf 'setup|%s|%s|%s\\n' "$PWD" "$BUN_OPTIONS" "$*" >> "$CALLS"; exit 0; fi
-if [ "$2" = list ]; then cat "$LIST"; else printf "update-host\\n" >> "$CALLS"; cp "$FRESH_LIST" "$LIST"; fi
+if [ "$2" = list ]; then cat "$LIST"; else printf "update-host\\n" >> "$CALLS"; [ "\${UPDATE_EXIT:-0}" = 0 ] || exit "$UPDATE_EXIT"; cp "$FRESH_LIST" "$LIST"; fi
 `);
   const register = (projects = [p], runtimeHint = 'tmux') => write(path.join(root, 'plugins/data/hermitd-mp/instances.json'), JSON.stringify(projects.map(project_dir => ({ project_dir, name: path.basename(project_dir), agent_name: JSON.parse(fs.readFileSync(path.join(project_dir, '.hermit/config.json'), 'utf8')).agent_name, runtime_hint: runtimeHint, registered_at: new Date().toISOString() }))));
   register();
@@ -114,6 +114,20 @@ test('Docker update stops before the host update when approval is pending', asyn
   });
   // No host update; the lifecycle's own notice handler runs, as for a stopped `hermitd restart`.
   expect(f.calls()).toBe(`old|${f.p}|notify-approval\n`);
+});
+test('Docker update of a core without approve.ts skips the early check and updates the host', async () => {
+  const f = fixture();
+  write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  fs.unlinkSync(path.join(f.core, 'scripts/approve.ts'));
+  const r = await f.run(['update', 'demo']);
+  expect(r.exitCode).toBe(0);
+  expect(r.stderr).not.toContain('Nothing was applied');
+  expect(f.calls()).toBe(`update-host\nfresh|${f.p}|update\n`);
+  const failed = fixture();
+  write(path.join(failed.p, 'docker-compose.hermit.yml'), 'services: {}');
+  fs.unlinkSync(path.join(failed.core, 'scripts/approve.ts'));
+  expect((await failed.run(['update', 'demo'], failed.root, { UPDATE_EXIT: '1' })).exitCode).not.toBe(0);
+  expect(failed.calls()).toBe('update-host\n');
 });
 test('Docker stop and status load only applied Compose inputs after approval', async () => {
   const f = fixture();
@@ -547,6 +561,8 @@ test('approve calls the installed host script from outside the Docker project', 
   const container = await f.run(['approve', 'unknown', '--yes'], f.root, { container: 'docker' });
   expect(container.exitCode).toBe(1);
   expect(JSON.parse(container.stdout)).toEqual({ error: 'host_only' });
+  fs.unlinkSync(path.join(f.core, 'scripts/approve.ts'));
+  expect(await f.run(['approve', 'demo'], f.root)).toMatchObject({ exitCode: 1, stderr: expect.stringContaining('Run hermitd update first') });
   expect(f.calls()).toBe('');
 });
 test('setup opens a project-scope skill with user settings even when the skill matches an agent name', async () => {
