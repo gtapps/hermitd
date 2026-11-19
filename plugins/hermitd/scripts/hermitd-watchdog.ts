@@ -30,7 +30,7 @@ import { resolveResumeTarget } from './lib/resident-prompt';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { acquireLock, releaseLock, pidAlive } from './lib/lockfile';
-import { readExecution, passesExecutionBoundary, type BoundaryReason } from './lib/tasks';
+import { readExecution, passesExecutionBoundary, evolveTurnRunning, type BoundaryReason } from './lib/tasks';
 import { contextPolicyHash } from './lib/context-policy';
 import { utcISOStamp as utcStamp, currentHHMM, currentHHMMOrUTC, friendlyBoundary, parseDuration as parseDurationMs } from './lib/time';
 import { writeRuntimeJson, readRuntimeJson, refuseProjectionRoot, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
@@ -2540,14 +2540,9 @@ export async function awaitUpgrade(hermitRoot: string, expected: Record<string, 
   }
 }
 
-/** Not ready while a `hermit-evolve` turn is running: the prompt hook marks its source `upgrade`, and an
- *  auto-compaction within the last hour keeps that turn running until Stop marks it idle. */
+/** Not ready while a `hermit-evolve` turn is running. */
 export function evolveTurnEnded(hermitRoot: string): ReturnType<typeof passesExecutionBoundary> {
-  const execution = readExecution(hermitRoot);
-  const compacting = execution.state === 'unknown' && execution.reason === 'precompact'
-    && Date.now() - Date.parse(execution.at ?? '') < 60 * 60 * 1000;
-  return execution.source === 'upgrade' && (execution.state === 'in_flight' || compacting)
-    ? { ok: false, reason: 'execution-not-idle' } : { ok: true };
+  return evolveTurnRunning(readExecution(hermitRoot)) ? { ok: false, reason: 'execution-not-idle' } : { ok: true };
 }
 
 if (import.meta.main) {

@@ -115,5 +115,9 @@ it('a prompt arriving mid-turn keeps a running hermit-evolve turn marked until S
     observeExecution(f.dir, 'idle', 's', null, null);
     observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
     expect(readExecution(f.dir).source).toBe('channel:discord');
+    // A compacted evolve mark older than an hour no longer claims the next turn.
+    f.put('state/execution.json', { state: 'unknown', turn_id: null, at: new Date(Date.now() - 2 * 3600000).toISOString(), source: 'upgrade', cc_session_id: 's', reason: 'precompact' });
+    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    expect(readExecution(f.dir).source).toBe('channel:discord');
   } finally { f.cleanup(); }
 });

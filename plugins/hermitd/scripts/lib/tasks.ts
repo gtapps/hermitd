@@ -819,9 +819,14 @@ export function observeExecution(dir: string, state: Execution['state'], session
     const inherited = reason !== 'precompact' || previous.state === 'in_flight' || previous.reason === 'precompact' ? previous.source : null;
     // A prompt arriving mid-turn (a queued channel message) runs this hook too; it must not clear a
     // running hermit-evolve turn's mark, which only Stop or StopFailure ends.
-    const upgrading = previous.source === 'upgrade' && (previous.state === 'in_flight' || (previous.state === 'unknown' && previous.reason === 'precompact'));
-    writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at: new Date().toISOString(), source: state === 'in_flight' && upgrading ? 'upgrade' : source ?? inherited, cc_session_id: session, reason }) + '\n');
+    writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at: new Date().toISOString(), source: state === 'in_flight' && evolveTurnRunning(previous) ? 'upgrade' : source ?? inherited, cc_session_id: session, reason }) + '\n');
   } catch { /* advisory, never gates the hook */ }
+}
+/** A `hermit-evolve` turn is running: the prompt hook marked its source `upgrade`, and an
+ *  auto-compaction within the last hour keeps that turn running until Stop marks it idle. */
+export function evolveTurnRunning(execution: Execution): boolean {
+  return execution.source === 'upgrade' && (execution.state === 'in_flight'
+    || (execution.state === 'unknown' && execution.reason === 'precompact' && Date.now() - Date.parse(execution.at ?? '') < HOUR));
 }
 interface Binding { cc_session_id: string; task_ids: string[]; at: string; turn_id: string | null }
 function readBinding(dir: string): Binding | null {
