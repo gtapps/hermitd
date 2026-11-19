@@ -744,4 +744,10 @@ test('turn-end restarts the quiet clock only when it closes an operator turn', a
   fs.writeFileSync(path.join(dir, 'state/operator-turn-open.json'), JSON.stringify({ at: new Date(at - 1000).toISOString() }));
   await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
   expect(Date.parse(JSON.parse(fs.readFileSync(lastAction, 'utf8')).at)).toBe(at);
+  // A prompt recorded after the interrupt (a chat command the mod took in) keeps its later stamp.
+  stamp();
+  fs.writeFileSync(path.join(dir, 'state/operator-turn-open.json'), JSON.stringify({ at: new Date(at - 1000).toISOString() }));
+  fs.writeFileSync(lastAction, JSON.stringify({ at: new Date(at + 500).toISOString() }));
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(Date.parse(JSON.parse(fs.readFileSync(lastAction, 'utf8')).at)).toBe(at + 500);
 });

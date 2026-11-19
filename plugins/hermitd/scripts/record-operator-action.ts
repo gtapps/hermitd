@@ -82,6 +82,10 @@ function write() {
 // clocks (context clearing, watchdog operator-recent) run from when the work
 // the operator asked for finished, not from when the prompt arrived.
 export function recordOperatorTurnEnd(nowMs: number): void {
+  // An interrupt's end is reported after the fact: never move back a stamp a later prompt wrote.
+  let recorded = NaN;
+  try { recorded = Date.parse(JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8')).at); } catch {}
+  if (recorded > nowMs) return;
   writeMarker(TMP_PATH, STATE_PATH, nowMs);
 }
 
