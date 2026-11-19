@@ -56,6 +56,8 @@ The login request stays in its original conversation and mentions the admin usin
 
 This checks tailnet identity, not the agent's honesty: the agent inside the container, a host process reaching loopback, or another container reaching port 6080 on the same Docker network can forge the identity header. See [known limitations](security.md#known-limitations).
 
+With team approvals, only an admin at the host terminal saves or deletes a login using `hermitd run browser-agent save-login` or `hermitd run browser-agent delete-login`.
+
 ## Unattended settings writes
 
 `channel-access.ts` owns pairing, policy, delivery defaults, and group enrolment from settings and chat. Channel plugins remain writers of `access.json` too. Group changes write `config.json` first through the shared config persister, then re-read and write access state. There is a brief window between files, without a lock, journal, or rollback. If the access write fails after config lands, the command reports `{"error":"partial_config_written"}` and asks the operator to re-run the same command; it does not report complete success.

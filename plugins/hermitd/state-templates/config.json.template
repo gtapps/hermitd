@@ -25,7 +25,8 @@
     "admins": [],
     "port": null,
     "host": null,
-    "inactivity_timeout": 900
+    "inactivity_timeout": 900,
+    "saved_logins": true
   },
   "transcription": {
     "enabled": true,

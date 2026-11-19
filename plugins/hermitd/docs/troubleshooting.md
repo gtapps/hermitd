@@ -239,6 +239,11 @@ For a third-party plugin, run `/hermitd:channel-setup` and select its entry or *
 ## Browser phone sign-in
 
 - **No Take over link:** takeover is inactive until setup. Ask for `/hermitd:browser` setup in the same conversation. The agent collects Tailscale logins and each channel's admin mentions, asks for one host command, verifies it, and registers the durable `browser-handback` monitor through the native settings prompt. Existing hermits receive the browser through upgrade; run `hermitd update` for a Docker image without its marker, or `hermitd run browser-host` for missing host prerequisites.
+- **Saved login no longer accepted.** Save the updated password for the same login with `hermitd run browser-agent save-login` or use Take over to sign in.
+- **`terminal_only` on Docker.** Run the command at the host terminal with output going to the terminal. Piping or redirecting stdout disables terminal detection.
+- **`vault_not_linked`.** Docker already has an entry at `~/.agent-browser/auth` outside the persistent vault. Recreate the container or remove the old auth folder after preserving any entries you need. The next browser command creates the link.
+- **Saved logins became unreadable after deleting `vault.key`.** Restore the original key from backup or save the logins again under new names.
+- **`state save` produced an encrypted file.** Use the resulting `.enc` filename when loading it. State encrypted under the agent's key needs that same key to load.
 - **Identity refused:** open the verified HTTPS Serve address from an allowlisted Tailscale user's phone. A direct loopback request lacks the identity header and is intentionally refused. Tagged devices, including a tagged phone, have no user login and cannot take over. Check exact `browser.admins` logins through the settings route.
 - **Origin refused:** use the viewer at its own verified host and port. POSTs and WebSocket upgrades from a different origin are refused even when Serve attaches an admin login.
 - **Host setup refused:** run it outside the container, with Docker server 28.0.0 or newer and the host Tailscale CLI. A Serve permission failure prints the sudo form. Existing unrelated routes are preserved; a conflicting route is refused. A failed loopback check on Docker Desktop host networking reports the unverified combination rather than declaring setup ready.

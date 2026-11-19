@@ -6,7 +6,7 @@ import { ensureDisplay } from '../scripts/browser-display';
 import { browserLease } from '../scripts/lib/browser-lease';
 import { mutateTask } from '../scripts/lib/tasks';
 import { browserUserAgent } from '../scripts/lib/browser-runtime';
-import { freshDirFactory } from './helpers/workdir';
+import { freshDirFactory, writeConfig } from './helpers/workdir';
 import { PLUGIN_ROOT } from './helpers/run';
 const { freshDir, cleanup } = freshDirFactory('browser-agent-');
 const sockets: string[] = [];
@@ -28,14 +28,31 @@ function fixture() {
   fs.mkdirSync(socket, { recursive: true });
   fs.writeFileSync(path.join(dir, 'state/browser-display.json'), JSON.stringify({ display: ':17', vncSocket: path.join(socket, 'vnc.sock') }));
   const binary = path.join(root, 'real-browser');
-  fs.writeFileSync(binary, `#!${process.execPath}\nconsole.log(JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\nprocess.exit(Number(process.env.TEST_EXIT ?? 0));\n`, { mode: 0o755 });
-  const runCaptured = async (argv: string[], env: Record<string, string> = {}, options: { deployment?: 'host' | 'container'; data?: string; platform?: NodeJS.Platform } = {}) => {
-    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', marker: ${JSON.stringify(path.join(root, 'marker'))}, ...${JSON.stringify(options)}, ensureDisplay: async () => {
+  const browserData = path.join(root, 'browser-data');
+  const callsFile = path.join(root, 'binary-calls');
+  fs.writeFileSync(binary, `#!${process.execPath}
+import fs from 'node:fs';
+const argv = process.argv.slice(2);
+const env = process.env;
+const stdin = argv.includes('--password-stdin') ? await Bun.stdin.text() : '';
+fs.appendFileSync(${JSON.stringify(callsFile)}, JSON.stringify({ argv, stdin, env }) + '\\n');
+if (argv[2] === 'auth' && argv[3] === 'list') {
+  console.log(env.TEST_AUTH_LIST ?? JSON.stringify({ success: true, data: { profiles: [] } }));
+} else if (argv.includes('--password-stdin')) {
+  console.log(stdin);
+  console.error(stdin);
+} else {
+  console.log(JSON.stringify({ argv, env }));
+}
+process.exit(Number((argv[3] === 'save' ? env.TEST_SAVE_EXIT : undefined) ?? env.TEST_EXIT ?? 0));
+`, { mode: 0o755 });
+  const runCaptured = async (argv: string[], env: Record<string, string> = {}, options: { deployment?: 'host' | 'container'; data?: string; platform?: NodeJS.Platform } = {}, stdin?: string) => {
+    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', browserData: ${JSON.stringify(browserData)}, marker: ${JSON.stringify(path.join(root, 'marker'))}, ...${JSON.stringify(options)}, ensureDisplay: async () => {
       const fs = await import('node:fs');
       fs.appendFileSync(${JSON.stringify(path.join(root, 'display-calls'))}, 'ensure\\n');
       return process.env.TEST_BLOCKER ? { blocker: process.env.TEST_BLOCKER } : JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dir, 'state/browser-display.json'))}, 'utf8'));
     } });`], {
-      cwd: root, env: { ...process.env, AGENT_DIR: dir, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, DISPLAY: ':99', AGENT_BROWSER_PROFILE: '/bad', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_IDLE_TIMEOUT_MS: '15', XDG_RUNTIME_DIR: '/run/shared', ...env }, stdout: 'pipe', stderr: 'pipe',
+      cwd: root, env: { ...process.env, HOME: root, AGENT_DIR: dir, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, DISPLAY: ':99', AGENT_BROWSER_PROFILE: '/bad', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_IDLE_TIMEOUT_MS: '15', XDG_RUNTIME_DIR: '/run/shared', ...env }, stdin: stdin === undefined ? 'ignore' : new Blob([stdin]), stdout: 'pipe', stderr: 'pipe',
     });
     const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
     return { code, stdout, stderr, data: JSON.parse(stdout) };
@@ -44,8 +61,177 @@ function fixture() {
     const { code, stderr, data } = await runCaptured(...args);
     return { code, stderr, data };
   };
-  return { dir, root, binary, socket, run, runCaptured };
+  const calls = (): { argv: string[]; stdin: string; env: Record<string, string> }[] =>
+    fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf8').trimEnd().split('\n').map(line => JSON.parse(line)) : [];
+  return { dir, root, binary, browserData, socket, run, runCaptured, calls };
 }
+
+test('concurrent first calls and later calls use one private vault key instead of the ambient key', async () => {
+  const { browserData, run } = fixture();
+  const [first, concurrent] = await Promise.all([
+    run(['--session', 'one', 'snapshot'], { AGENT_BROWSER_ENCRYPTION_KEY: 'ambient' }),
+    run(['--session', 'two', 'snapshot']),
+  ]);
+  const file = path.join(browserData, 'vault.key');
+  const key = fs.readFileSync(file, 'utf8');
+  expect(key).toMatch(/^[0-9a-f]{64}$/);
+  expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+  expect(first.data.env.AGENT_BROWSER_ENCRYPTION_KEY).toBe(key);
+  expect(concurrent.data.env.AGENT_BROWSER_ENCRYPTION_KEY).toBe(key);
+  const later = await run(['--session', 'one', 'snapshot']);
+  expect(later.data.env.AGENT_BROWSER_ENCRYPTION_KEY).toBe(key);
+  expect(fs.readdirSync(browserData).filter(name => name.startsWith('vault.key'))).toEqual(['vault.key']);
+});
+
+test('passthrough always denies vault writes and also denies login when saved logins are off', async () => {
+  const deny = ['auth_save', 'auth_delete', 'credentials_set', 'credentials_delete'];
+  for (const config of [undefined, { approvals: 'personal', browser: { saved_logins: true } },
+    { approvals: 'team' }, { browser: { saved_logins: false } }]) {
+    const { root, socket, run } = fixture();
+    if (config) writeConfig(root, config);
+    const result = await run(['--session', 'public', 'snapshot'], { AGENT_BROWSER_ACTION_POLICY: '/ambient.json' });
+    const policy = path.join(socket, 'policy.json');
+    expect(result.code).toBe(0);
+    expect(result.data.env.AGENT_BROWSER_ACTION_POLICY).toBe(policy);
+    expect(JSON.parse(fs.readFileSync(policy, 'utf8'))).toEqual({
+      default: 'allow',
+      deny: config?.browser?.saved_logins === false ? [...deny, 'auth_login'] : deny,
+    });
+  }
+});
+
+test('container vault directories are private and the same link is reused', async () => {
+  const { browserData, root, run } = fixture();
+  const home = path.join(root, '.agent-browser');
+  const auth = path.join(home, 'auth');
+  const vault = path.join(browserData, 'vault');
+  for (let call = 0; call < 2; call++) {
+    expect((await run(['--session', 'public', 'snapshot'])).code).toBe(0);
+    expect(fs.readlinkSync(auth)).toBe(vault);
+    for (const dir of [home, vault]) expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
+    if (call === 0) fs.writeFileSync(path.join(auth, 'entry'), 'existing');
+  }
+  expect(fs.readFileSync(path.join(vault, 'entry'), 'utf8')).toBe('existing');
+});
+
+test('container vault setup preserves existing auth directories and ignores setup errors', async () => {
+  const { browserData, root, run } = fixture();
+  const auth = path.join(root, '.agent-browser', 'auth');
+  fs.mkdirSync(auth, { recursive: true });
+  const home = path.dirname(auth);
+  fs.chmodSync(home, 0o755);
+  fs.writeFileSync(path.join(auth, 'entry'), 'existing');
+  expect((await run(['--session', 'public', 'snapshot'])).code).toBe(0);
+  expect(fs.statSync(home).mode & 0o777).toBe(0o700);
+  expect(fs.lstatSync(auth).isDirectory()).toBe(true);
+  expect(fs.readFileSync(path.join(auth, 'entry'), 'utf8')).toBe('existing');
+  const vault = path.join(browserData, 'vault');
+  fs.rmdirSync(vault);
+  fs.writeFileSync(vault, 'blocked');
+  expect((await run(['--session', 'public', 'snapshot'], { TEST_EXIT: '7' })).code).toBe(7);
+});
+
+test('host deployment leaves the upstream vault and home alone', async () => {
+  const { browserData, root, run } = fixture();
+  expect((await run(['--session', 'public', 'snapshot'], {}, { deployment: 'host' })).code).toBe(0);
+  expect(fs.existsSync(path.join(root, '.agent-browser'))).toBe(false);
+  expect(fs.existsSync(path.join(browserData, 'vault'))).toBe(false);
+});
+
+const saveLogin = ['save-login', 'example', '--url', 'https://example.com/login', '--username', 'agent'];
+const deleteLogin = ['delete-login', 'example'];
+const authList = (...profiles: object[]) => ({ TEST_AUTH_LIST: JSON.stringify({ success: true, data: { profiles } }) });
+const savedCommand = ['auth', 'save', ...saveLogin.slice(1), '--password-stdin'];
+
+test('personal save sends the password only on stdin in a private session without admission or policy', async () => {
+  const { root, browserData, socket, calls, runCaptured } = fixture();
+  writeConfig(root, { approvals: 'personal' });
+  const password = 'fixture password ';
+  const result = await runCaptured(saveLogin, { AGENT_BROWSER_ACTION_POLICY: '/ambient.json' }, {}, password + '\n');
+  expect(result).toMatchObject({ code: 0, stderr: '', data: { status: 'saved', login: 'example' } });
+  expect(result.stdout).not.toContain(password);
+  const children = calls();
+  expect(children.map(child => child.argv.slice(2))).toEqual([['auth', 'list', '--json'], savedCommand, ['close']]);
+  expect(children.map(child => child.stdin)).toEqual(['', password, '']);
+  const session = children[0].argv[1];
+  expect(session).toMatch(/^login-/);
+  const key = fs.readFileSync(path.join(browserData, 'vault.key'), 'utf8');
+  for (const { argv, env } of children) {
+    expect(argv.slice(0, 2)).toEqual(['--session', session]);
+    expect(argv).not.toContain(password);
+    expect(env.AGENT_BROWSER_ACTION_POLICY).toBeUndefined();
+    expect(env.AGENT_BROWSER_SOCKET_DIR).not.toBe(socket);
+    expect(env.AGENT_BROWSER_ENCRYPTION_KEY).toBe(key);
+  }
+  expect(fs.existsSync(path.join(socket, 'admissions.json'))).toBe(false);
+});
+
+test('a failed save hides upstream output and closes the session', async () => {
+  const { calls, runCaptured } = fixture();
+  const result = await runCaptured(saveLogin, { TEST_SAVE_EXIT: '7' }, {}, 'fixture secret');
+  expect(result).toMatchObject({ code: 1, stderr: '', data: { error: 'login_failed:save' } });
+  expect(result.stdout).not.toContain('fixture secret');
+  expect(calls().map(child => child.argv.slice(2))).toEqual([['auth', 'list', '--json'], savedCommand, ['close']]);
+});
+
+test('delete checks ownership then deletes and closes without policy', async () => {
+  const { calls, run } = fixture();
+  expect(await run(deleteLogin, authList({ name: 'example' }))).toMatchObject({ code: 0, data: { status: 'deleted', login: 'example' } });
+  expect(calls().map(child => child.argv.slice(2))).toEqual([['auth', 'list', '--json'], ['auth', 'delete', 'example'], ['close']]);
+  expect(calls().every(child => child.env.AGENT_BROWSER_ACTION_POLICY === undefined)).toBe(true);
+});
+
+test('empty input and an unlinked container vault are refused before invoking the binary', async () => {
+  const { root, calls, run } = fixture();
+  expect(await run(saveLogin, {}, {}, '\n')).toMatchObject({ code: 0, data: { status: 'refused', reason: 'empty_password' } });
+  const auth = path.join(root, '.agent-browser', 'auth');
+  fs.unlinkSync(auth);
+  fs.mkdirSync(auth);
+  expect(await run(saveLogin, {}, {}, 'fixture secret')).toMatchObject({ code: 0, data: { status: 'refused', reason: 'vault_not_linked' } });
+  expect(calls()).toEqual([]);
+});
+
+test('unreadable entries and malformed lists fail closed, and deleting a missing entry is refused', async () => {
+  for (const [argv, env, reason] of [
+    [saveLogin, authList({ name: 'example', error: 'Failed to decrypt' }), 'name_taken'],
+    [saveLogin, { TEST_AUTH_LIST: 'invalid' }, 'name_taken'],
+    [deleteLogin, authList({ name: 'example', error: null }), 'name_taken'],
+    [deleteLogin, authList(), 'not_found'],
+  ] as const) {
+    const { calls, run } = fixture();
+    expect(await run(argv, env, {}, 'fixture secret')).toMatchObject({ code: 0, data: { status: 'refused', reason } });
+    expect(calls().map(child => child.argv.slice(2))).toEqual([['auth', 'list', '--json'], ['close']]);
+  }
+});
+
+test('team login changes require a terminal and logins switched off can still be deleted', async () => {
+  const { root, calls, run } = fixture();
+  writeConfig(root, { approvals: 'team' });
+  for (const argv of [saveLogin, deleteLogin]) {
+    expect(await run(argv, {}, {}, 'fixture secret')).toMatchObject({ code: 0, data: { status: 'refused', reason: 'terminal_only' } });
+  }
+  writeConfig(root, { browser: { saved_logins: false } });
+  expect(await run(saveLogin, {}, {}, 'fixture secret')).toMatchObject({ code: 0, data: { status: 'refused', reason: 'saved_logins_off' } });
+  expect(calls()).toEqual([]);
+  expect(await run(deleteLogin, authList({ name: 'example' }))).toMatchObject({ code: 0, data: { status: 'deleted', login: 'example' } });
+});
+
+test('passthrough preserves raw auth arguments and strips attempts to replace the policy', async () => {
+  const { root, socket, run } = fixture();
+  writeConfig(root, { approvals: 'personal' });
+  const argv = ['--session', 'public', 'auth', 'save', 'n', '--url', 'u', '--username', 'x', '--password', 'p'];
+  const result = await run([...argv, '--action-policy', '/other.json', '--action-policy=/other.json']);
+  expect(result.data.argv).toEqual(argv);
+  expect(result.data.env.AGENT_BROWSER_ACTION_POLICY).toBe(path.join(socket, 'policy.json'));
+});
+
+test('login writes reject values that the upstream binary could treat as options', async () => {
+  const { calls, run } = fixture();
+  for (const argv of [['delete-login', '--json'], [...saveLogin.slice(0, -1), '-p']]) {
+    expect(await run(argv, {}, {}, 'fixture secret')).toMatchObject({ code: 1, data: { error: 'login_failed:arguments' } });
+  }
+  expect(calls()).toEqual([]);
+});
 
 test('persistent commands require a live claim, renew it and preserve argv and exit code', async () => {
   const { dir, run } = fixture();

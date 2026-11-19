@@ -70,6 +70,34 @@ function snakeToken(token: string): string {
   return i === -1 ? token.replaceAll('-', '_') : token.slice(0, i).replaceAll('-', '_') + token.slice(i);
 }
 
+/** Read a value from the terminal with echo off; Enter ends it, Ctrl-C cancels. */
+function readHidden(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    process.stderr.write(prompt);
+    const stdin = process.stdin;
+    stdin.setRawMode(true);
+    stdin.setEncoding('utf8');
+    let value = '';
+    const done = (error?: Error) => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.off('data', onData);
+      process.stderr.write('\n');
+      if (error) reject(error); else resolve(value);
+    };
+    const onData = (chunk: string) => {
+      for (const ch of chunk) {
+        if (ch === '\r' || ch === '\n') return done();
+        if (ch === '\u0003') return done(new Error('cancelled'));
+        if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1);
+        else value += ch;
+      }
+    };
+    stdin.on('data', onData);
+    stdin.resume();
+  });
+}
+
 function readStdin(): Promise<string> {
   return new Promise(resolve => {
     let buf = '';
@@ -102,4 +130,4 @@ function flagEq(argv: string[], name: string): string | undefined {
   return hit === undefined ? undefined : hit.slice(name.length + 3);
 }
 
-export { writeStdout, emit, printJson, emitJson, exitError, failJson, snakeToken, readStdin, readStdinIfFlagged, readJson, flagValue, flagEq };
+export { writeStdout, emit, printJson, emitJson, exitError, failJson, snakeToken, readHidden, readStdin, readStdinIfFlagged, readJson, flagValue, flagEq };

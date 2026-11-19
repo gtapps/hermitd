@@ -205,6 +205,8 @@ The maintainer chat is the admin console. A refused chat request becomes one pen
 
 A refusal before a prompt sends no approval DM. A prompt that still opens on any refused kind of turn is closed at once; its DM may already have gone out. Immediate and timed declines are deliberate dismissals toward deny only, including question and plan-approval dialogs. A failed approval check refuses and is reported. If the bridge cannot be reached at all and the mode cannot be loaded, the agent behaves as personal.
 
+With `approvals: "team"`, only an admin at the host terminal saves or deletes a browser login using `hermitd run browser-agent save-login` or `hermitd run browser-agent delete-login`.
+
 To stop a step asking, delete its entry from native `permissions.ask`; an approver can ask for this in the maintainer chat. It then stops asking for everyone, while classifier review still applies. Offered entries are remembered in `.hermit/state/ask-offered.json` and deletions survive hatch, Docker setup and later upgrades. An install upgrading from before 1.4.24 gets removed entries re-added once by older migrations before the record is stamped.
 
 ## `ask_gate`
@@ -563,6 +565,7 @@ The top-level `browser` object is protected by the native settings prompt. It is
 | `port` | integer or null | `null` | Viewer loopback port, 1–65535, saved by `hermitd run browser-host`. |
 | `host` | string or null | `null` | Verified Tailscale DNS host saved by the host command. Links use `https://<browser.host>:<browser.port>/?task=<id>`. Authenticated HTTP and socket requests must match this Host. |
 | `inactivity_timeout` | integer | `900` | Seconds the signed-in browser stays open with no task holding it and no person in control before the agent closes it. Sign-ins stay in the profile and the next task reopens it. Set to `0` to turn the idle close off. Checked once a minute, so a change applies within a minute and values under 60 act as about one minute. Set through `/hermitd:hermit-settings browser-inactivity-timeout`. |
+| `saved_logins` | boolean | `true` | Set to `false` to prevent the agent from saving or using logins. The browser policy applies the next time the agent's browser starts. Existing logins stay on disk until deleted. Set through `/hermitd:hermit-settings browser-saved-logins`. |
 
 `/hermitd:browser` collects admins in chat, asks for the host command once and declares the `browser-handback` monitor. The command skips Tailscale when admins are unset. Managed Docker images carry `/etc/hermit/managed-browser` containing `display=plugin`; the plugin starts the display on demand. Older bare markers require `hermitd update`, and unconverted Docker files require `/hermitd:docker-customize "Convert"` before the rebuild. See [Browser Tasks](how-to-use.md#browser-tasks) and [host prerequisites](../skills/browser/host-setup.md).
 

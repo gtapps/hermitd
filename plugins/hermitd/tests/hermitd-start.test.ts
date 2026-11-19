@@ -691,7 +691,7 @@ describe('config contract: template and DEFAULT_CONFIG must mirror', () => {
   const TEMPLATE_ONLY_KEYS = new Set([
     'routines', 'monitors',
     // Settled by config-read.ts browser and transcription shapes; kept out of the loadConfig merge so boot write-back does not stamp them.
-    'browser', 'browser.enabled', 'browser.default', 'browser.admins', 'browser.port', 'browser.host', 'browser.inactivity_timeout',
+    'browser', 'browser.enabled', 'browser.default', 'browser.admins', 'browser.port', 'browser.host', 'browser.inactivity_timeout', 'browser.saved_logins',
     'transcription', 'transcription.enabled', 'transcription.echo',
     'docker.recommended_plugins',
     // Settled by config-read.ts docker shape (default true) for the Docker renderer; not part of the loadConfig merge.
