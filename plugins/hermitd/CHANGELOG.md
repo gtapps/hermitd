@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.37] - 2026-11-19
 
 ### Added
 
@@ -27,6 +27,16 @@
 - `hermitd <verb> --help` prints usage instead of resolving a project or running the verb, so `hermitd stop --help` no longer stops the agent
 - `hermitd-start`, `hermitd-stop` and `hermitd-watchdog` refuse to run from a checkout whose `.hermit/` projects the agent's root above it, and `hermitd` commands, `hermitd-status` and `hermitd-attach` run there target that root, so a stray boot no longer splits state or blocks helper reports
 - Execution state reads idle as soon as a turn is interrupted with Esc, and stays in flight while a Stop hook continues the turn, so watchdog maintenance, `hermitd update` and graceful shutdown no longer wait up to an hour or act mid-turn, and an interrupted turn no longer holds routines back
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. Tell the operator once that logins saved earlier with agent-browser's `auth save` are no longer readable by the agent, and each needs `hermitd run browser-agent save-login <name> --url <url> --username <user>` at the host terminal.
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`).
+
+No `config.json` changes required.
 
 ## [1.4.36] - 2026-11-18
 
