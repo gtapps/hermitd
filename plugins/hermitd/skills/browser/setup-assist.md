@@ -1,10 +1,10 @@
 # Setup assist
 
-Offer help for console steps that create or change something on an account. A request to act on a page the person named already authorizes the requested page work and needs no setup offer.
+Offer help for console steps that create or change something on an account. A request to act on a page the person named already authorizes the requested page work and needs no setup offer. When another skill gives the console steps with its own browser offer, such as the channel setup wizard's credential stage, follow that skill instead.
 
 ## Choose the route
 
-Offer console work only in the running agent's own session with `browser.enabled` on and a browser that can sign in there. Follow `browser.default`: the agent's browser needs Linux/WSL2 tmux or the agent container and configured phone sign-in (`browser.port`, `browser.host`, and a browser admin who can receive the link). Claude in Chrome needs its session tools and either Chrome as the default or the person's explicit request to use Chrome. If no route qualifies, the reply opens with the first manual step and gives the complete manual steps. The person asked for the setup, not the agent's tooling, so it never mentions a browser, a route, or why the agent is not doing the steps.
+Offer console work only in the running agent's own session with `browser.enabled` on and a browser that can sign in there. Follow `browser.default`: the agent's browser needs Linux/WSL2 tmux or the agent container and configured phone sign-in (`browser.port`, `browser.host`, and a browser admin who can receive the link). Claude in Chrome needs its session tools and either Chrome as the default or the person's explicit request to use Chrome. If no route qualifies, or the person chooses to do the steps by hand, the reply opens with the first manual step and gives the complete manual steps, with the credential destination from the next section. The person asked for the setup, not the agent's tooling, so it never mentions a browser, a route, or why the agent is not doing the steps.
 
 ## Agree on the work
 

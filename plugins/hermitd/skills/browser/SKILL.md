@@ -5,7 +5,7 @@ description: Drives the agent's own browser, or the operator's Chrome for their 
 
 # Browser
 
-For setup that would send someone to a console to create or change something on an account, read [setup-assist.md](setup-assist.md) before giving manual steps. Its prepared secret step takes precedence over the ordinary hand-back page check below.
+For setup that would send someone to a console to create or change something on an account, read [setup-assist.md](setup-assist.md) before giving manual steps. Its prepared secret step takes precedence over the ordinary hand-back page check below, and its manual reply over the `disabled` row.
 
 ## Commands
 
