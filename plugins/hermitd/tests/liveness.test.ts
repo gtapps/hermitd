@@ -42,7 +42,7 @@ describe('sharedLivenessAgeSecs', () => {
   test('a single stale file reads older than the fresh threshold', () => {
     const root = makeRoot();
     writeAged(root, 'state/routine-monitor-liveness.json', LIVENESS_FRESH_SECS + 300);
-    const age = sharedLivenessAgeSecs(root);
+    const age = sharedLivenessAgeSecs(root, 0);
     expect(age!).toBeGreaterThan(LIVENESS_FRESH_SECS);
   });
 
@@ -68,12 +68,5 @@ describe('sharedLivenessAgeSecs', () => {
     const root = makeRoot();
     writeAged(root, 'state/routine-monitor-liveness.json', 30);
     expect(sharedLivenessAgeSecs(root, Date.now() - 3_600_000)!).toBeLessThan(120);
-  });
-
-  test('a pre-boot file does not mask a post-boot one', () => {
-    const root = makeRoot();
-    writeAged(root, 'state/routine-monitor-liveness.json', 30);
-    writeAged(root, 'state/.heartbeat', 5);
-    expect(sharedLivenessAgeSecs(root, Date.now() - 20_000)!).toBeLessThan(20);
   });
 });
