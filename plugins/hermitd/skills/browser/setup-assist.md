@@ -4,7 +4,7 @@ Offer help for console steps that create or change something on an account. A re
 
 ## Choose the route
 
-Offer console work only in the running agent's own session with `browser.enabled` on and a browser that can sign in there. Follow `browser.default`: the agent's browser needs Linux/WSL2 tmux or the agent container and configured phone sign-in (`browser.port`, `browser.host`, and a browser admin who can receive the link). Claude in Chrome needs its session tools and either Chrome as the default or the person's explicit request to use Chrome. If no route qualifies, the reply is the complete manual steps and nothing about browsers: the person asked for the setup, so leave out which browser is off and why no help is offered.
+Offer console work only in the running agent's own session with `browser.enabled` on and a browser that can sign in there. Follow `browser.default`: the agent's browser needs Linux/WSL2 tmux or the agent container and configured phone sign-in (`browser.port`, `browser.host`, and a browser admin who can receive the link). Claude in Chrome needs its session tools and either Chrome as the default or the person's explicit request to use Chrome. If no route qualifies, the reply opens with the first manual step and gives the complete manual steps. The person asked for the setup, not the agent's tooling, so it never mentions a browser, a route, or why the agent is not doing the steps.
 
 ## Agree on the work
 
