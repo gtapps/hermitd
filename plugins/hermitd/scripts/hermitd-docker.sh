@@ -782,11 +782,7 @@ case "$CMD" in
 
     _await_upgrade() {
       local output parsed
-      if [ $# -gt 0 ]; then
-        echo "[hermit] Waiting for hermit-evolve, then a quiet boundary (up to 45 min)..."
-      else
-        echo "[hermit] Waiting for a quiet boundary (up to 15 min)..."
-      fi
+      if [ $# -gt 0 ]; then echo "[hermit] Waiting for hermit-evolve (up to 45 min)..."; fi
       # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
       _stamp_update_marker
       if output=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
@@ -817,8 +813,6 @@ case "$CMD" in
       return 0
     }
     _apply_update() {
-    # A CC-only run changes nothing before the build, so only the pre-bounce wait applies.
-    if [ "$CC_ONLY" = false ]; then _await_upgrade || return 0; fi
     if [ "$CC_ONLY" = false ] && [ -n "$PLUGIN_ROWS" ]; then
       # Refresh each backing marketplace's catalog first. `claude plugin update` moves the
       # pin against whatever is already in the local cache — it does not git-pull. A
@@ -939,7 +933,9 @@ case "$CMD" in
       [ -n "$CORE_VERSION" ] && REQUEST_ARGS+=(--expect-version "$CORE_VERSION")
       REQUEST_OUT=$(_harness_request "${REQUEST_ARGS[@]}" --source update --wait 300 --purpose upgrade)
       IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(bun -e 'try { const r = JSON.parse(process.argv[1]); console.log((r.status ?? "unknown") + "\t" + (r.reason ?? "") + (r.text ? " (" + r.text + ")" : "")); } catch { console.log("unknown\tno_output"); }' "$REQUEST_OUT")"
-      if [ "$REQUEST_STATUS" = ok ]; then
+      # A wait timeout leaves the batch queued behind the running turn, so evolve is still awaited
+      # rather than cut off by the bounce.
+      if [ "$REQUEST_STATUS" = ok ] || [ "$REQUEST_REASON" = wait_timeout ]; then
         RELOAD_PLUGINS_SENT=true
         EVOLVE_SENT=$BATCH
       else
@@ -986,6 +982,7 @@ case "$CMD" in
         fi
       fi
     fi
+    # A hermit-evolve turn still running, typed during the build or left from an earlier update, ends first.
     _await_upgrade || return 0
     _validate_compose
     if [ "$PLUGINS_ONLY" = true ]; then _build_netguard_cached; fi

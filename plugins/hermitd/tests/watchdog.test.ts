@@ -20,7 +20,7 @@ import { routineCommand } from '../scripts/lib/routines/arm';
 import { freshDirFactory } from './helpers/workdir';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import {
-  awaitUpgrade, awaitQuietRestart, composeRestartDroppedMessage, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeStallPermissionMessage, composeSessionWedgedMessage, composePauseMessage, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
+  awaitUpgrade, awaitQuietRestart, evolveTurnEnded, composeRestartDroppedMessage, inActiveHours, composeRestartMessage, composeWedgeMessage, composeStallQuestionMessage, composeStallPermissionMessage, composeSessionWedgedMessage, composePauseMessage, classifyQueueTail, classifyApiFailureTail, classifyStopFailureStamp, composeCompactSteeringMessage,
   rearmDamperOpen, passesLifecycleGuards, setHygieneEval, stampHygieneEval,
   maybeContextCompact, readHarnessOutcomes, MONITOR_REARM_DAMPER_SECS, type World,
 } from '../scripts/hermitd-watchdog';
@@ -5674,6 +5674,29 @@ test('legacy resident-missing stamp does not prevent restart without RESIDENT.md
 
 
 describe('await-upgrade', () => {
+  test('evolveTurnEnded holds only a running hermit-evolve turn', withHermit(async (h) => {
+    const root = path.join(h.dir, '.hermit');
+    const execution = (state: string, source: string | null, reason: string | null = null, at = new Date()) =>
+      writeState(h, 'execution.json', { state, turn_id: 't', at: at.toISOString(), source, cc_session_id: 's', reason });
+    const hold = { ok: false, reason: 'execution-not-idle' } as const;
+    execution('in_flight', 'upgrade');
+    expect(evolveTurnEnded(root)).toEqual(hold);
+    // An auto-compaction keeps the evolve turn running until Stop marks it idle.
+    execution('unknown', 'upgrade', 'precompact');
+    expect(evolveTurnEnded(root)).toEqual(hold);
+    execution('idle', 'upgrade');
+    expect(evolveTurnEnded(root)).toEqual({ ok: true });
+    // Any other running turn, compacted or not, never holds.
+    execution('in_flight', 'conversation');
+    expect(evolveTurnEnded(root)).toEqual({ ok: true });
+    execution('unknown', 'heartbeat', 'precompact');
+    expect(evolveTurnEnded(root)).toEqual({ ok: true });
+    // A fresh start, or a compaction stamp over an hour old, holds nothing.
+    execution('unknown', 'upgrade', 'resident-start:startup');
+    expect(evolveTurnEnded(root)).toEqual({ ok: true });
+    execution('unknown', 'upgrade', 'precompact', new Date(Date.now() - 61 * 60 * 1000));
+    expect(evolveTurnEnded(root)).toEqual({ ok: true });
+  }));
   test('a quiet restart is ready, replaced, or timed out', withHermit(async (h) => {
     const root = path.join(h.dir, '.hermit');
     patchRuntime(h, { session_pid: '4242' });

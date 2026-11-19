@@ -182,7 +182,7 @@ if [ -n "$SKIP_ROWS" ]; then
     echo "    - $pid  ->  claude plugin update $pid --scope user"
   done
 fi
-echo "  A live tmux resident restarts once at a quiet boundary after reload and evolve."
+echo "  A live tmux resident restarts once after reload and evolve."
 echo "  Note: Claude Code itself is updated separately on the host: claude update"
 
 if [ "$DRY_RUN" = true ]; then
@@ -268,11 +268,7 @@ _await_upgrade() {
   local output parsed
   # The resident's own turn never reaches a quiet boundary, so a self-run update keeps the immediate path.
   [ "$SELF_RUN" = false ] || return 0
-  if [ $# -gt 0 ]; then
-    echo "[hermit] Waiting for hermit-evolve, then a quiet boundary (up to 45 min)..."
-  else
-    echo "[hermit] Waiting for a quiet boundary (up to 15 min)..."
-  fi
+  if [ $# -gt 0 ]; then echo "[hermit] Waiting for hermit-evolve (up to 45 min)..."; fi
   # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
   _stamp_update_marker
   if output=$(cd "$PROJECT_DIR" && .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
@@ -323,7 +319,6 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   fi
   AWAIT_NOTED=false
   _apply_live_update() {
-  _await_upgrade || return 0
   # Check whether any registered hermit (core or sibling) has a version gap.
   # UPDATE_ROWS_AFTER is a TSV where $2=name@marketplace and $4=new version.
   # We compare each installed hermit version against config._hermit_versions.
@@ -386,7 +381,8 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
   [ "$SELF_RUN" = true ] || REQUEST_ARGS+=(--wait 300)
   REQUEST_ARGS+=(--purpose upgrade)
   IFS=$'\t' read -r REQUEST_STATUS REQUEST_REASON <<< "$(_request_status "$(_harness_request "${REQUEST_ARGS[@]}")")"
-  if [ "$REQUEST_STATUS" = queued ] || [ "$REQUEST_STATUS" = ok ]; then
+  # A wait timeout leaves the batch queued behind the running turn, so evolve is still awaited.
+  if [ "$REQUEST_STATUS" = queued ] || [ "$REQUEST_STATUS" = ok ] || [ "$REQUEST_REASON" = wait_timeout ]; then
     RELOAD_PLUGINS_SENT=true
     EVOLVE_SENT=$BATCH
   else
@@ -394,6 +390,7 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
     [ "$BATCH" = true ] && echo "[hermit]          hermit-evolve did not run; type /hermitd:hermit-evolve when you attach." >&2
     echo "[hermit]          Pins are already updated (durable); next session start picks them up." >&2
   fi
+  # Without a version gap this still waits for an evolve turn that stamped the versions earlier.
   if [ "$EVOLVE_SENT" = true ]; then
     _await_upgrade "${EXPECT_ARGS[@]}" || return 0
   else

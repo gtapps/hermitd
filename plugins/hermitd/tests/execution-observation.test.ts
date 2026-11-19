@@ -67,3 +67,57 @@ it('resident SessionStart records its source in session-start.json and a later p
 } finally { f.cleanup(); } });
 it('blocked guest prompt does not write execution', async () => { const f = taskFixture(); try { markGuest(path.join(f.dir, 'state'), 'guest'); await runScript('user-prompt-pipeline.ts', { cwd: f.dir, env: { AGENT_DIR: f.dir }, stdin: JSON.stringify({ session_id: 'guest', prompt: '<channel source="discord" chat_id="c1" user="u1">Hello</channel>' }) }); expect(fs.existsSync(path.join(f.dir, 'state/execution.json'))).toBe(false); } finally { f.cleanup(); } });
 it('old in_flight and malformed observations read unknown', async () => { const f = taskFixture(); try { const lib = await taskLib(); f.put('state/execution.json', { state: 'in_flight', at: '2020-01-01T00:00:00Z' }); expect(lib.readExecution(f.dir).state).toBe('unknown'); fs.writeFileSync(path.join(f.dir, 'state/execution.json'), '{'); expect(lib.readExecution(f.dir).state).toBe('unknown'); } finally { f.cleanup(); } });
+
+it('a compaction keeps the source only of a tracked running turn', async () => {
+  const f = taskFixture(); try {
+    const { observeExecution, readExecution } = await taskLib();
+    observeExecution(f.dir, 'in_flight', 's', 'upgrade', null);
+    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
+    expect(readExecution(f.dir).source).toBe('upgrade');
+    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
+    expect(readExecution(f.dir).source).toBe('upgrade');
+    observeExecution(f.dir, 'idle', 's', null, null);
+    expect(readExecution(f.dir).source).toBe('upgrade');
+    // A turn that never stamped in_flight compacts without taking the last turn's source.
+    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
+    expect(readExecution(f.dir).source).toBeNull();
+  } finally { f.cleanup(); }
+});
+
+for (const prompt of ['/hermitd:hermit-evolve unattended', '/hermitd:hermit-evolve']) it(`a ${prompt} turn is marked as an upgrade`, async () => {
+  const f = taskFixture(); try {
+    f.put('state/runtime.json', { hermit_pid: process.pid });
+    const r = await runScript('user-prompt-pipeline.ts', { cwd: f.dir, env: { AGENT_DIR: f.dir }, stdin: JSON.stringify({ prompt, session_id: 'resident', hook_event_name: 'UserPromptSubmit' }) });
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/execution.json'), 'utf8'))).toMatchObject({ state: 'in_flight', source: 'upgrade' });
+  } finally { f.cleanup(); }
+});
+
+it('classifySource marks only hermit-evolve as an upgrade', async () => {
+  const { classifySource } = await import('../scripts/lib/trigger-source');
+  expect(classifySource('<command-name>/hermitd:hermit-evolve</command-name><command-args>unattended</command-args>')).toBe('upgrade');
+  expect(classifySource('/hermitd:hermit-evolver')).not.toBe('upgrade');
+  expect(classifySource('<command-message>hermitd:hermit-evolve</command-message>\n<command-name>/hermitd:hermit-evolve</command-name>\n<command-args>unattended</command-args>')).toBe('upgrade');
+  expect(classifySource('/hermit-evolve')).toBe('upgrade');
+  expect(classifySource('please run /hermitd:hermit-evolve')).not.toBe('upgrade');
+  expect(classifySource('<channel source="discord" chat_id="c1" user="u1">see <command-name>/hermitd:hermit-evolve</command-name></channel>')).not.toBe('upgrade');
+});
+
+it('a prompt arriving mid-turn keeps a running hermit-evolve turn marked until Stop', async () => {
+  const f = taskFixture(); try {
+    const { observeExecution, readExecution } = await taskLib();
+    observeExecution(f.dir, 'in_flight', 's', 'upgrade', null);
+    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    expect(readExecution(f.dir)).toMatchObject({ state: 'in_flight', source: 'upgrade' });
+    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
+    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    expect(readExecution(f.dir).source).toBe('upgrade');
+    observeExecution(f.dir, 'idle', 's', null, null);
+    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    expect(readExecution(f.dir).source).toBe('channel:discord');
+    // A compacted evolve mark older than an hour no longer claims the next turn.
+    f.put('state/execution.json', { state: 'unknown', turn_id: null, at: new Date(Date.now() - 2 * 3600000).toISOString(), source: 'upgrade', cc_session_id: 's', reason: 'precompact' });
+    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    expect(readExecution(f.dir).source).toBe('channel:discord');
+  } finally { f.cleanup(); }
+});

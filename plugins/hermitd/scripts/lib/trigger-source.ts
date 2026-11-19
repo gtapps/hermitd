@@ -62,6 +62,10 @@ function sentinelLine(text: string): string {
 function classifySource(triggerText: string, opener?: Json): string {
   if (!triggerText) return 'other';
   const t = triggerText.trim();
+  // A hermit-evolve turn, typed or queued by the core mod; a running update waits for it to end.
+  // Anchored at the turn opener: a channel message or summary that quotes the tag is not an evolve.
+  if (/^\/(?:hermitd:)?hermit-evolve(?:\s|$)/.test(t)
+      || /^(?:<command-message>[^<]*<\/command-message>\s*)?<command-name>\/?(?:hermitd:)?hermit-evolve<\/command-name>/.test(t)) return 'upgrade';
   if (opener?.type === 'user' && opener.origin?.kind === 'plugin' && opener.origin?.name === 'hermitd'
       && /<command-name>\/?hermitd:hermit-routines<\/command-name>/.test(t)) {
     const args = t.match(/<command-args>([^<]*)<\/command-args>/)?.[1] ?? '';

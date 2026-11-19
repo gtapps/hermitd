@@ -4,6 +4,7 @@
 
 ### Changed
 
+- `hermitd update` run from a terminal no longer waits for the agent to be quiet; it restarts as soon as the upgrade has applied
 - On a `non-technical` install, a client chat is no longer told to use a terminal: when a maintainer chat is set it is told the provider handles the step and the detail goes to the maintainer chat, and on a claude.ai sign-in with `remote` on it is pointed to the Claude app.
 
 ### Fixed

@@ -814,8 +814,19 @@ export function passesExecutionBoundary(dir: string, options: { minTokens?: numb
 export function observeExecution(dir: string, state: Execution['state'], session: string | null, source: string | null, reason: string | null): void {
   try {
     const previous = readExecution(dir);
-    writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at: new Date().toISOString(), source: source ?? previous.source, cc_session_id: session, reason }) + '\n');
+    // A compaction keeps the source only of a turn the prompt hook tracked; an untracked turn's
+    // compaction (a wake that never stamped in_flight) must not inherit the last turn's source.
+    const inherited = reason !== 'precompact' || previous.state === 'in_flight' || previous.reason === 'precompact' ? previous.source : null;
+    // A prompt arriving mid-turn (a queued channel message) runs this hook too; it must not clear a
+    // running hermit-evolve turn's mark, which only Stop or StopFailure ends.
+    writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at: new Date().toISOString(), source: state === 'in_flight' && evolveTurnRunning(previous) ? 'upgrade' : source ?? inherited, cc_session_id: session, reason }) + '\n');
   } catch { /* advisory, never gates the hook */ }
+}
+/** A `hermit-evolve` turn is running: the prompt hook marked its source `upgrade`, and an
+ *  auto-compaction within the last hour keeps that turn running until Stop marks it idle. */
+export function evolveTurnRunning(execution: Execution): boolean {
+  return execution.source === 'upgrade' && (execution.state === 'in_flight'
+    || (execution.state === 'unknown' && execution.reason === 'precompact' && Date.now() - Date.parse(execution.at ?? '') < HOUR));
 }
 interface Binding { cc_session_id: string; task_ids: string[]; at: string; turn_id: string | null }
 function readBinding(dir: string): Binding | null {

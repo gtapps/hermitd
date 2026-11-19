@@ -30,7 +30,7 @@ import { resolveResumeTarget } from './lib/resident-prompt';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { acquireLock, releaseLock, pidAlive } from './lib/lockfile';
-import { readExecution, passesExecutionBoundary, type BoundaryReason } from './lib/tasks';
+import { readExecution, passesExecutionBoundary, evolveTurnRunning, type BoundaryReason } from './lib/tasks';
 import { contextPolicyHash } from './lib/context-policy';
 import { utcISOStamp as utcStamp, currentHHMM, currentHHMMOrUTC, friendlyBoundary, parseDuration as parseDurationMs } from './lib/time';
 import { writeRuntimeJson, readRuntimeJson, refuseProjectionRoot, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
@@ -2540,6 +2540,11 @@ export async function awaitUpgrade(hermitRoot: string, expected: Record<string, 
   }
 }
 
+/** Not ready while a `hermit-evolve` turn is running. */
+export function evolveTurnEnded(hermitRoot: string): ReturnType<typeof passesExecutionBoundary> {
+  return evolveTurnRunning(readExecution(hermitRoot)) ? { ok: false, reason: 'execution-not-idle' } : { ok: true };
+}
+
 if (import.meta.main) {
   refuseProjectionRoot('hermitd-watchdog');
   const subcommand = process.argv[2] ?? 'run';
@@ -2561,7 +2566,8 @@ if (import.meta.main) {
       console.log(JSON.stringify({ error: 'invalid_expect' }));
       process.exit(1);
     }
-    console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected)));
+    // An operator-run update waits for evolve and the turn that ran it, never for a quiet agent.
+    console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected, { boundary: evolveTurnEnded })));
   } else if (subcommand === 'restart') {
     const reason = process.argv[3] ?? 'manual';
     const flags = parseRestartFlags(process.argv.slice(4));

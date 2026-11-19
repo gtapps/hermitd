@@ -321,7 +321,7 @@ You can run separate agents for different responsibilities, each with its own wo
 
 ## Upgrading
 
-Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container. The update waits for a quiet moment, applies migrations, then restarts the agent once and resumes the conversation. External updates finish with a `hermitd doctor --fix` pass and record its result in update history. Run `hermitd doctor [--fix]` to list health findings and their commands, or apply safe repairs and re-check; queued upgrades remain pending until the agent applies them.
+Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container. The update applies migrations, then restarts the agent once and resumes the conversation. External updates finish with a `hermitd doctor --fix` pass and record its result in update history. Run `hermitd doctor [--fix]` to list health findings and their commands, or apply safe repairs and re-check; queued upgrades remain pending until the agent applies them.
 
 Without a host terminal, type `/hermitd:hermit-update`, `/hermitd:hermit-restart` or `/hermitd:doctor-fix` into a host agent's session from the Claude app (or a terminal). These management commands run only when typed: chat cannot start them, and the agent never starts them on its own. A Docker agent takes the restart; its update and repair stay on the host.
 
