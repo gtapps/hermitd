@@ -1,6 +1,6 @@
 {
   "name": "hermitd",
-  "version": "1.4.37",
+  "version": "1.4.38",
   "engines": {
     "claude-code": ">=2.1.327"
   },

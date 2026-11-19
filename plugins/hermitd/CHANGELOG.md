@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.38] - 2026-11-19
 
 ### Added
 
@@ -15,6 +15,14 @@
 - A launch that exits right after a restart is restarted at the watchdog's next check instead of reading as a possibly running agent for up to 10 minutes
 - `hermitd update` on a Docker agent whose installed core predates Docker approval no longer stops with `Module not found` and the `hermitd docker` usage line
 - `hermitd approve` on such an agent says to run `hermitd update` first
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles the version stamp; no other steps.
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`).
+
+No `config.json` changes required.
 
 ## [1.4.37] - 2026-11-19
 
