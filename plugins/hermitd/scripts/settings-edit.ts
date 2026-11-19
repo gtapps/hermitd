@@ -38,6 +38,7 @@ import { auditConfigChange, readHistory } from './lib/config-audit';
 import { sha256 } from './lib/hash';
 import { persistConfig } from './lib/config-write';
 import { validate, ROUTINE_ID_RE } from './validate-config';
+import { specAt } from './lib/config-read';
 import { flagValue, flagEq, emit, emitJson, exitError, failJson, readJson } from './lib/cli';
 import { safeForLLM } from './lib/sanitize';
 import { resolveGate, projectRootOf } from './lib/routines/gate';
@@ -409,9 +410,11 @@ export function coerce(setting: Setting, raw: string): { ok: true; value: Json }
       return { ok: true, value: raw };
     }
     case 'int': {
-      if (!/^\d+$/.test(raw)) return { ok: false, message: `${setting.arg} expects a positive integer (got "${raw}")` };
-      const n = parseInt(raw, 10);
-      if (n < 1) return { ok: false, message: `${setting.arg} expects a positive integer (got "${raw}")` };
+      // A schema range starting at 0 makes 0 a value (an "off" switch); otherwise integers start at 1.
+      const spec = specAt(setting.path);
+      const min = (spec?.kind === 'number' ? spec.range?.[0] : undefined) ?? 1;
+      const n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
+      if (!(n >= min)) return { ok: false, message: `${setting.arg} expects an integer of at least ${min} (got "${raw}")` };
       return { ok: true, value: n };
     }
     default:
@@ -566,7 +569,7 @@ if (import.meta.main) {
       if (rest.length !== 2 || !key || !/^[A-Za-z0-9_-]+$/.test(key)
         || ['primary', '__proto__', 'constructor', 'prototype'].includes(key)) exitError('invalid_channel_key');
       const payload = parseValue(raw);
-      const allowed = ['plugin', 'marketplace', 'attributes', 'send_script', 'format', 'state_dir', 'docker_source'];
+      const allowed = ['plugin', 'marketplace', 'attributes', 'send_script', 'format', 'state_dir', 'members_only', 'docker_source'];
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) exitError('invalid_registration');
       if (Object.keys(payload).some(field => !allowed.includes(field))) exitError('unknown_registration_field');
       const { docker_source: dockerSource, ...fields } = payload;

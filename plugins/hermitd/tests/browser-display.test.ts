@@ -1,7 +1,8 @@
 import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { browserDisplaySession, reserveDisplay, maybeStartBrowserDisplay, stopBrowserDisplay } from '../scripts/browser-display';
+import { browserDisplaySession, reserveDisplay, maybeStartBrowserDisplay, stopBrowserDisplay, idleCloseStep } from '../scripts/browser-display';
+import { browserLease } from '../scripts/lib/browser-lease';
 import { browserSocketDir } from '../scripts/lib/browser-runtime';
 import { freshDirFactory } from './helpers/workdir';
 import { PLUGIN_ROOT } from './helpers/run';
@@ -195,4 +196,55 @@ test('display profile, socket, reservations and viewer bind follow deployment', 
     if (previous === undefined) delete process.env.HERMIT_BROWSER_VIEWER_BIND;
     else process.env.HERMIT_BROWSER_VIEWER_BIND = previous;
   }
+});
+
+test('an unheld, running browser closes once the inactivity timeout passes', () => {
+  const dir = freshDir();
+  const closes: string[][] = [];
+  const spawn = ((_: string, args: string[]) => {
+    expect(browserLease('inspect', undefined, dir).holder).toBe('idle-close');
+    closes.push(args.slice(1)); return { status: 0 };
+  }) as any;
+  const step = (since: number | null, now: number, alive = true) => idleCloseStep(dir, since, now, () => alive, spawn);
+  expect(step(null, 0, false)).toBeNull();
+  expect(step(null, 1000)).toBe(1000);
+  expect(step(1000, 900_999)).toBe(1000);
+  expect(closes).toEqual([]);
+  expect(step(1000, 901_000)).toBeNull();
+  expect(closes).toEqual([['--task', 'idle-close', 'close']]);
+  expect(browserLease('status', undefined, dir).status).toBe('available');
+});
+
+test('a task claim or a person in control resets the idle timer and never closes', () => {
+  const dir = freshDir(); let spawns = 0;
+  const spawn = (() => { spawns++; return { status: 0 }; }) as any;
+  browserLease('claim', 'task-a', dir, 999_000);
+  expect(idleCloseStep(dir, 0, 1_000_000, () => true, spawn)).toBeNull();
+  browserLease('release', 'task-a', dir);
+  browserLease('takeover', undefined, dir, 999_000, { login: 'admin', chromeAlive: () => true });
+  expect(idleCloseStep(dir, 0, 1_000_000, () => true, spawn)).toBeNull();
+  expect(spawns).toBe(0);
+});
+
+test('a claim released between two idle checks restarts the wait from its release', () => {
+  const dir = freshDir(); let spawns = 0;
+  const spawn = (() => { spawns++; return { status: 0 }; }) as any;
+  browserLease('claim', 'task-a', dir, 800_000);
+  browserLease('release', 'task-a', dir, 850_000);
+  expect(idleCloseStep(dir, 0, 901_000, () => true, spawn)).toBe(850_000);
+  expect(idleCloseStep(dir, 850_000, 1_750_000, () => true, spawn)).toBeNull();
+  expect(spawns).toBe(1);
+});
+
+test('browser.inactivity_timeout sets the delay and 0 turns the idle close off', () => {
+  const dir = freshDir(); let spawns = 0;
+  const spawn = (() => { spawns++; return { status: 0 }; }) as any;
+  fs.writeFileSync(path.join(dir, 'config.json'), '{"browser":{"inactivity_timeout":0}}');
+  expect(idleCloseStep(dir, null, 0, () => true, spawn)).toBeNull();
+  expect(idleCloseStep(dir, 0, 10_000_000, () => true, spawn)).toBeNull();
+  expect(spawns).toBe(0);
+  fs.writeFileSync(path.join(dir, 'config.json'), '{"browser":{"inactivity_timeout":60}}');
+  expect(idleCloseStep(dir, 0, 59_999, () => true, spawn)).toBe(0);
+  expect(idleCloseStep(dir, 0, 60_000, () => true, spawn)).toBeNull();
+  expect(spawns).toBe(1);
 });

@@ -130,8 +130,15 @@ describe('settings-edit.ts CLI', () => {
     expect(fs.statSync(file).mtimeMs).toBe(modified);
   });
 
+  test('channel-register writes members_only', async () => {
+    const file = seedConfig(freshDir(), {});
+    const result = await runScript('settings-edit.ts', { args: [file, 'channel-register', 'custom', JSON.stringify({ plugin: 'bridge', members_only: true })] });
+    expect(result.stdout.trim()).toBe('OK');
+    expect(readConfig(file).channels.custom).toEqual({ plugin: 'bridge', members_only: true, enabled: true, default_chat_id: null, state_dir: '.claude.local/channels/custom' });
+  });
+
   test('channel-register refuses invalid payloads without writing', async () => {
-    for (const payload of [{ format: 'invalid' }, { docker_source: 'registered' }, { surprise: true }, [], null]) {
+    for (const payload of [{ format: 'invalid' }, { members_only: 'yes' }, { docker_source: 'registered' }, { surprise: true }, [], null]) {
       const file = seedConfig(freshDir(), {});
       const before = fs.readFileSync(file, 'utf8');
       const result = await runScript('settings-edit.ts', { args: [file, 'channel-register', 'custom', JSON.stringify(payload)] });
@@ -1137,6 +1144,12 @@ test('browser settings preserve Chrome prerequisites and refuse disabling its se
   expect((await set('browser-default', 'agent-browser')).exitCode).toBe(0);
   expect((await set('browser', 'false')).exitCode).toBe(0);
   expect(readConfig(file).browser).toEqual({ default: 'agent-browser', enabled: false });
+  for (const value of ['0', '1800']) {
+    expect((await set('browser-inactivity-timeout', value)).exitCode).toBe(0);
+    expect(readConfig(file).browser.inactivity_timeout).toBe(Number(value));
+  }
+  expect(JSON.parse((await set('browser-inactivity-timeout', 'soon')).stdout).status).toBe('refused');
+  expect(readConfig(file).browser.inactivity_timeout).toBe(1800);
 });
 
 test('browser migration defaults on, preserves existing decisions, and declines an operator browser', async () => {

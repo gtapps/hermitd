@@ -10,6 +10,8 @@ import { mutateTask, readTasks } from './tasks';
 export const BROWSER_IDLE_MS = 15 * 60 * 1000;
 interface Waiter { task: string; waiting_on: string }
 export const HUMAN_IDLE_MS = 30 * 60 * 1000;
+/** Holds the lease while the display closes an idle Chrome, so a claim in that window queues. */
+export const IDLE_CLOSE_HOLDER = 'idle-close';
 export interface HumanLease {
   login: string; generation: number; task: string | null; waiting_since: string | null;
   since: number; disconnected_at: number | null;
@@ -21,6 +23,8 @@ export interface BrowserEvent {
 export interface BrowserLease {
   holder: string | null; expires_at: number; waiters: Waiter[];
   epoch: number; human: HumanLease | null; pending: BrowserEvent[];
+  /** Last time a held claim was released, so the idle close sees a claim that came and went between checks. */
+  released_at?: number;
 }
 
 export function browserEventSequence(id: string): number {
@@ -84,7 +88,7 @@ export function humanGeneration(dir: string): number | null {
 }
 
 /** The folder shares the lease; the lock covers only the short transaction. */
-type LeaseAction = 'teardown' | 'claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
+type LeaseAction = 'teardown' | 'claim' | 'idle-claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
 interface LeaseOptions {
   login?: string; admins?: string[]; generation?: number; chromeAlive?: () => boolean;
 }
@@ -132,6 +136,8 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
     }
     if (action === 'takeover') {
       if (!options.login) throw new Error('login_required');
+      // The idle close is about to end Chrome: control taken now would be lost with it.
+      if (lease.holder === IDLE_CLOSE_HOLDER) return { status: 'closing' };
       // Only a sign-in wait counts: a confirmation wait on the same task must survive, and a stale
       // link falls through to the task holding the browser.
       const open = readTasks(dir).filter(record => record.status === 'open' && record.waiting_since && options.admins?.includes(record.waiting_on!));
@@ -182,22 +188,24 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
     }
     if (action === 'status') return lease.holder
       ? { status: 'claimed', holder: lease.holder, expires_at: lease.expires_at }
-      : { status: 'available' };
+      : { status: 'available', released_at: lease.released_at };
     if (action === 'release') {
       if (task && lease.holder && lease.holder !== task) return { status: 'not_holder', holder: lease.holder };
-      if (lease.holder) clearNextWaiter(dir, lease);
+      if (lease.holder) { clearNextWaiter(dir, lease); lease.released_at = now; }
       lease.holder = null;
       lease.expires_at = 0;
       save();
       return { status: 'released' };
     }
     if (action === 'claim' && !task?.trim()) throw new Error('task_required');
+    if (action === 'idle-claim' && lease.holder) return { status: 'busy', holder: lease.holder };
     if (action === 'claim' && lease.holder && lease.holder !== task) {
       queue(lease.holder);
       return { status: 'busy', holder: lease.holder };
     }
     if (action === 'renew' && !lease.holder) return { status: 'unclaimed' };
     if (action === 'renew' && lease.holder !== task) return { status: 'not_holder', holder: lease.holder };
+    if (action === 'idle-claim') lease.holder = IDLE_CLOSE_HOLDER;
     if (action === 'claim') {
       lease.holder = task!;
       lease.waiters = lease.waiters.filter(waiter => waiter.task !== task);

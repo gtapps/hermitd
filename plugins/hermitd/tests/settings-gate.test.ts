@@ -91,6 +91,7 @@ describe('settings-gate ask list', () => {
     const dir = fixture();
     for (const [args, labels] of [
       [`channel-register custom '{"plugin":"bridge"}'`, ['channels.custom']],
+      [`channel-register custom '{"plugin":"bridge","members_only":true}'`, ['channels.custom']],
       [`channel-register custom '{"plugin":"bridge","docker_source":"org/repo"}'`, ['channels.custom', 'docker.recommended_plugins']],
       ['channel-register custom "$PAYLOAD"', ['channels.custom', 'docker.recommended_plugins']],
       [`channel-register custom "{\\"plugin\\":\\"bridge\\",\\"docker_source\\":\\"org/repo\\"}"`, ['channels.custom', 'docker.recommended_plugins']],

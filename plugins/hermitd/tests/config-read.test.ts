@@ -229,7 +229,7 @@ describe('config reference coverage', () => {
 
 test('browser config settles defaults and validates admin entries and nullable integer ports', () => {
   const admins = [{ login: 'person@example.com', mentions: { custom: '@person' } }];
-  expect(settleConfig({}).browser).toEqual({ enabled: true, default: 'agent-browser', admins: [], port: null, host: null });
+  expect(settleConfig({}).browser).toEqual({ enabled: true, default: 'agent-browser', admins: [], port: null, host: null, inactivity_timeout: 900 });
   expect(settleConfig({ browser: { admins, port: 6081 } }).browser).toMatchObject({ admins, port: 6081 });
   expect(settleConfig({ browser: { admins: 'bad' } }).browser.admins).toEqual([]);
   for (const port of ['6080', 1.5, 0, 65536]) expect(validate({ ...template, browser: { port } }).errors.join(' ')).toContain('browser.port');
@@ -237,6 +237,9 @@ test('browser config settles defaults and validates admin entries and nullable i
   expect(validate({ ...template, browser: { admins, port: null } }).errors).toEqual([]);
   expect(validate({ ...template, browser: { default: 'chrome' } }).errors.join(' ')).toContain('chrome: true');
   expect(validate({ ...template, chrome: true, browser: { default: 'chrome' } }).errors).toEqual([]);
+  expect(validate({ ...template, browser: { inactivity_timeout: -1 } }).errors.join(' ')).toContain('browser.inactivity_timeout');
+  for (const inactivity_timeout of [0, 1800]) expect(validate({ ...template, browser: { inactivity_timeout } }).errors).toEqual([]);
+  expect(settleConfig({ browser: { inactivity_timeout: 60 } }).browser.inactivity_timeout).toBe(60);
 });
 
 

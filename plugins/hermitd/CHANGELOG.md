@@ -5,10 +5,14 @@
 ### Changed
 
 - `hermitd update` run from a terminal no longer waits for the agent to be quiet; it restarts as soon as the upgrade has applied
+- On a `non-technical` install, a client chat is no longer told to use a terminal: when a maintainer chat is set it is told the provider handles the step and the detail goes to the maintainer chat, and on a claude.ai sign-in with `remote` on it is pointed to the Claude app.
 
 ### Fixed
 
-- `hermitd-start`, `hermitd-stop` and `hermitd-watchdog` refuse to run from a checkout whose `.hermit/` projects the agent's root above it, and `hermitd` commands run there target that root, so a stray boot no longer splits state or blocks helper reports
+- The signed-in agent browser closes after 15 minutes with no task holding it and no person in control, and reopens signed in on the next task; `browser.inactivity_timeout` (seconds) changes the delay and `0` turns it off
+- `/hermitd:hermit-settings channels` can set or clear `members_only`, and `channel-register` accepts it
+- `hermitd <verb> --help` prints usage instead of resolving a project or running the verb, so `hermitd stop --help` no longer stops the agent
+- `hermitd-start`, `hermitd-stop` and `hermitd-watchdog` refuse to run from a checkout whose `.hermit/` projects the agent's root above it, and `hermitd` commands, `hermitd-status` and `hermitd-attach` run there target that root, so a stray boot no longer splits state or blocks helper reports
 
 ## [1.4.36] - 2026-11-18
 
