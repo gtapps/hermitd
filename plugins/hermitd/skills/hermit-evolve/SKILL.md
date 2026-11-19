@@ -25,8 +25,8 @@ Every run of this skill (interactive or unattended) delegates steps 0–9 to the
      - Otherwise ⇒ execution *interactive*, delivery *inline*.
      Only the explicit `unattended` argument authorizes a proactive maintainer notification.
   2. **Check the runner reference:** run `test -f "${CLAUDE_PLUGIN_ROOT}/skills/hermit-evolve/reference.md"`. If it fails, **abort** — log `"hermit-evolve aborted: plugin root unresolved; cannot dispatch evolve-runner."` and stop. Do not dispatch with a broken path.
-  3. **Record `<now>`** for step 10 as the current UTC time (`date -u +%FT%TZ`), then **dispatch** the `hermitd:evolve-runner` subagent via the Agent tool. Pass the report contract (below); the runner body supplies its own plugin root and Commands entries. Do **not** execute steps 0–9 yourself.
-  4. **Go to step 10** with the subagent's returned report.
+  3. **Record `<now>`** for step 10 as the current UTC time (`date -u +%FT%TZ`), then **dispatch** the `hermitd:evolve-runner` subagent via the Agent tool. Pass the report contract (below); the runner body supplies its own plugin root and Commands entries. Do **not** execute steps 0–9 yourself. The runner works in the background: end the turn after dispatch. The launch acknowledgment is not the report, so do not poll or wait for it.
+  4. **Run step 10** when the runner's completion notification arrives, with the report it returns.
 
 ## Delegated mode
 
@@ -81,7 +81,7 @@ Deferred for operator: <none | one or more verbatim blocks, each:>
 
 **Sibling report integrity:** parse the finalizer JSON `siblings_confirmed` and `siblings_skipped`. Only names in `siblings_confirmed` may be reported as `vOLD->vNEW`. Any name in `siblings_skipped` must be reported as `SKIPPED-by-finalizer` — never as upgraded, even if Step 7 said it ran.
 
-**Failure fallback.** If the Agent call returned null/empty (subagent died — same partial-state risk
+**Failure fallback.** If the runner's completion reports a failure or carries no report (subagent died — same partial-state risk
 as an in-loop failure), report "evolve delegation failed — type
 `/hermitd:hermit-evolve` in a terminal or the Claude app". In automated-maintainer delivery, send that as a
 maintainer-only notice; in inline delivery, return it only to the invoking

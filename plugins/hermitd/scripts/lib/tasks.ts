@@ -832,6 +832,13 @@ export function evolveTurnRunning(execution: Execution): boolean {
   return execution.source === 'upgrade' && (execution.state === 'in_flight'
     || (execution.state === 'unknown' && execution.reason === 'precompact' && Date.now() - Date.parse(execution.at ?? '') < HOUR));
 }
+/** Marks the turn idle, except a `hermit-evolve` turn that ends with its background `hermitd:evolve-runner`
+ *  still running: its report arrives in a later turn, which inherits the mark and ends it. */
+export function observeTurnEnd(dir: string, session: string | null, backgroundTasks: Array<{ type?: unknown; status?: unknown; agent_type?: unknown }>, reason: string | null): void {
+  if (backgroundTasks.some(task => task.type === 'subagent' && task.status === 'running' && task.agent_type === 'hermitd:evolve-runner')
+    && evolveTurnRunning(readExecution(dir))) return;
+  observeExecution(dir, 'idle', session, null, reason);
+}
 interface Binding { cc_session_id: string; task_ids: string[]; at: string; turn_id: string | null }
 function readBinding(dir: string): Binding | null {
   const raw = readJson(path.join(dir, 'state/task-turn.json'));

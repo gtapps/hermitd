@@ -4,7 +4,7 @@ import { conversationKey, isKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { readSettledConfig } from './lib/config-read';
 import { readTurn, transcriptPath } from './lib/cc-compat';
-import { observeExecution } from './lib/tasks';
+import { observeTurnEnd } from './lib/tasks';
 // stop-pipeline.ts — unified Stop hook
 // Reads stdin once, runs all stop stages in sequence, touches heartbeat.
 // Stages, in order: cost tracking, harness commands, heartbeat.
@@ -76,8 +76,8 @@ async function main(): Promise<void> {
     let closedOperatorTurn = false;
     if (!blocked) {
       // A blocked Stop continues the turn; its own later Stop marks it idle.
-      observeExecution(HERMIT_DIR, 'idle', sessionId(payload), null, null);
       const tasks = backgroundTasks(payload);
+      observeTurnEnd(HERMIT_DIR, sessionId(payload), tasks.entries, null);
       if (tasks.state !== 'unsupported_or_unreachable') {
         const delegated = new Set(['subagent', 'workflow', 'teammate', 'cloud session', 'MCP task']);
         const running = tasks.entries.some(task => task.status === 'running' && delegated.has(task.type));
