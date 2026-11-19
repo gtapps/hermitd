@@ -9,7 +9,7 @@ import { browserDataDir, browserDeployment, browserRuntimeMode, browserEnabled, 
 import { acquireLock, acquireLockWithWait, releaseLock, pidAlive } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
 import { getSessionName, tmuxSessionAlive } from './lib/tmux';
-import { browserLease } from './lib/browser-lease';
+import { browserLease, persistentChromeAlive, IDLE_CLOSE_HOLDER } from './lib/browser-lease';
 
 export function browserDisplaySession(resident: string): string { return `browser-${resident}`; }
 function spawnDisplaySession(dir: string, session: string, spawn: typeof spawnSync) {
@@ -112,6 +112,25 @@ export function browserDisplaySettings(dir: string, deployment = browserDeployme
     viewerBind: deployment === 'container' ? process.env.HERMIT_BROWSER_VIEWER_BIND : port ? `127.0.0.1:${port}` : undefined,
   };
 }
+/**
+ * One idle check: returns when the signed-in Chrome was first seen with no task and no person,
+ * or null. Nothing else closes a Chrome whose task released it or let its claim lapse.
+ */
+function closeBrowser(dir: string, holder: string, spawn: typeof spawnSync, timeout: number): void {
+  spawn(process.execPath, [path.join(import.meta.dir, 'browser-agent.ts'), '--task', holder, 'close'], { env: { ...process.env, AGENT_DIR: dir }, stdio: 'ignore', timeout, killSignal: 'SIGKILL' });
+}
+export function idleCloseStep(dir: string, idleSince: number | null, now = Date.now(), chromeAlive = persistentChromeAlive, spawn = spawnSync): number | null {
+  const seconds = readSettledConfig(dir).browser.inactivity_timeout;
+  if (!seconds) return null;
+  const options = { chromeAlive: () => chromeAlive(dir) };
+  // The status read also expires a lapsed claim and wakes its waiter on this clock.
+  if (browserLease('status', undefined, dir, now, options).status !== 'available' || !chromeAlive(dir)) return null;
+  if (idleSince === null) return now;
+  if (now - idleSince < seconds * 1000) return idleSince;
+  if (browserLease('idle-claim', undefined, dir, now, options).status !== 'claimed') return null;
+  try { closeBrowser(dir, IDLE_CLOSE_HOLDER, spawn, 10_000); } finally { browserLease('release', IDLE_CLOSE_HOLDER, dir, now, options); }
+  return null;
+}
 export async function runBrowserDisplay(dir = hermitDir()): Promise<void> {
   if (browserHostPlatform() !== 'linux') throw new Error('takeover_unsupported');
   if (!browserEnabled(dir)) return;
@@ -126,6 +145,7 @@ export async function runBrowserDisplay(dir = hermitDir()): Promise<void> {
   const children: ReturnType<typeof Bun.spawn>[] = [];
   let owned: ReturnType<typeof reserveDisplay> | undefined;
   let stopping = false;
+  let idleTimer: ReturnType<typeof setInterval> | undefined;
   let finish: () => void = () => {};
   const stop = () => { stopping = true; finish(); };
   try {
@@ -171,12 +191,17 @@ export async function runBrowserDisplay(dir = hermitDir()): Promise<void> {
       }
     };
     const loop = viewer();
+    let idleSince: number | null = null;
+    idleTimer = setInterval(() => {
+      try { idleSince = idleCloseStep(dir, idleSince); } catch { idleSince = null; }
+    }, 60_000);
     await Promise.race([done, xvnc.exited]);
     stopping = true;
     for (const child of children) child.kill();
     await loop;
   } finally {
     stopping = true;
+    clearInterval(idleTimer);
     for (const child of children) { try { child.kill(); } catch {} }
     await Promise.all(children.map(child => child.exited));
     if (owned) {
@@ -196,7 +221,7 @@ export function stopBrowserDisplay(dir = hermitDir(), spawn = spawnSync, session
     try {
       browserLease('human-release', undefined, dir);
       browserLease('teardown', 'shutdown', dir);
-      spawn(process.execPath, [path.join(import.meta.dir, 'browser-agent.ts'), '--task', 'shutdown', 'close'], { env: { ...process.env, AGENT_DIR: dir }, stdio: 'ignore', timeout: 5000, killSignal: 'SIGKILL' });
+      closeBrowser(dir, 'shutdown', spawn, 5000);
       browserLease('teardown', undefined, dir);
     } finally { spawn('tmux', ['kill-session', '-t', `=${session}`], { stdio: 'ignore' }); }
   } catch (error) { console.error(`[hermit] Browser display: ${error instanceof Error ? error.message : error}`); }

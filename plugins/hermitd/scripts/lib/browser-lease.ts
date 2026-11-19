@@ -10,6 +10,8 @@ import { mutateTask, readTasks } from './tasks';
 export const BROWSER_IDLE_MS = 15 * 60 * 1000;
 interface Waiter { task: string; waiting_on: string }
 export const HUMAN_IDLE_MS = 30 * 60 * 1000;
+/** Holds the lease while the display closes an idle Chrome, so a claim in that window queues. */
+export const IDLE_CLOSE_HOLDER = 'idle-close';
 export interface HumanLease {
   login: string; generation: number; task: string | null; waiting_since: string | null;
   since: number; disconnected_at: number | null;
@@ -84,7 +86,7 @@ export function humanGeneration(dir: string): number | null {
 }
 
 /** The folder shares the lease; the lock covers only the short transaction. */
-type LeaseAction = 'teardown' | 'claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
+type LeaseAction = 'teardown' | 'claim' | 'idle-claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
 interface LeaseOptions {
   login?: string; admins?: string[]; generation?: number; chromeAlive?: () => boolean;
 }
@@ -192,12 +194,14 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
       return { status: 'released' };
     }
     if (action === 'claim' && !task?.trim()) throw new Error('task_required');
+    if (action === 'idle-claim' && lease.holder) return { status: 'busy', holder: lease.holder };
     if (action === 'claim' && lease.holder && lease.holder !== task) {
       queue(lease.holder);
       return { status: 'busy', holder: lease.holder };
     }
     if (action === 'renew' && !lease.holder) return { status: 'unclaimed' };
     if (action === 'renew' && lease.holder !== task) return { status: 'not_holder', holder: lease.holder };
+    if (action === 'idle-claim') lease.holder = IDLE_CLOSE_HOLDER;
     if (action === 'claim') {
       lease.holder = task!;
       lease.waiters = lease.waiters.filter(waiter => waiter.task !== task);

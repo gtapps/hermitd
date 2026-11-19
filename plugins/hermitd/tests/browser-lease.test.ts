@@ -287,3 +287,20 @@ test('teardown takes and drops the claim without sweeping queued tasks', () => {
   browserLease('teardown', undefined, dir);
   expect(browserLease('inspect', undefined, dir).waiters).toEqual([{ task: 'queued', waiting_on: 'holder' }]);
 });
+
+test('idle-claim takes only a free lease, and its release wakes a task that claimed meanwhile', () => {
+  const dir = freshDir();
+  const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
+  expect(browserLease('idle-claim', undefined, dir, 0)).toMatchObject({ status: 'claimed', holder: 'idle-close' });
+  const a = openTask(dir, 'Waiter');
+  expect(browserLease('claim', a.id, dir, 1)).toEqual({ status: 'busy', holder: 'idle-close' });
+  blockOn(dir, a.id, 'idle-close');
+  expect(browserLease('release', 'idle-close', dir, 2).status).toBe('released');
+  expect(readTasks(dir)[0].waiting_on).toBeNull();
+  browserLease('claim', 'holder', dir, 3);
+  expect(browserLease('idle-claim', undefined, dir, 4)).toEqual({ status: 'busy', holder: 'holder' });
+  browserLease('release', 'holder', dir, 5);
+  browserLease('takeover', undefined, dir, 6, opts);
+  expect(browserLease('idle-claim', undefined, dir, 7, opts).status).toBe('human');
+  expect(browserLease('inspect', undefined, dir, 8, opts)).toMatchObject({ holder: null, waiters: [] });
+});

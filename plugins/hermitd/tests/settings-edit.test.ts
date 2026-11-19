@@ -1144,6 +1144,12 @@ test('browser settings preserve Chrome prerequisites and refuse disabling its se
   expect((await set('browser-default', 'agent-browser')).exitCode).toBe(0);
   expect((await set('browser', 'false')).exitCode).toBe(0);
   expect(readConfig(file).browser).toEqual({ default: 'agent-browser', enabled: false });
+  for (const value of ['0', '1800']) {
+    expect((await set('browser-inactivity-timeout', value)).exitCode).toBe(0);
+    expect(readConfig(file).browser.inactivity_timeout).toBe(Number(value));
+  }
+  expect(JSON.parse((await set('browser-inactivity-timeout', 'soon')).stdout).status).toBe('refused');
+  expect(readConfig(file).browser.inactivity_timeout).toBe(1800);
 });
 
 test('browser migration defaults on, preserves existing decisions, and declines an operator browser', async () => {

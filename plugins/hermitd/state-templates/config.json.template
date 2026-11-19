@@ -24,7 +24,8 @@
     "default": "agent-browser",
     "admins": [],
     "port": null,
-    "host": null
+    "host": null,
+    "inactivity_timeout": 900
   },
   "transcription": {
     "enabled": true,
