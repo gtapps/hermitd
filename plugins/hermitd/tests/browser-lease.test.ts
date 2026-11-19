@@ -304,3 +304,38 @@ test('idle-claim takes only a free lease, and its release wakes a task that clai
   expect(browserLease('idle-claim', undefined, dir, 7, opts).status).toBe('human');
   expect(browserLease('inspect', undefined, dir, 8, opts)).toMatchObject({ holder: null, waiters: [] });
 });
+
+test.each(['hand_back', 'other_task', 'released', 'expired', 'browser_lost', 'second_takeover'] as const)(
+  'prepared store records only the current matching hand back (%s)', outcome => {
+    const dir = freshDir();
+    const { id } = openTask(dir, 'Copy token');
+    const other = openTask(dir, 'Other task').id;
+    for (const task of [id, other]) blockOn(dir, task, 'admin');
+    const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
+    browserLease('claim', id, dir, 0);
+    const old = browserLease('inspect', undefined, dir, 0, opts);
+    expect(old.pending_store).toBeUndefined();
+    const store = { name: 'TOKEN', file: '/private/.env', placeholder: 'placeholder' };
+    expect(browserLease('prepare-store', id, dir, 0, { ...opts, epoch: old.epoch, store }).status).toBe('updated');
+    const taken = browserLease('takeover', outcome === 'other_task' ? other : id, dir, 1, opts);
+    const generation = { ...opts, generation: taken.epoch };
+    let now = 2;
+    if (outcome === 'released') browserLease('human-release', undefined, dir, now, opts);
+    else if (outcome === 'expired') {
+      browserLease('disconnect', undefined, dir, now, generation);
+      now += 30 * 60 * 1000;
+    } else if (outcome === 'browser_lost') {
+      browserLease('inspect', undefined, dir, now, { chromeAlive: () => false });
+    } else {
+      browserLease('hand-back', undefined, dir, now, generation);
+      if (outcome === 'second_takeover') {
+        browserLease('takeover', other, dir, ++now, opts);
+        browserLease('human-release', undefined, dir, ++now, opts);
+      }
+    }
+    const inspected = browserLease('inspect', undefined, dir, now, opts);
+    expect(inspected.pending_store).toEqual({ ...store, task: id, handed_back: outcome === 'hand_back' });
+    expect(browserLease('clear-store', id, dir, now, { ...opts, epoch: inspected.epoch }).status).toBe('updated');
+    expect(browserLease('inspect', undefined, dir, now, opts).pending_store).toBeUndefined();
+  },
+);

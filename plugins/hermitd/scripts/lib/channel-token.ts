@@ -9,6 +9,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseEnvLine } from './env-file';
 
 type Json = any;
 
@@ -41,18 +42,9 @@ export function readChannelToken(
   } catch {
     return null;
   }
-  for (let line of content.split('\n')) {
-    line = line.trim();
-    if (!line || line.startsWith('#')) continue;
-    if (line.startsWith('export ')) line = line.slice('export '.length).trim();
-    const eq = line.indexOf('=');
-    if (eq === -1) continue;
-    if (line.slice(0, eq).trim() !== key) continue;
-    let value = line.slice(eq + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    return value || null;
+  for (const line of content.split('\n')) {
+    const entry = parseEnvLine(line);
+    if (entry?.key === key) return entry.value || null;
   }
   return null;
 }

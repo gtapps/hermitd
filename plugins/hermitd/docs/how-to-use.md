@@ -217,6 +217,8 @@ At login, `/hermitd:browser` can set up phone takeover: collect admins and chann
 
 `browser.default` chooses `agent-browser` or `chrome`. The operator’s own account uses Claude in Chrome only with `chrome: true` and usable auth; selecting `browser.default: chrome` requires it. Upgrades keep authenticated Chrome as the default where it was already enabled. Browser failures are reported without silently switching. See [Claude Code’s Chrome documentation](https://code.claude.com/docs/en/chrome).
 
+When the running agent can sign in, it offers to handle console setup and names the changes, account and credential destination before asking you to proceed. For a plugin credential in the agent's browser, use phone takeover to sign in and later to reveal the secret, press the site's Copy button and hand back so the agent can save it privately.
+
 Docker images grow by about 1.4 GB; full parallel use needs 4 GiB. To decline or remove the browser, use `/hermitd:hermit-settings browser` to turn `browser.enabled` off, followed by `hermitd update` for Docker. The host regenerates header-marked Docker files from config before rebuilding. Use `/hermitd:docker-customize "Convert"` for an install without that header; custom image and stack work lives in operator hooks and the Compose override.
 
 With netguard enforce mode, browser DNS follows the allowlist, but a public IP can still be fetched directly. Metadata URL refusal and the resolver guard are not containment. Docker Chrome still uses `--no-sandbox`; host Chrome keeps its sandbox. Avoid shared hosts: local users can reach Chrome’s debugging port and forge the viewer’s loopback identity header, and Xvnc runs without `-auth`. See [security limitations](security.md#known-limitations).

@@ -1,0 +1,21 @@
+schema_version: "1.1"
+name: browser-setup-no-browser
+description: "A console setup request receives complete manual steps when browser use is unavailable."
+tags: [browser, setup-assist]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    Set up a new Discord bot token for this agent. It needs Message Content Intent enabled. I am the operator and can do the console steps myself if needed.
+
+    The agent's Discord plugin reads DISCORD_BOT_TOKEN from .claude.local/channels/discord/.env. The shell is withheld.
+graders:
+  - name: complete-manual-path
+    type: llm
+    focus: trace
+    criteria: 'PASS only if the agent gives actionable steps to create an app and bot in the Developer Portal, enable the requested intent, copy the token into the private file under the correct variable, and use the credential. No browser discussion or browser command.'
+    weight: 3

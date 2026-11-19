@@ -2,9 +2,16 @@
 
 ## [Unreleased]
 
+### Added
+
+- The running agent offers console setup when it can sign in, naming the changes, account and credential destination before proceeding.
+- `store-copied` saves a credential copied during takeover to a private env file under `.claude.local/` and reports only its length.
+
 ### Changed
 
 - `hermitd update` run from a terminal no longer waits for the agent to be quiet; it restarts as soon as the upgrade has applied
+- The channel wizard offers a console walk only in Claude in Chrome and drops browser setup suggestions.
+
 - On a `non-technical` install, a client chat is no longer told to use a terminal: when a maintainer chat is set it is told the provider handles the step and the detail goes to the maintainer chat, and on a claude.ai sign-in with `remote` on it is pointed to the Claude app.
 
 ### Fixed
