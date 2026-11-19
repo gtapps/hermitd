@@ -316,7 +316,7 @@ test('store-copied arms, waits for hand back and privately saves the copied valu
     ['--json', 'get', 'value', '#p'], ['fill', '#p', placeholder], ['press', 'Control+a'], ['clipboard', 'copy'], ['open', 'about:blank']]);
   expect(lease().pending_store).toBeUndefined();
   const file = path.join(root, STORE_FILE);
-  expect(fs.readFileSync(file, 'utf8')).toBe(`TOKEN="${TEST_SECRET}"\n`);
+  expect(fs.readFileSync(file, 'utf8')).toBe(`TOKEN=${TEST_SECRET}\n`);
   expect(fs.statSync(file).mode & 0o777).toBe(0o600);
 });
 
@@ -385,4 +385,12 @@ test('upstream failures hide output both before and after writing the file', asy
   expect(result.stdout).not.toContain(TEST_SECRET);
   expect(lease().pending_store).toBeUndefined();
   expect(fs.readFileSync(path.join(root, STORE_FILE), 'utf8')).toContain(TEST_SECRET);
+});
+
+test('a preparation that fails before its tab opens leaves the console page alone', async () => {
+  const { store, lease, commands } = storeFixture();
+  const result = await store({ TEST_FAIL: `tab new ${SINK}` });
+  expect(result).toMatchObject({ code: 1, data: { error: 'store_failed:tab_new' }, stderr: '' });
+  expect(commands()).toEqual([['tab', 'new', SINK]]);
+  expect(lease().pending_store).toBeUndefined();
 });

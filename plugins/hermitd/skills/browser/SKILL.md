@@ -64,6 +64,7 @@ Handle wrapper results before continuing:
 | `browser_display_missing` | Read `reason` and `detail`. Docker `image_missing` or `image_rebuild_pending`: run `hermitd update` on the host; if the Docker files lack the generated header, follow `/hermitd:docker-customize "Convert"` first. `display_start_failed`: Docker, report the startup failure and run `hermitd update`; tmux, run `hermitd run browser-host`. `unsupported`: interactive hosts support anonymous public browsing only; use always-on tmux for a host display. |
 | `metadata_url_refused` | Report the blocked cloud metadata destination; do not retry through another browser or URL spelling. |
 | `docker_host_session` | Run browser work inside the hermit container. |
+| `store_pending` | This task prepared a secret store: repeat `browser-store-copied` with the same name and file, or run `browser-store-copied-cancel` (Commands). |
 
 For Linux/WSL2 host prerequisites and macOS limitations, read [host-setup.md](host-setup.md). This file is also the route for sandbox blockers. Setup is one terminal command; it never asks the hermit for a sudo password.
 

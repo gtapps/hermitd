@@ -51,7 +51,8 @@ export function upsertEnvVar(file: string, name: string, value: string): void {
   const parent = path.dirname(file);
   fs.mkdirSync(parent, { recursive: true, mode: 0o700 });
   const lines = lstatIfPresent(file) ? fs.readFileSync(file, 'utf8').split('\n') : [];
-  const entry = `${name}="${value}"`;
+  // Unquoted: the official channel plugins read `^(\w+)=(.*)$` and keep quotes as part of the value.
+  const entry = `${name}=${value}`;
   let replaced = false;
   const updated: string[] = [];
   for (const line of lines) {

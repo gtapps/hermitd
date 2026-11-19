@@ -82,7 +82,10 @@ async function storeCopied(request: StoreRequest, pending: PendingStore | undefi
   };
   const cleanup = async () => {
     let failed = false;
-    try { await cleanStore(run, placeholder, sinkOpen); } catch { failed = true; }
+    // A preparation that failed outside its own tab copied nothing: leave the console page alone.
+    if (pending || temporaryTab) {
+      try { await cleanStore(run, placeholder, sinkOpen); } catch { failed = true; }
+    }
     if (temporaryTab) {
       try { await run('tab_close', ['tab', 'close']); } catch { failed = true; }
     }

@@ -44,7 +44,7 @@ test('replaces the first parsed key, removes duplicates and preserves unrelated 
   fs.writeFileSync(file, 'export TOKEN = "old"\n# keep\nOTHER = value\nTOKEN=duplicate\n');
   fs.chmodSync(file, 0o644);
   upsertEnvVar(file, 'TOKEN', 'a=b"c');
-  expect(fs.readFileSync(file, 'utf8')).toBe('TOKEN="a=b"c"\n# keep\nOTHER = value\n');
+  expect(fs.readFileSync(file, 'utf8')).toBe('TOKEN=a=b"c\n# keep\nOTHER = value\n');
   expect(readChannelToken(path.join(root, '.hermit'), 'demo', {}, 'TOKEN')).toBe('a=b"c');
   expect(fs.statSync(file).mode & 0o777).toBe(0o600);
 });
