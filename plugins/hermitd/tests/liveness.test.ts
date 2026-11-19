@@ -80,7 +80,7 @@ describe('sharedLivenessAgeSecs', () => {
   test('keeps a file written after the last launch', () => {
     const root = makeRoot();
     writeAged(root, 'state/.boot-id', 30);
-    writeAged(root, 'state/routine-monitor-liveness.json', 5);
+    writeAged(root, 'state/routine-monitor-liveness.json', 0);
     expect(sharedLivenessAgeSecs(root)!).toBeLessThan(30);
   });
 });
