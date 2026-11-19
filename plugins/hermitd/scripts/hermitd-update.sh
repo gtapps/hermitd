@@ -268,7 +268,7 @@ _await_upgrade() {
   local output parsed
   # The resident's own turn never reaches a quiet boundary, so a self-run update keeps the immediate path.
   [ "$SELF_RUN" = false ] || return 0
-  echo "[hermit] Waiting for hermit-evolve (up to 45 min)..."
+  if [ $# -gt 0 ]; then echo "[hermit] Waiting for hermit-evolve (up to 45 min)..."; fi
   # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
   _stamp_update_marker
   if output=$(cd "$PROJECT_DIR" && .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
@@ -390,8 +390,11 @@ if [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && tmux has-session -t "=$TMUX_SESSION" 2>/de
     [ "$BATCH" = true ] && echo "[hermit]          hermit-evolve did not run; type /hermitd:hermit-evolve when you attach." >&2
     echo "[hermit]          Pins are already updated (durable); next session start picks them up." >&2
   fi
+  # Without a version gap this still waits for an evolve turn that stamped the versions earlier.
   if [ "$EVOLVE_SENT" = true ]; then
     _await_upgrade "${EXPECT_ARGS[@]}" || return 0
+  else
+    _await_upgrade || return 0
   fi
   if [ "$SELF_RUN" = true ]; then
     echo "[hermit] Run from the resident's own session: commands queued for after this turn."

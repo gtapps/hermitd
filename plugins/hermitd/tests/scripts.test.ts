@@ -811,10 +811,13 @@ exit 0
         expect(r.stdout).toContain('Waiting for hermit-evolve');
       }
       if (scenario === 'full' || scenario === 'cc-only') {
-        // No version gap: nothing waits, before the pins move or before the bounce.
+        // No version gap: nothing waits before the pins move, and only an evolve turn still
+        // running from an earlier stamp is waited on before the bounce.
         expect(r.stderr).not.toContain('Update interrupted');
         expect(r.stdout).not.toContain('Waiting for');
-        expect(idx('await-upgrade')).toBe(-1);
+        expect(calls.filter(l => l.includes('await-upgrade'))).toHaveLength(1);
+        expect(idx('await-upgrade')).toBeGreaterThan(idx(' build '));
+        expect(idx('await-upgrade')).toBeLessThan(idx(' down'));
       }
       if (scenario === 'evolve-pending') expect(r.stderr).not.toContain('did not complete');
       if (scenario === 'evolve-ready' || scenario === 'evolve-pending') {
@@ -1070,12 +1073,12 @@ exec "$(dirname "$0")/hermitd-run.real" "$@"
           else expect(started).toBeGreaterThan(stopped);
         }
         expect(calls[0]).toContain('has-session');
-        // The only wait is for evolve, after the reload and evolve are queued and before the stop.
-        expect(calls.filter(l => l.startsWith('await-upgrade'))).toEqual(scenario === 'suffix-current' ? [] : ['await-upgrade --expect hermitd=1.2.0']);
-        if (scenario !== 'suffix-current') {
-          expect(calls.findIndex(l => l.startsWith('harness-request'))).toBeLessThan(calls.findIndex(l => l.startsWith('await-upgrade')));
-          if (stopped > -1) expect(calls.findIndex(l => l.startsWith('await-upgrade'))).toBeLessThan(stopped);
-        }
+        // The only wait is for evolve (or, with no version gap, an evolve turn still running),
+        // after the reload is queued and before the stop.
+        expect(calls.filter(l => l.startsWith('await-upgrade'))).toEqual([scenario === 'suffix-current' ? 'await-upgrade' : 'await-upgrade --expect hermitd=1.2.0']);
+        expect(calls.findIndex(l => l.startsWith('harness-request'))).toBeLessThan(calls.findIndex(l => l.startsWith('await-upgrade')));
+        if (stopped > -1) expect(calls.findIndex(l => l.startsWith('await-upgrade'))).toBeLessThan(stopped);
+        if (scenario === 'suffix-current') expect(r.stdout).not.toContain('Waiting for hermit-evolve');
         expect(calls.some(l => l.startsWith('send-keys') || l.startsWith('capture-pane'))).toBe(false);
         expect(calls.find(l => l.startsWith('harness-request'))).toBe(scenario === 'suffix-current'
           ? 'harness-request /reload-plugins --expect-version 1.2.0 --source update --wait 300 --purpose upgrade'

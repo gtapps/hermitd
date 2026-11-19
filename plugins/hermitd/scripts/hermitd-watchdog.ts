@@ -2541,17 +2541,20 @@ export async function awaitUpgrade(hermitRoot: string, expected: Record<string, 
 }
 
 /** A boundary that waits for the turn that stamped the versions to end: the turn running at its first
- *  check, held only when it started no later than the last `config.json` write. */
+ *  check, held only when it started no later than the last `config.json` write. An auto-compaction
+ *  leaves the turn running under the same id, so it still counts until Stop marks it idle. */
 export function turnEnded(): typeof passesExecutionBoundary {
   let held: string | null | undefined;
   return (hermitRoot) => {
     const execution = readExecution(hermitRoot);
+    const running = execution.state === 'in_flight' || (execution.state === 'unknown' && execution.reason === 'precompact');
     if (held === undefined) {
       let stamped = Infinity;
       try { stamped = fs.statSync(path.join(hermitRoot, 'config.json')).mtimeMs; } catch {}
-      held = execution.state === 'in_flight' && execution.at && Date.parse(execution.at) <= stamped ? execution.turn_id : null;
+      // A compaction stamp records when it compacted, not when the turn started.
+      held = running && (execution.state !== 'in_flight' || Date.parse(execution.at!) <= stamped) ? execution.turn_id : null;
     }
-    return held !== null && execution.state === 'in_flight' && execution.turn_id === held
+    return held !== null && running && execution.turn_id === held
       ? { ok: false, reason: 'execution-not-idle' } : { ok: true };
   };
 }

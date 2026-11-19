@@ -5692,6 +5692,30 @@ describe('await-upgrade', () => {
     // A turn that started after the stamp is never held, even on the first check.
     expect(turnEnded()(root)).toEqual({ ok: true });
   }));
+  test('turnEnded keeps holding an auto-compacted turn until it ends', withHermit(async (h) => {
+    const root = path.join(h.dir, '.hermit');
+    const stamp = new Date(Date.now() - 60000);
+    fs.writeFileSync(path.join(root, 'config.json'), JSON.stringify({ _hermit_versions: { hermitd: 'new' } }));
+    fs.utimesSync(path.join(root, 'config.json'), stamp, stamp);
+    const execution = (state: string, turn: string, reason: string | null) => writeState(h, 'execution.json', { state, turn_id: turn, at: new Date().toISOString(), source: null, cc_session_id: 's', reason });
+    // Compacted while held.
+    writeState(h, 'execution.json', { state: 'in_flight', turn_id: 't1', at: new Date(stamp.getTime() - 1000).toISOString(), source: null, cc_session_id: 's', reason: null });
+    const held = turnEnded();
+    expect(held(root)).toEqual({ ok: false, reason: 'execution-not-idle' });
+    execution('unknown', 't1', 'precompact');
+    expect(held(root)).toEqual({ ok: false, reason: 'execution-not-idle' });
+    execution('idle', 't1', null);
+    expect(held(root)).toEqual({ ok: true });
+    // Compacted before the first check.
+    execution('unknown', 't2', 'precompact');
+    const first = turnEnded();
+    expect(first(root)).toEqual({ ok: false, reason: 'execution-not-idle' });
+    execution('idle', 't2', null);
+    expect(first(root)).toEqual({ ok: true });
+    // Unknown for any other reason, such as a fresh start, holds nothing.
+    execution('unknown', 't3', 'resident-start:startup');
+    expect(turnEnded()(root)).toEqual({ ok: true });
+  }));
   test('a quiet restart is ready, replaced, or timed out', withHermit(async (h) => {
     const root = path.join(h.dir, '.hermit');
     patchRuntime(h, { session_pid: '4242' });
