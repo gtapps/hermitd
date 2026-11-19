@@ -16,41 +16,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { isContainer } from './lib/container';
-import { failJson, flagValue, printJson, readStdin } from './lib/cli';
+import { failJson, flagValue, printJson, readHidden, readStdin } from './lib/cli';
 import {
   type Binding, assertOutside, deleteSecret, hasValue, normalizeHost, readBindings, removeBindings, render,
   scrubConfig, storeDir, upsertBinding, validHeader, validSecretName, validText, writeBindings, writeSecret,
 } from './lib/credproxy';
 
 const APPLY = 'hermitd restart';
-
-/** Read a value from the terminal with echo off; Enter ends it, Ctrl-C cancels. */
-function readHidden(prompt: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    process.stderr.write(prompt);
-    const stdin = process.stdin;
-    stdin.setRawMode(true);
-    stdin.setEncoding('utf8');
-    let value = '';
-    const done = (error?: Error) => {
-      stdin.setRawMode(false);
-      stdin.pause();
-      stdin.off('data', onData);
-      process.stderr.write('\n');
-      if (error) reject(error); else resolve(value);
-    };
-    const onData = (chunk: string) => {
-      for (const ch of chunk) {
-        if (ch === '\r' || ch === '\n') return done();
-        if (ch === '\u0003') return done(new Error('cancelled'));
-        if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1);
-        else value += ch;
-      }
-    };
-    stdin.on('data', onData);
-    stdin.resume();
-  });
-}
 
 async function readValue(name: string): Promise<string> {
   if (process.stdin.isTTY) return readHidden(`Value for ${name} (not shown): `);

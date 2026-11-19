@@ -1,17 +1,19 @@
 #!/usr/bin/env bun
 import fs from 'node:fs';
+import { homedir } from 'node:os';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { browserSocketDir, browserDeployment, browserEnabled, browserProfile, browserDataDir, browserHostPlatform, browserUserAgent, installedBrowser, type BrowserDeployment } from './lib/browser-runtime';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { browserSocketDir, browserDeployment, browserProfile, browserDataDir, browserHostPlatform, browserUserAgent, installedBrowser, type BrowserDeployment } from './lib/browser-runtime';
 export { browserSocketDir } from './lib/browser-runtime';
 import { ensureDisplay, type DisplayResult } from './browser-display';
 import { hermitDir } from './lib/cc-compat';
 import { browserLease, persistentChromeAlive, type PendingStore } from './lib/browser-lease';
 import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
-import { failJson, printJson, readJson } from './lib/cli';
+import { failJson, flagValue, printJson, readHidden, readJson, readStdin } from './lib/cli';
 import { readProxyInfo } from './lib/credproxy-env';
 import { privateEnvPath, upsertEnvVar } from './lib/env-file';
+import { readSettledConfig } from './lib/config-read';
 
 const REAL_BINARY = `/usr/lib/node_modules/agent-browser/bin/agent-browser-linux-${process.arch}`;
 
@@ -46,7 +48,7 @@ const STORE_FIELD = '#p';
 type StoreRequest = { name: string; file: string } | 'cancel' | 'bad_name' | 'bad_destination';
 type StoreCommand = (step: string, args: string[]) => Promise<string>;
 
-function storeRefusal(reason: string): number {
+function refuseBrowserCommand(reason: string): number {
   printJson({ status: 'refused', reason });
   return 0;
 }
@@ -68,9 +70,9 @@ async function cleanStore(run: StoreCommand, placeholder: string, sinkOpen = fal
 
 async function storeCopied(request: StoreRequest, pending: PendingStore | undefined, projectRoot: string, run: StoreCommand,
   update: (store?: Omit<PendingStore, 'task' | 'handed_back'>) => void): Promise<number> {
-  if (request === 'bad_name' || request === 'bad_destination') return storeRefusal(pending ? 'mismatch' : request);
+  if (request === 'bad_name' || request === 'bad_destination') return refuseBrowserCommand(pending ? 'mismatch' : request);
   if (request !== 'cancel' && pending && (pending.name !== request.name || pending.file !== request.file)) {
-    return storeRefusal('mismatch');
+    return refuseBrowserCommand('mismatch');
   }
   const placeholder = pending?.placeholder ?? randomUUID();
   let step = 'open';
@@ -130,7 +132,7 @@ async function storeCopied(request: StoreRequest, pending: PendingStore | undefi
     else if (privateEnvPath(projectRoot, file) !== file) refusal = 'bad_destination';
     if (refusal) {
       await cleanup();
-      return storeRefusal(refusal);
+      return refuseBrowserCommand(refusal);
     }
     step = 'write';
     upsertEnvVar(file, name, value);
@@ -144,14 +146,152 @@ async function storeCopied(request: StoreRequest, pending: PendingStore | undefi
   return 0;
 }
 
-interface AgentOptions { deployment?: BrowserDeployment; data?: string; platform?: NodeJS.Platform; waitMs?: number; marker?: string; ensureDisplay?: (dir: string) => Promise<DisplayResult> }
+function vaultKey(dataDir: string): string {
+  const file = path.join(dataDir, 'vault.key');
+  if (!fs.existsSync(file)) {
+    fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    const pending = `${file}.${randomUUID()}`;
+    // Publish the complete key without replacing a concurrent caller's key.
+    fs.writeFileSync(pending, randomBytes(32).toString('hex'), { flag: 'wx', mode: 0o600 });
+    try {
+      fs.linkSync(pending, file);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    } finally {
+      fs.unlinkSync(pending);
+    }
+  }
+  return fs.readFileSync(file, 'utf8');
+}
+
+function linkContainerVault(dataDir: string): boolean {
+  const vault = path.join(dataDir, 'vault');
+  const agentHome = path.join(homedir(), '.agent-browser');
+  const auth = path.join(agentHome, 'auth');
+  try {
+    for (const dir of [vault, agentHome]) {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      const stat = fs.lstatSync(dir);
+      if (!stat.isDirectory()) return false;
+      if ((stat.mode & 0o777) !== 0o700) fs.chmodSync(dir, 0o700);
+    }
+    try {
+      fs.symlinkSync(vault, auth, 'dir');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+    return path.resolve(agentHome, fs.readlinkSync(auth)) === vault;
+  } catch {
+    return false;
+  }
+}
+
+type LoginVerb = 'save-login' | 'delete-login';
+
+function listedLogins(output: string): { name: string; error?: unknown }[] | null {
+  try {
+    const result = JSON.parse(output);
+    const profiles: unknown = result?.data?.profiles;
+    if (result?.success !== true || !Array.isArray(profiles)) return null;
+    return profiles.every(entry => typeof entry?.name === 'string') ? profiles : null;
+  } catch {
+    return null;
+  }
+}
+
+async function changeLogin(
+  verb: LoginVerb, args: string[], terminal: boolean, binary: string, env: NodeJS.ProcessEnv, socketDir: string,
+): Promise<number> {
+  const save = verb === 'save-login';
+  const [name] = args;
+  const url = flagValue(args, '--url');
+  const username = flagValue(args, '--username');
+  // Upstream also parses global flags after the command. Pass only literal values here.
+  if (!name || name.startsWith('-') || !/^[a-zA-Z0-9_-]+$/.test(name)
+    || (save ? args.length !== 5 || !url || !username || [url, username].some(value => value.startsWith('-')) : args.length !== 1)) {
+    printJson({ error: 'login_failed:arguments' });
+    return 1;
+  }
+  let step = 'password';
+  try {
+    let password: string | undefined;
+    if (save) {
+      password = terminal
+        ? await readHidden(`Password for ${name} (not shown): `)
+        : (await readStdin()).replace(/\r?\n$/, '');
+      if (!password) return refuseBrowserCommand('empty_password');
+    }
+
+    step = 'lock';
+    const agentHome = path.join(homedir(), '.agent-browser');
+    fs.mkdirSync(agentHome, { recursive: true, mode: 0o700 });
+    // The host vault is shared. Hold the same lock across ownership checks and writes.
+    const lock = path.join(agentHome, 'auth.lock');
+    if (!acquireLockWithWait(lock, 2000)) throw new Error('login_lock_unavailable');
+    try {
+      step = 'list';
+      // Keep the daemon without an action policy outside the wrapper's session namespace.
+      const loginSocketDir = fs.mkdtempSync(`${socketDir}-login-`);
+      const session = `login-${randomUUID()}`;
+      const loginEnv = { ...env, AGENT_BROWSER_SOCKET_DIR: loginSocketDir };
+      const run = async (command: string[], input?: string) => {
+        const capture = command[0] === 'auth' && command[1] === 'list';
+        const child = Bun.spawn([binary, '--session', session, ...command], {
+          env: loginEnv, stdin: input === undefined ? 'ignore' : new Blob([input]), stdout: capture ? 'pipe' : 'ignore', stderr: 'ignore',
+        });
+        const [stdout, code] = await Promise.all([child.stdout ? new Response(child.stdout).text() : '', child.exited]);
+        if (code !== 0) throw new Error('login_upstream_failed');
+        return stdout;
+      };
+      let result: { status: 'refused'; reason: string } | { status: 'saved' | 'deleted'; login: string };
+      try {
+        const profiles = listedLogins(await run(['auth', 'list', '--json']));
+        const entry = profiles?.find(profile => profile.name === name);
+        if (!profiles || (entry && 'error' in entry)) result = { status: 'refused', reason: 'name_taken' };
+        else if (!save && !entry) result = { status: 'refused', reason: 'not_found' };
+        else {
+          step = save ? 'save' : 'delete';
+          if (save) {
+            await run(['auth', 'save', name, '--url', url!, '--username', username!, '--password-stdin'], password);
+          } else {
+            await run(['auth', 'delete', name]);
+          }
+          result = { status: save ? 'saved' : 'deleted', login: name };
+        }
+      } finally {
+        try {
+          await run(['close']);
+        } catch (error) {
+          step = 'close';
+          throw error;
+        } finally {
+          fs.rmSync(loginSocketDir, { recursive: true, force: true });
+        }
+      }
+      printJson(result);
+      return 0;
+    } finally {
+      releaseLock(lock);
+    }
+  } catch {
+    printJson({ error: `login_failed:${step}` });
+    return 1;
+  }
+}
+
+interface AgentOptions { deployment?: BrowserDeployment; data?: string; browserData?: string; platform?: NodeJS.Platform; waitMs?: number; marker?: string; ensureDisplay?: (dir: string) => Promise<DisplayResult> }
 export async function runBrowserAgent(argv: string[], realBinary?: string, chromeAlive = persistentChromeAlive, options: AgentOptions = {}): Promise<number> {
   const dir = hermitDir();
   const projectRoot = path.dirname(dir);
-  if (!browserEnabled(dir)) { printJson({ status: 'disabled' }); return 0; }
+  const config = readSettledConfig(dir);
+  if (!config.browser.enabled) { printJson({ status: 'disabled' }); return 0; }
   const deployment = options.deployment ?? browserDeployment(dir);
   if (deployment === 'docker_host') { printJson({ error: 'docker_host_session' }); return 1; }
   const host = deployment === 'host';
+  const terminal = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  const loginVerb = argv[0] === 'save-login' || argv[0] === 'delete-login' ? argv[0] : undefined;
+  if (loginVerb === 'save-login' && !config.browser.saved_logins) return refuseBrowserCommand('saved_logins_off');
+  if (loginVerb && config.approvals === 'team' && !terminal) return refuseBrowserCommand('terminal_only');
   let install = host ? installedBrowser(options.data) : null;
   // Shutdown must never download a browser or wait for an installer.
   if (host && !install && !realBinary && argv.at(-1) === 'close') {
@@ -182,6 +322,9 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   }
   realBinary ??= host ? install!.binary : REAL_BINARY;
   const env = { ...process.env };
+  const browserData = options.browserData ?? path.dirname(browserProfile(dir, deployment));
+  env.AGENT_BROWSER_ENCRYPTION_KEY = vaultKey(browserData);
+  const vaultLinked = !host && linkContainerVault(browserData);
   // The browser keeps each site's own certificate: it never goes through the credential proxy.
   const proxyKeys = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'];
   const credproxy = proxyKeys.some(key => env[key]) ? readProxyInfo()?.address : undefined;
@@ -193,6 +336,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   delete env.AGENT_BROWSER_PROFILE;
   delete env.AGENT_BROWSER_HEADED;
   delete env.AGENT_BROWSER_CONFIG;
+  delete env.AGENT_BROWSER_ACTION_POLICY;
   delete env.AGENT_BROWSER_USER_AGENT;
   // Anonymous sessions keep upstream's idle backstop: one nobody closed frees its cap slot.
   delete env.AGENT_BROWSER_IDLE_TIMEOUT_MS;
@@ -227,7 +371,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   }
   else delete env.AGENT_BROWSER_EXECUTABLE_PATH;
   const baseArgs = [...host ? [] : ['--no-sandbox'], '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled'];
-  const policyFlags = new Set(['--profile', '--args', '--executable-path', '--namespace', '--session-name', '--config', '--idle-timeout', '--task', '--user-agent']);
+  const policyFlags = new Set(['--profile', '--args', '--executable-path', '--namespace', '--session-name', '--config', '--idle-timeout', '--task', '--user-agent', '--action-policy']);
   const args: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     if (policyFlags.has(argv[i])) { i++; continue; }
@@ -239,9 +383,21 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     args.push(argv[i]);
   }
   const verb = args[0] === '--session' ? args[2] : args[0]?.startsWith('--session=') ? args[1] : args[0];
+  if (verb === 'save-login' || verb === 'delete-login') {
+    if (!loginVerb || session || taskIndex >= 0 || argv.some(arg => arg.startsWith('--task='))) {
+      printJson({ error: 'login_failed:arguments' });
+      return 1;
+    }
+    if (verb === 'save-login' && !host && !vaultLinked) return refuseBrowserCommand('vault_not_linked');
+    return changeLogin(verb, argv.slice(1), terminal, realBinary, env, socketDir);
+  }
+  const deny = ['auth_save', 'auth_delete', 'credentials_set', 'credentials_delete'];
+  if (!config.browser.saved_logins) deny.push('auth_login');
+  env.AGENT_BROWSER_ACTION_POLICY = path.join(socketDir, 'policy.json');
+  writeFileAtomic(env.AGENT_BROWSER_ACTION_POLICY, JSON.stringify({ default: 'allow', deny }) + '\n', 0o600);
   let storeRequest: StoreRequest | undefined;
   if (verb === 'store-copied') {
-    if (session) return storeRefusal('persistent_only');
+    if (session) return refuseBrowserCommand('persistent_only');
     const [, name, file] = args;
     if (name === '--cancel' && args.length === 2) storeRequest = 'cancel';
     else if (!name || !/^[A-Z_][A-Z0-9_]*$/.test(name)) storeRequest = 'bad_name';
@@ -284,7 +440,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
       printJson({ error: 'browser_not_claimed', ...(renewed.holder ? { holder: renewed.holder } : {}) });
       return 1;
     }
-    if (pending && pending.task === task && !storeRequest && !closing) return storeRefusal('store_pending');
+    if (pending && pending.task === task && !storeRequest && !closing) return refuseBrowserCommand('store_pending');
     if (argv.at(-1) !== 'close') {
       const display = await (options.ensureDisplay ?? (target => ensureDisplay(target, { deployment, marker: options.marker })))(dir);
       if ('blocker' in display) {
@@ -332,7 +488,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
         pending = undefined;
       }
       if (storeRequest) return await storeCopied(storeRequest, pending, projectRoot, run, update);
-      if (pending) return storeRefusal('store_pending');
+      if (pending) return refuseBrowserCommand('store_pending');
     } catch {
       printJson({ error: 'store_failed:lease' });
       return 1;
@@ -350,7 +506,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     }
     const after = session ? null : inspect();
     if (after && (after.epoch !== epoch || after.human)) { printJson({ error: 'human_has_control' }); return 1; }
-    if (after?.pending_store) return storeRefusal('store_pending');
+    if (after?.pending_store) return refuseBrowserCommand('store_pending');
     await Bun.write(Bun.stdout, stdout);
     await Bun.write(Bun.stderr, stderr);
     return code;

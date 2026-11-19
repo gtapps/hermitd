@@ -107,6 +107,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `browser` | `browser.enabled` | boolean | yes / no; enable the hermit’s own browser | next hermitd restart (Docker: next hermitd update) |
 | `browser-default` | `browser.default` | enum | agent-browser / chrome; agent-browser or chrome (requires chrome enabled) | immediately |
 | `browser-inactivity-timeout` | `browser.inactivity_timeout` | integer | any; seconds before an unused signed-in browser closes; 0 turns it off | within a minute |
+| `browser-saved-logins` | `browser.saved_logins` | boolean | yes / no; off stops the agent from saving or using saved logins; existing saved logins stay on disk until deleted | next start of the agent's browser |
 | `transcription` | `transcription.enabled` | boolean | yes / no; transcribe inbound voice notes | next voice note (Docker image: next hermitd update) |
 | `transcription-echo` | `transcription.echo` | boolean | yes / no; echo transcripts in the same chat | next voice note |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |

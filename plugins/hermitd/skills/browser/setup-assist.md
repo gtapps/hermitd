@@ -14,7 +14,7 @@ A secret read by a plugin inside the agent goes to that plugin's `.env` under `.
 
 ## Work in the console
 
-Use the browser skill's claim and takeover flow for sign-in. In a terminal or app conversation, send the takeover link there without a mention. Once sign-in is complete, state the account and workspace you verified. Continue on a match without asking for another yes. On a mismatch, stop and ask how to proceed. Stop for CAPTCHA, consent screens, payments, deletions, grants to third parties, or anything outside the agreed list.
+Use the browser skill's claim and sign-in flow. In a terminal or app conversation, send the takeover link there without a mention. Once sign-in is complete, state the account and workspace you verified. Continue on a match without asking for another yes. On a mismatch, stop and ask how to proceed. Stop for CAPTCHA, consent screens, payments, deletions, grants to third parties, or anything outside the agreed list.
 
 ## Hand off the secret
 

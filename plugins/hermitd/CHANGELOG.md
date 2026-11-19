@@ -6,8 +6,16 @@
 
 - The running agent offers console setup when it can sign in, naming the changes, account and credential destination before proceeding.
 - `store-copied` saves a credential copied during takeover to a private env file under `.claude.local/` and reports only its length.
+- `hermitd run browser-agent save-login <name> --url <url> --username <user>` saves a login for an account that belongs to the agent; the agent signs in with it and the password stays out of the conversation
+- Docker agents keep saved logins on the `claude-config` volume across recreates
+- With `approvals: "team"`, logins are saved and deleted only at the host terminal
+- `browser.saved_logins: false` turns saved logins off and keeps every sign-in on takeover
 
 ### Changed
+
+- Logins saved with agent-browser's `auth save` before this version are no longer readable by the agent; save them again with `save-login`
+- agent-browser `auth save` and `auth delete` through the wrapper are denied; use `save-login` and `delete-login`
+- agent-browser `state save` writes an encrypted `.enc` file
 
 - `hermitd update` run from a terminal no longer waits for the agent to be quiet; it restarts as soon as the upgrade has applied
 - The channel wizard offers a console walk only in Claude in Chrome and drops browser setup suggestions.

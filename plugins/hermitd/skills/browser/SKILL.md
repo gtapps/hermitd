@@ -11,12 +11,18 @@ For setup that would send someone to a console to create or change something on 
 
 - `browser-store-copied`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <task-id> store-copied <NAME> <env-file>`
 - `browser-store-copied-cancel`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <task-id> store-copied --cancel`
+- `browser-save-login`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts save-login <name> --url <login-url> --username <user>`
+- `browser-delete-login`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts delete-login <name>`
+- `browser-list-logins`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <task-id> auth list --json`
+- `browser-use-login`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <task-id> auth login <name> --no-navigate`
 
-Read the top-level `browser` object in config. `browser.enabled` defaults to true and `browser.default` to `agent-browser`. Follow `browser.default` for ordinary tasks; the operator's own account uses Claude in Chrome only when `chrome: true` and its tools are available. Never switch between the agent's browser and the operator's Chrome, or back to a fetch tool, after a browser failure: report the blocker and wait. When `browser.enabled` is false and Claude in Chrome is unavailable, follow the `disabled` row below and do not retry the fetch. Treat a captcha or bot-check page like a login page: a person clears it through Take over in the agent's browser, or report the blocker. Opening a page WebFetch could not pass in the agent's browser is the normal escalation; never route around the check through the operator's Chrome, another fetch tool, another URL spelling, a cache or archive copy, or a fresh session. Each managed command on Docker and hosts is `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts`; never invoke the operator’s own binary.
+For a request to save or delete a login, follow [saved-logins.md](saved-logins.md).
 
-At a login in an anonymous `--session`, claim the shared profile first, then reopen the URL with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <task-id> open <url>`. Only then request sign-in, so Take over shows the correct page. Respect `busy` and `human` before reopening. On macOS, takeover is unsupported: use configured Claude in Chrome for the operator’s account or report the blocker. Never request a login to an invisible anonymous page.
+Read the top-level `browser` object in config. `browser.enabled` defaults to true and `browser.default` to `agent-browser`. Follow `browser.default` for ordinary tasks; the operator's own account uses Claude in Chrome only when `chrome: true` and its tools are available. Never switch between the agent's browser and the operator's Chrome, or back to a fetch tool, after a browser failure: report the blocker and wait. When `browser.enabled` is false and Claude in Chrome is unavailable, follow the `disabled` row below and do not retry the fetch. Use Take over for a CAPTCHA or bot check in the agent's browser, or report the blocker. Opening a page WebFetch could not pass in the agent's browser is the normal escalation; never route around the check through the operator's Chrome, another fetch tool, another URL spelling, a cache or archive copy, or a fresh session. Each managed command on Docker and hosts is `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts`; never invoke the operator’s own binary.
 
-At a login in the persistent profile, leave the login page open. Never request passwords. If `browser.port` is unset, stop and explain phone sign-in setup in the same conversation using [setup.md](setup.md). Do not invent a viewer link or silently switch browsers.
+At a login in an anonymous `--session`, claim the shared profile first, then reopen the URL with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <task-id> open <url>`. Then follow the sign-in flow below, so Take over shows the correct page if needed. Respect `busy` and `human` before reopening. On macOS, takeover is unsupported: use configured Claude in Chrome for the operator’s account or report the blocker. Never request a login to an invisible anonymous page.
+
+At a login in the persistent profile, leave the login page open. Never ask for a password in the conversation. If `browser.saved_logins` is on (the default), follow [saved-logins.md](saved-logins.md) before requesting sign-in. If it is off, go straight to Take over. When no login matches and phone sign-in is unavailable, present both routes in the same conversation, with the saved-login terminal command and phone sign-in setup. Use [setup.md](setup.md) for phone sign-in when `browser.port` is unset. Use only a verified viewer link and stay with the current browser.
 
 When set up, choose an admin from `browser.admins` who has a mention for the current channel. Use that channel's stored mention verbatim, with no platform-specific wording. If none is available, ask the operator to complete setup in this conversation. Block the task before sending the link:
 
@@ -64,8 +70,12 @@ Handle wrapper results before continuing:
 | `browser_display_missing` | Read `reason` and `detail`. Docker `image_missing` or `image_rebuild_pending`: run `hermitd update` on the host; if the Docker files lack the generated header, follow `/hermitd:docker-customize "Convert"` first. `display_start_failed`: Docker, report the startup failure and run `hermitd update`; tmux, run `hermitd run browser-host`. `unsupported`: interactive hosts support anonymous public browsing only; use always-on tmux for a host display. |
 | `metadata_url_refused` | Report the blocked cloud metadata destination; do not retry through another browser or URL spelling. |
 | `docker_host_session` | Run browser work inside the hermit container. |
+| `terminal_only` | Have an admin run the save or delete command at the host terminal. |
+| `name_taken` | Ask for another login name. |
+| `vault_not_linked` | Report that the Docker vault is outside the persistent volume. See the browser section in troubleshooting. |
+| `saved_logins_off` | Saved logins are turned off on this install. Use Take over. Change the setting only when asked. |
 | `store_pending` | This task prepared a secret store: repeat `browser-store-copied` with the same name and file, or run `browser-store-copied-cancel` (Commands). |
 
 For Linux/WSL2 host prerequisites and macOS limitations, read [host-setup.md](host-setup.md). This file is also the route for sandbox blockers. Setup is one terminal command; it never asks the hermit for a sudo password.
 
-The wrapper coordinates supported CLI use, not hostile code: the real binary and raw CDP can bypass it. `store-copied` saves a single copied value to a private project env file that the agent can read. The wrapper provides no password vault or confidentiality boundary between chats.
+The wrapper coordinates supported CLI use. The real binary and raw CDP can bypass it. With a terminal-saved login, the password stays out of the conversation. The agent can still read it, just as it can read a value that `store-copied` writes to a private project env file. Chats share the agent's access.
