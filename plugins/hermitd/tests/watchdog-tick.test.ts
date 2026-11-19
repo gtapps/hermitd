@@ -28,6 +28,7 @@ test('a live session in between lets the next orphan notify again', async () => 
     f.signals.alive = false;
     await tick(f.world);
     expect(f.notices).toHaveLength(2);
+    for (const notice of f.notices) expect(notice).toContain('pgrep -af');
     expect(f.restarts).toEqual([]);
   } finally { f.cleanup(); }
 });

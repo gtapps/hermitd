@@ -902,6 +902,10 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
       appendEvent('restart-aborted', `survivors: ${reportedPids.join(' ')}`);
       process.stderr.write(`[watchdog] restart aborted — process survived kill: ${reportedPids.join(' ')}\n`);
       pushOperatorMessage(composeOrphanMessage(timezone));
+      // Same episode as the orphan verdict the next tick sees: one notice covers both.
+      const ws = readWatchdogState();
+      ws.orphan_notified = true;
+      writeWatchdogState(ws);
       return;
     }
 
