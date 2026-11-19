@@ -18,19 +18,19 @@ graders:
   - name: lifecycle-command
     type: tool_used
     tool: Bash
-    input_match: 'hermitd\s+restart\b'
+    input_match: '"command"\s*:\s*"(?:[^"\\]|\\.)*?hermitd\s+restart\b'
     min: 1
     max: 1
     weight: 3
   - name: no-fresh-restart
     type: tool_used
     tool: Bash
-    input_match: 'hermitd\s+restart[^"]*--fresh'
+    input_match: '"command"\s*:\s*"(?:[^"\\]|\\.)*?hermitd\s+restart(?:[^"\\]|\\.)*?--fresh'
     min: 0
     max: 0
     weight: 3
   - name: restart-before-pair
     type: tool_order
-    before: {tool: Bash, input_match: 'hermitd\s+restart\b'}
-    after: {tool: Bash, input_match: 'channel-access\.ts.*?\bpair\s+telegram\b'}
+    before: {tool: Bash, input_match: '"command"\s*:\s*"(?:[^"\\]|\\.)*?hermitd\s+restart\b'}
+    after: {tool: Bash, input_match: '"command"\s*:\s*"(?:[^"\\]|\\.)*?channel-access\.ts(?:[^"\\]|\\.)*?\bpair\s+telegram\b'}
     weight: 3

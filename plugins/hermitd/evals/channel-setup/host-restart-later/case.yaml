@@ -18,7 +18,7 @@ graders:
   - name: lifecycle-command
     type: tool_used
     tool: Bash
-    input_match: 'hermitd\s+(?:start|restart)|request-restart\.ts(?![^\n]*--check)'
+    input_match: '"command"\s*:\s*"(?:[^"\\]|\\.)*?(?:hermitd\s+(?:start|restart)|request-restart\.ts(?!(?:[^"\\]|\\.)*?--check))'
     min: 0
     max: 0
     weight: 3
