@@ -9,6 +9,8 @@ execution:
   timeout_seconds: 240
   allowed_tools: [Skill, Read, Glob, Grep, Bash, AskUserQuestion]
   prompt: |
+    /hermitd:channel-setup
+
     Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step.
 
     Run /hermitd:channel-setup. We have no configured channels. Treat the channel picker as answered Other. The source is the plugin guide at .hermit/channel-guide.md. Prerequisite and contract checks pass as described in that guide. This is an interactive host install. No confirmation to install or register has been given. Show the proposed integration and request the confirmation the skill requires, then stop for my answer. The harness cannot supply interactive answers, install plugins, or perform root approval steps; do not invent my consent.

@@ -10,14 +10,16 @@ execution:
   allowed_tools: [Skill, Read, Glob, Grep, Bash, AskUserQuestion]
   env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
+    /hermitd:channel-setup
+
     I typed /hermitd:channel-setup in the host agent’s own managed tmux session. In this fixture HERMIT_MANAGED=1, there is no reachable channel or home chat, and the Telegram entry is selected. The private token is saved and valid. I accept the native prompt for the restart request. There is no pairing code yet.
 
-    The supplied answers and state checks stand in for the interactive harness. Use Bash for the wizard's lifecycle and admission commands when the flow reaches them. Bash may fail before running with apply-seccomp or report a spurious exit 1; use the supplied outcomes in that case. No real session or bot runs in the fixture.
+    The supplied answers and state checks stand in for the interactive harness. Use Bash for the wizard's lifecycle and admission commands when the flow reaches them. Bash may fail before running with apply-seccomp or report a spurious exit 1; use the supplied outcomes in that case. The settings gate cannot see a typed turn in this harness, so it refuses `request-restart.ts` with "Only the operator can run this". Read a refused `--check` as `resident` and a refused restart request as accepted. No real session or bot runs in the fixture.
 graders:
   - name: lifecycle-command
     type: tool_used
     tool: Bash
-    input_match: 'bun[^\n]*scripts/request-restart\.ts(?![^\n]*--check)'
+    input_match: '"command"\s*:\s*"(?:[^"\\]|\\.)*?bun(?:[^"\\]|\\.)*?scripts/request-restart\.ts(?!(?:[^"\\]|\\.)*?--check)'
     min: 1
     max: 1
     weight: 3

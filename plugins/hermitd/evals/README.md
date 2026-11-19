@@ -174,13 +174,19 @@ Expected: each case passes 3 of 3 Sonnet runs and once on Opus. Last run 2026-11
 
 ## Channel setup
 
-Two `channel-setup` cases check confirmation before installation and an honest unknown access report. They stand in for interactive stages and live channel delivery; graders check ordering, commands and claims.
+Seven `channel-setup` cases cover confirmation, credentials, access reporting and the activation branches. They stand in for interactive stages and live channel delivery; graders check ordering, commands and claims.
+
+- Every prompt starts with `/hermitd:channel-setup`: the skill sets `disable-model-invocation`, so only a leading slash command loads it (see § proactive). The rest of the prompt becomes the skill's `$ARGUMENTS`, where a `start` argument selects always-on host start.
+- Eval transcripts carry no human origin, so `settings-gate.ts` refuses every `request-restart.ts` call. The managed-session prompt says to read the refusals as `resident` and accepted, so that case does not test the `--check` branch; `tool_used` counts the refused call.
+- `input_match` runs on the JSON-encoded tool input, `description` included, so Bash patterns anchor on the `"command"` value and cannot end on `(?:\s|$)` after a command. The trace judge's elided middle (§ channel-routing) hides Restart now's commands, so that case uses `tool_used` and `tool_order`.
 
 From the repo root:
 
 ```bash
 claude plugin eval plugins/hermitd --tag channel-setup --allow-tools Bash --ablation none --model sonnet --runs 3 --scaffold --max-cost-usd 6 --no-publish
 ```
+
+Last run 2026-11-19, Claude Code 2.1.328, Sonnet, $2.73: every case 3/3. An earlier run on the same prompts scored credential-manual-without-chrome, docker-new-entry-operator-restarts and managed-session-final-restart 2/3: a split judge vote on a correct reply, a Docker run that told the operator to rerun the wizard for access, and a managed run that omitted that the restart resumes the conversation.
 
 ## Running
 

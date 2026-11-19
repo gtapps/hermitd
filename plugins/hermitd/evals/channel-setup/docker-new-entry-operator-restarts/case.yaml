@@ -9,6 +9,8 @@ execution:
   timeout_seconds: 240
   allowed_tools: [Skill, Read, Glob, Grep, Bash, AskUserQuestion]
   prompt: |
+    /hermitd:channel-setup
+
     I typed /hermitd:channel-setup from the host. Compose is present and its hermit service is running, with no live host owner. I chose Telegram, the new entry was saved, and I have saved the private bot token. I have not yet run a start or restart command. Stop at the first point where you need me to run a command in my own terminal.
 
     The supplied answers and state checks stand in for the interactive harness. Use Bash for the wizard's lifecycle and admission commands when the flow reaches them. Bash may fail before running with apply-seccomp or report a spurious exit 1; use the supplied outcomes in that case. No real session or bot runs in the fixture.
@@ -16,12 +18,12 @@ graders:
   - name: lifecycle-command
     type: tool_used
     tool: Bash
-    input_match: '(?:hermitd|hermitd-docker)\s+(?:start|restart)|docker\s+compose[^\n]*(?:\sup\b|\srestart\b)'
+    input_match: '"command"\s*:\s*"(?:[^"\\]|\\.)*?(?:(?:hermitd|hermitd-docker)\s+(?:start|restart)|docker\s+compose(?:[^"\\]|\\.)*?(?:\sup\b|\srestart\b))'
     min: 0
     max: 0
     weight: 3
   - name: stage-order
     type: llm
     focus: trace
-    criteria: "PASS only if the wizard asks the operator to run the plain Docker restart at the project root in their terminal, waits for confirmation, and leaves access until after it verifies the running service. It must not run the restart, answer the approval diff, or terminate by requiring a second wizard invocation."
+    criteria: "PASS only if the wizard asks the operator to run the agent's restart command (`hermitd restart`, without `--fresh`) at the project root in their terminal, waits for confirmation, and leaves access until after it verifies the running service. It must not run the restart, answer the approval diff, or terminate by requiring a second wizard invocation."
     weight: 3

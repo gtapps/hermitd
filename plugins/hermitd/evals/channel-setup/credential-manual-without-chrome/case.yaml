@@ -9,6 +9,8 @@ execution:
   timeout_seconds: 240
   allowed_tools: [Skill, Read, Glob, Grep, Bash, AskUserQuestion]
   prompt: |
+    /hermitd:channel-setup
+
     I ran /hermitd:channel-setup from a separate host terminal. The agent is stopped and this session has no Claude in Chrome tools. Discord is already selected and installed. Continue from the credential stage. The installed plugin guide is represented by .hermit/channel-guide.md, and there is no token yet. My token-entry choice is Private file. Stop when you are waiting for me to save it.
 
     Bash may fail before running with apply-seccomp or report a spurious exit 1. The supplied outcomes stand in for the host, installation and credential checks. Do not start the agent or interact with a real service.
