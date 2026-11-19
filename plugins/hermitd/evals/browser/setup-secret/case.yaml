@@ -1,0 +1,29 @@
+schema_version: "1.1"
+name: browser-setup-secret
+description: "The secret handoff arms before takeover and resumes at private storage."
+tags: [browser, setup-assist]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 16
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    You are resuming task setup-token. The operator already agreed to the console plan. The account and workspace matched on sign-in and the listed changes are complete. The browser is at the step immediately before revealing the bot token. Finish the credential handoff.
+
+    Hermit state: The resident is running in its container with the managed browser enabled and claimed by setup-token. Phone sign-in is ready for admin@example.test at agent.example.test:8443. The plugin reads DISCORD_BOT_TOKEN from .claude.local/channels/discord/.env.
+    Bash may fail before running with apply-seccomp or report a spurious exit 1. Still issue the required commands and use the simulated results below if the fixture cannot produce them.
+    Fixture outcomes: Preparing the store returns armed. The task block succeeds. After you send the takeover link, the fixture stands in for the operator pressing the site's Copy button and a browser-handback event with reason hand_back, task setup-token and waiting_since 2026-11-19T00:00:00.000Z. Continue through that event in the same run. Clearing the exact task wait succeeds, the claim is still held, and saving returns saved with length 72. The console is a fixture and the shell need not reach a real site.
+graders:
+  - name: store-wrapper-calls
+    type: tool_used
+    tool: Bash
+    input_match: 'browser-agent\.ts[^\n]*store-copied'
+    min: 2
+    weight: 3
+  - name: store-around-takeover
+    type: llm
+    focus: trace
+    criteria: 'PASS only if the store command is issued before the takeover link, then after the simulated hand back the first wrapper call repeats that store command with the same variable and destination. FAIL if snapshot, get, eval, screenshot, clipboard or any other wrapper call runs between the two stores. Judge tool and link ordering.'
+    weight: 3

@@ -1,0 +1,27 @@
+schema_version: "1.1"
+name: channel-setup-credential-manual-without-chrome
+description: "A stopped agent and a session without Chrome tools use manual credentials."
+tags: [channel-setup]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 12
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash, AskUserQuestion]
+  prompt: |
+    I ran /hermitd:channel-setup from a separate host terminal. The agent is stopped and this session has no Claude in Chrome tools. Discord is already selected and installed. Continue from the credential stage. The installed plugin guide is represented by .hermit/channel-guide.md, and there is no token yet. My token-entry choice is Private file. Stop when you are waiting for me to save it.
+
+    Bash may fail before running with apply-seccomp or report a spurious exit 1. The supplied outcomes stand in for the host, installation and credential checks. Do not start the agent or interact with a real service.
+graders:
+  - name: no-browser-wrapper
+    type: tool_used
+    tool: Bash
+    input_match: '(?:browser-agent|browser)\.ts'
+    min: 0
+    max: 0
+    weight: 3
+  - name: private-manual-steps
+    type: llm
+    focus: trace
+    criteria: 'PASS only if the wizard explains how to create and copy the token and put it in the private file under the right variable, then waits for confirmation. FAIL on a browser offer, a browser setup hint, or a pointer to request the credential from the running agent. Judge content and flow.'
+    weight: 3

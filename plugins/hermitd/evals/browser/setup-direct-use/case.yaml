@@ -1,0 +1,26 @@
+schema_version: "1.1"
+name: browser-setup-direct-use
+description: "A direct request to act on a named page does not require a setup offer."
+tags: [browser, setup-assist]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    Open https://example.org/account/settings and select the Notifications tab so I can see which choices are available.
+
+    Hermit state: This is the running resident. The managed browser is enabled and available. The shell is withheld in the fixture, so browser interaction is stood in. Follow the same first action you would take with the shell, and report that action if the wrapper tool is unavailable.
+graders:
+  - name: browser-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?browser"'
+    weight: 3
+  - name: direct-action
+    type: llm
+    focus: trace
+    criteria: 'PASS only if the agent takes the browser path directly for the named page without offering to do setup or requesting permission. A wrapper attempt or a stated immediate navigation action with the shell limitation is sufficient. FAIL on fabricated page contents.'
+    weight: 3

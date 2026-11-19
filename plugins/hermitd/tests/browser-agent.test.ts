@@ -4,6 +4,7 @@ import path from 'node:path';
 import { browserSocketDir } from '../scripts/browser-agent';
 import { ensureDisplay } from '../scripts/browser-display';
 import { browserLease } from '../scripts/lib/browser-lease';
+import { mutateTask } from '../scripts/lib/tasks';
 import { browserUserAgent } from '../scripts/lib/browser-runtime';
 import { freshDirFactory } from './helpers/workdir';
 import { PLUGIN_ROOT } from './helpers/run';
@@ -28,7 +29,7 @@ function fixture() {
   fs.writeFileSync(path.join(dir, 'state/browser-display.json'), JSON.stringify({ display: ':17', vncSocket: path.join(socket, 'vnc.sock') }));
   const binary = path.join(root, 'real-browser');
   fs.writeFileSync(binary, `#!${process.execPath}\nconsole.log(JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\nprocess.exit(Number(process.env.TEST_EXIT ?? 0));\n`, { mode: 0o755 });
-  const run = async (argv: string[], env: Record<string, string> = {}, options: { deployment?: 'host' | 'container'; data?: string; platform?: NodeJS.Platform } = {}) => {
+  const runCaptured = async (argv: string[], env: Record<string, string> = {}, options: { deployment?: 'host' | 'container'; data?: string; platform?: NodeJS.Platform } = {}) => {
     const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', marker: ${JSON.stringify(path.join(root, 'marker'))}, ...${JSON.stringify(options)}, ensureDisplay: async () => {
       const fs = await import('node:fs');
       fs.appendFileSync(${JSON.stringify(path.join(root, 'display-calls'))}, 'ensure\\n');
@@ -37,9 +38,13 @@ function fixture() {
       cwd: root, env: { ...process.env, AGENT_DIR: dir, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, DISPLAY: ':99', AGENT_BROWSER_PROFILE: '/bad', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_IDLE_TIMEOUT_MS: '15', XDG_RUNTIME_DIR: '/run/shared', ...env }, stdout: 'pipe', stderr: 'pipe',
     });
     const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
-    return { code, stderr, data: JSON.parse(stdout) };
+    return { code, stdout, stderr, data: JSON.parse(stdout) };
   };
-  return { dir, socket, run };
+  const run = async (...args: Parameters<typeof runCaptured>) => {
+    const { code, stderr, data } = await runCaptured(...args);
+    return { code, stderr, data };
+  };
+  return { dir, root, binary, socket, run, runCaptured };
 }
 
 test('persistent commands require a live claim, renew it and preserve argv and exit code', async () => {
@@ -249,4 +254,143 @@ test('anonymous commands and close never ensure a display', async () => {
   browserLease('claim', 'shutdown', dir);
   await run(['--task', 'shutdown', 'close']);
   expect(fs.existsSync(path.join(dir, '../display-calls'))).toBe(false);
+});
+
+const STORE_FILE = '.claude.local/channels/demo/.env';
+const SINK = 'data:text/html,<textarea id=p></textarea>';
+const TEST_SECRET = 'synthetic-token=abc';
+
+function storeFixture() {
+  const { root, dir, binary, run, runCaptured } = fixture();
+  const { id } = mutateTask(dir, 'open', undefined, { title: 'Save credential', requester: 'operator', done: 'saved' }, '') as { id: string };
+  browserLease('claim', id, dir);
+  const log = path.join(root, 'argv.jsonl');
+  fs.writeFileSync(log, '');
+  fs.writeFileSync(binary, `#!${process.execPath}
+import fs from 'node:fs';
+const args = process.argv.slice(2);
+const verb = args.join(' ');
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
+console.error(${JSON.stringify(TEST_SECRET)});
+if (process.env.TEST_FAIL === verb) {
+  console.log(${JSON.stringify(TEST_SECRET)});
+  process.exit(7);
+}
+if (args[0] === '--json') {
+  console.log(JSON.stringify({ success: true, data: { value: process.env.TEST_VALUE ?? ${JSON.stringify(TEST_SECRET)} } }));
+} else if (args[0] === 'snapshot' || args[0] === 'close') {
+  console.log(JSON.stringify({ argv: args }));
+} else {
+  console.log(${JSON.stringify(TEST_SECRET)});
+}
+`, { mode: 0o755 });
+  const invoke = (args: string[], env?: Record<string, string>) => runCaptured(['--task', id, ...args], env);
+  const store = (env?: Record<string, string>) => invoke(['store-copied', 'TOKEN', STORE_FILE], env);
+  const handBack = () => {
+    const opts = { login: 'admin', admins: ['admin'], chromeAlive: () => true };
+    mutateTask(dir, 'block', id, { 'waiting-on': 'admin', 'status-line': 'Copy token', next: 'Save token' }, '');
+    const { epoch } = browserLease('takeover', id, dir, Date.now(), opts);
+    browserLease('hand-back', undefined, dir, Date.now(), { ...opts, generation: epoch });
+  };
+  const lease = () => browserLease('inspect', undefined, dir);
+  const commands = () => fs.readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+  return { dir, root, id, run, invoke, store, handBack, lease, commands };
+}
+
+const armed = { code: 0, data: { status: 'armed', var: 'TOKEN' }, stderr: '' };
+const refused = (reason: string) => ({ code: 0, data: { status: 'refused', reason }, stderr: '' });
+
+test('store-copied arms, waits for hand back and privately saves the copied value', async () => {
+  const { store, handBack, lease, commands, root } = storeFixture();
+  expect(await store()).toMatchObject(armed);
+  const placeholder = lease().pending_store!.placeholder;
+  const prepare = [['tab', 'new', SINK], ['fill', '#p', placeholder], ['press', 'Control+a'], ['clipboard', 'copy'], ['tab', 'close']];
+  expect(commands()).toEqual(prepare);
+  expect(await store()).toMatchObject(armed);
+  expect(commands()).toEqual(prepare);
+  handBack();
+  const result = await store();
+  expect(result).toMatchObject({ code: 0, data: { status: 'saved', var: 'TOKEN', length: TEST_SECRET.length }, stderr: '' });
+  expect(result.stdout).not.toContain(TEST_SECRET);
+  expect(commands()).toEqual([...prepare, ['open', SINK], ['click', '#p'], ['clipboard', 'paste'],
+    ['--json', 'get', 'value', '#p'], ['fill', '#p', placeholder], ['press', 'Control+a'], ['clipboard', 'copy'], ['open', 'about:blank']]);
+  expect(lease().pending_store).toBeUndefined();
+  const file = path.join(root, STORE_FILE);
+  expect(fs.readFileSync(file, 'utf8')).toBe(`TOKEN=${TEST_SECRET}\n`);
+  expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+});
+
+test('only store-copied or close passes for the preparing task and a new holder cleans up first', async () => {
+  const { dir, id, run, invoke, store, lease, commands } = storeFixture();
+  expect(await store()).toMatchObject(armed);
+  const placeholder = lease().pending_store!.placeholder;
+  expect(await invoke(['snapshot'])).toMatchObject(refused('store_pending'));
+  expect(await invoke(['open', 'close'])).toMatchObject(refused('store_pending'));
+  expect(commands()).toHaveLength(5);
+  browserLease('release', id, dir);
+  browserLease('claim', 'next', dir);
+  expect(await run(['--task', 'next', 'snapshot'])).toMatchObject({ code: 0, data: { argv: ['snapshot'] } });
+  expect(commands().slice(5)).toEqual([['open', SINK], ['fill', '#p', placeholder], ['press', 'Control+a'],
+    ['clipboard', 'copy'], ['open', 'about:blank'], ['snapshot']]);
+  expect(lease().pending_store).toBeUndefined();
+});
+
+test('validates preparation, refuses mismatches and supports cancel and close', async () => {
+  const { invoke, store, lease, commands } = storeFixture();
+  expect(await invoke(['store-copied', 'token', STORE_FILE])).toMatchObject(refused('bad_name'));
+  expect(await invoke(['store-copied', 'TOKEN', '.env'])).toMatchObject(refused('bad_destination'));
+  expect(await invoke(['--session', 'test', 'store-copied', 'TOKEN', STORE_FILE])).toMatchObject(refused('persistent_only'));
+  expect(commands()).toEqual([]);
+  expect(await store()).toMatchObject(armed);
+  expect(await invoke(['store-copied', 'OTHER', STORE_FILE])).toMatchObject(refused('mismatch'));
+  expect(await invoke(['store-copied', 'TOKEN', '.claude.local/other/.env'])).toMatchObject(refused('mismatch'));
+  expect(await invoke(['store-copied', '--cancel'])).toMatchObject({ code: 0, data: { status: 'cancelled' }, stderr: '' });
+  expect(commands().at(-1)).toEqual(['open', 'about:blank']);
+  expect(lease().pending_store).toBeUndefined();
+  expect(await store()).toMatchObject(armed);
+  expect(await invoke(['close'])).toMatchObject({ code: 0, data: { argv: ['close'] } });
+  expect(lease().pending_store).toBeUndefined();
+});
+
+test.each([
+  ['', 'nothing_copied'], [null, 'nothing_copied'], ['a\nb', 'multiline'], ['a b', 'bad_value'],
+  ['a\u0001b', 'bad_value'], ['é'.repeat(2049), 'bad_value'],
+])('refuses unsafe or absent clipboard values (%#)', async (value, reason) => {
+  const { store, handBack, lease, root, commands } = storeFixture();
+  expect(await store()).toMatchObject(armed);
+  const placeholder = lease().pending_store!.placeholder;
+  handBack();
+  expect(await store({ TEST_VALUE: value ?? placeholder })).toMatchObject(refused(reason!));
+  expect(lease().pending_store).toBeUndefined();
+  expect(commands().at(-1)).toEqual(['open', 'about:blank']);
+  expect(fs.existsSync(path.join(root, STORE_FILE))).toBe(false);
+});
+
+test('upstream failures hide output both before and after writing the file', async () => {
+  const { store, handBack, lease, root, commands } = storeFixture();
+  expect(await store()).toMatchObject(armed);
+  handBack();
+  let result = await store({ TEST_FAIL: '--json get value #p' });
+  expect(result).toMatchObject({ code: 1, data: { error: 'store_failed:get_value' }, stderr: '' });
+  expect(result.stdout).not.toContain(TEST_SECRET);
+  expect(commands().at(-1)).toEqual(['open', 'about:blank']);
+  expect(lease().pending_store).toBeUndefined();
+  expect(fs.existsSync(path.join(root, STORE_FILE))).toBe(false);
+  expect(await store()).toMatchObject(armed);
+  handBack();
+  result = await store({ TEST_FAIL: 'open about:blank' });
+  expect(result).toMatchObject({
+    code: 0, data: { status: 'saved', var: 'TOKEN', length: TEST_SECRET.length, cleanup: 'failed' }, stderr: '',
+  });
+  expect(result.stdout).not.toContain(TEST_SECRET);
+  expect(lease().pending_store).toBeUndefined();
+  expect(fs.readFileSync(path.join(root, STORE_FILE), 'utf8')).toContain(TEST_SECRET);
+});
+
+test('a preparation that fails before its tab opens leaves the console page alone', async () => {
+  const { store, lease, commands } = storeFixture();
+  const result = await store({ TEST_FAIL: `tab new ${SINK}` });
+  expect(result).toMatchObject({ code: 1, data: { error: 'store_failed:tab_new' }, stderr: '' });
+  expect(commands()).toEqual([['tab', 'new', SINK]]);
+  expect(lease().pending_store).toBeUndefined();
 });

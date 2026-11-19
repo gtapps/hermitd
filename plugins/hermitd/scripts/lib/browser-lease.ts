@@ -20,9 +20,12 @@ export interface BrowserEvent {
   id: string; reason: 'hand_back' | 'released' | 'expired' | 'browser_lost';
   task: string | null; waiting_since: string | null;
 }
+export interface PendingStore {
+  task: string; name: string; file: string; placeholder: string; handed_back: boolean;
+}
 export interface BrowserLease {
   holder: string | null; expires_at: number; waiters: Waiter[];
-  epoch: number; human: HumanLease | null; pending: BrowserEvent[];
+  epoch: number; human: HumanLease | null; pending: BrowserEvent[]; pending_store?: PendingStore;
   /** Last time a held claim was released, so the idle close sees a claim that came and went between checks. */
   released_at?: number;
 }
@@ -71,6 +74,10 @@ function readLease(file: string): BrowserLease {
         && (lease.human.task === null || typeof lease.human.task === 'string')
         && (lease.human.waiting_since === null || typeof lease.human.waiting_since === 'string')
         && (lease.human.disconnected_at === null || Number.isFinite(lease.human.disconnected_at))))
+      || (lease.pending_store !== undefined && (!lease.pending_store
+        || typeof lease.pending_store.task !== 'string' || typeof lease.pending_store.name !== 'string'
+        || typeof lease.pending_store.file !== 'string' || typeof lease.pending_store.placeholder !== 'string'
+        || typeof lease.pending_store.handed_back !== 'boolean'))
       || !Array.isArray(lease.waiters)
       || lease.waiters.some((waiter: Waiter) => !waiter || typeof waiter.task !== 'string' || typeof waiter.waiting_on !== 'string')) {
       throw new Error('invalid_browser_lease');
@@ -88,8 +95,9 @@ export function humanGeneration(dir: string): number | null {
 }
 
 /** The folder shares the lease; the lock covers only the short transaction. */
-type LeaseAction = 'teardown' | 'claim' | 'idle-claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect';
+type LeaseAction = 'teardown' | 'claim' | 'idle-claim' | 'release' | 'status' | 'renew' | 'inspect' | 'takeover' | 'hand-back' | 'human-release' | 'disconnect' | 'restart' | 'connect' | 'prepare-store' | 'clear-store';
 interface LeaseOptions {
+  store?: Omit<PendingStore, 'task' | 'handed_back'>; epoch?: number;
   login?: string; admins?: string[]; generation?: number; chromeAlive?: () => boolean;
 }
 interface LeaseResult extends Partial<BrowserLease> { status: string }
@@ -109,6 +117,9 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
     const clearHuman = (reason: BrowserEvent['reason']) => {
       const human = lease.human!;
       lease.pending.push({ id: `${lease.epoch + 1}-${randomUUID()}`, reason, task: human.task, waiting_since: human.waiting_since });
+      if (reason === 'hand_back' && lease.pending_store && human.task === lease.pending_store.task) {
+        lease.pending_store.handed_back = true;
+      }
       lease.human = null;
       lease.epoch++;
       if (lease.holder) lease.expires_at = now + BROWSER_IDLE_MS;
@@ -145,6 +156,7 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
       // The replaced wait still needs its wake: inherit it, or release it for a different task.
       if (waiting && lease.human?.task && lease.human.task !== waiting.id) clearHuman('released');
       lease.epoch++;
+      if (lease.pending_store) lease.pending_store.handed_back = false;
       lease.human = { login: options.login, generation: lease.epoch, task: waiting ? waiting.id : lease.human?.task ?? null,
         waiting_since: waiting ? waiting.waiting_since : lease.human?.waiting_since ?? null, since: now, disconnected_at: null };
       save();
@@ -185,6 +197,17 @@ export function browserLease(action: LeaseAction, task?: string, dir = hermitDir
       // Recovers a waiter that blocked after the release meant to wake it.
       clearNextWaiter(dir, lease);
       save();
+    }
+    if (action === 'prepare-store' || action === 'clear-store') {
+      if (!task || lease.holder !== task || lease.epoch !== options.epoch) return { status: 'stale_store' };
+      if (action === 'prepare-store') {
+        if (lease.pending_store || !options.store) return { status: 'store_pending' };
+        lease.pending_store = { ...options.store, task, handed_back: false };
+      } else {
+        delete lease.pending_store;
+      }
+      save();
+      return { status: 'updated' };
     }
     if (action === 'status') return lease.holder
       ? { status: 'claimed', holder: lease.holder, expires_at: lease.expires_at }

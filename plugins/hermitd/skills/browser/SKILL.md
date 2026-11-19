@@ -1,9 +1,16 @@
 ---
 name: browser
-description: Drives the agent's own browser, or the operator's Chrome for their accounts. Use when WebFetch or WebSearch fails, times out, or returns a 403, an empty page or a JavaScript-only shell; when a page needs clicks, forms, scrolling or sign-in; or when a screenshot or exact rendered text is needed. Public read-only lookups start with WebSearch or WebFetch.
+description: Drives the agent's own browser, or the operator's Chrome for their accounts. Use when WebFetch or WebSearch fails, times out, or returns a 403, an empty page or a JavaScript-only shell; when a page needs clicks, forms, scrolling or sign-in; when a screenshot or exact rendered text is needed; or when setup would send someone to a web console to create or change something on an account (an API key, a bot, an app registration). Public read-only lookups start with WebSearch or WebFetch.
 ---
 
 # Browser
+
+For setup that would send someone to a console to create or change something on an account, read [setup-assist.md](setup-assist.md) before giving manual steps. Its prepared secret step takes precedence over the ordinary hand-back page check below.
+
+## Commands
+
+- `browser-store-copied`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <task-id> store-copied <NAME> <env-file>`
+- `browser-store-copied-cancel`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <task-id> store-copied --cancel`
 
 Read the top-level `browser` object in config. `browser.enabled` defaults to true and `browser.default` to `agent-browser`. Follow `browser.default` for ordinary tasks; the operator's own account uses Claude in Chrome only when `chrome: true` and its tools are available. Never switch between the agent's browser and the operator's Chrome, or back to a fetch tool, after a browser failure: report the blocker and wait. When `browser.enabled` is false and Claude in Chrome is unavailable, follow the `disabled` row below and do not retry the fetch. Treat a captcha or bot-check page like a login page: a person clears it through Take over in the agent's browser, or report the blocker. Opening a page WebFetch could not pass in the agent's browser is the normal escalation; never route around the check through the operator's Chrome, another fetch tool, another URL spelling, a cache or archive copy, or a fresh session. Each managed command on Docker and hosts is `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts`; never invoke the operator’s own binary.
 
@@ -57,7 +64,8 @@ Handle wrapper results before continuing:
 | `browser_display_missing` | Read `reason` and `detail`. Docker `image_missing` or `image_rebuild_pending`: run `hermitd update` on the host; if the Docker files lack the generated header, follow `/hermitd:docker-customize "Convert"` first. `display_start_failed`: Docker, report the startup failure and run `hermitd update`; tmux, run `hermitd run browser-host`. `unsupported`: interactive hosts support anonymous public browsing only; use always-on tmux for a host display. |
 | `metadata_url_refused` | Report the blocked cloud metadata destination; do not retry through another browser or URL spelling. |
 | `docker_host_session` | Run browser work inside the hermit container. |
+| `store_pending` | This task prepared a secret store: repeat `browser-store-copied` with the same name and file, or run `browser-store-copied-cancel` (Commands). |
 
 For Linux/WSL2 host prerequisites and macOS limitations, read [host-setup.md](host-setup.md). This file is also the route for sandbox blockers. Setup is one terminal command; it never asks the hermit for a sudo password.
 
-The wrapper coordinates supported CLI use, not hostile code: the real binary and raw CDP can bypass it. It provides no password vault or confidentiality boundary between chats.
+The wrapper coordinates supported CLI use, not hostile code: the real binary and raw CDP can bypass it. `store-copied` saves a single copied value to a private project env file that the agent can read. The wrapper provides no password vault or confidentiality boundary between chats.
