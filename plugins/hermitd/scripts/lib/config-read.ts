@@ -83,7 +83,7 @@ export const TABLE: Record<string, Spec> = {
   shutdown_skill: str(null),
   scheduled_checks: arr, // Session-triggered checks; preserve operator-authored entry fields.
   docker: shape({ packages: arr, recommended_plugins: arr, fleet_mesh: bool(false), git_identity_mount: bool(true) }),
-  browser: shape({ enabled: bool(true), default: str('agent-browser', { enum: ['agent-browser', 'chrome'] }), admins: arr, port: num(null, { range: [1, 65535] }), host: str(null) }),
+  browser: shape({ enabled: bool(true), default: str('agent-browser', { enum: ['agent-browser', 'chrome'] }), admins: arr, port: num(null, { range: [1, 65535] }), host: str(null), inactivity_timeout: num(900, { range: [0, Infinity] }) }),
   transcription: shape({ enabled: bool(true), echo: bool(true) }),
   tasks: shape({ duties_open_records: bool(true), queue_nudge_minutes: num(60, { range: [1, Infinity] }) }),
   heartbeat: shape({

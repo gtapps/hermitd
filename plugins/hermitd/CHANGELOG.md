@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- The signed-in agent browser closes after 15 minutes with no task holding it and no person in control, and reopens signed in on the next task; `browser.inactivity_timeout` (seconds) changes the delay and `0` turns it off
 - `/hermitd:hermit-settings channels` can set or clear `members_only`, and `channel-register` accepts it
 - `hermitd <verb> --help` prints usage instead of resolving a project or running the verb, so `hermitd stop --help` no longer stops the agent
 - `hermitd-start`, `hermitd-stop` and `hermitd-watchdog` refuse to run from a checkout whose `.hermit/` projects the agent's root above it, and `hermitd` commands, `hermitd-status` and `hermitd-attach` run there target that root, so a stray boot no longer splits state or blocks helper reports
