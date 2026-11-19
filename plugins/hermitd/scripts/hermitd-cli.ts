@@ -310,8 +310,13 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     if (args.length) throw new Error(usage('approve'));
     if (!isDockerProject(project, root)) throw new Error('hermitd approve requires a Docker project');
     warnProjectContainsHostConfig(project, root);
-    const approve = path.join(hostInstall(project).installPath, 'scripts/approve.ts');
-    if (!fs.existsSync(approve)) throw new Error("This agent's installed core predates hermitd approve. Run hermitd update first.");
+    const host = hostInstall(project);
+    const approve = path.join(host.installPath, 'scripts/approve.ts');
+    if (!fs.existsSync(approve)) {
+      // hermitd update skips a shared user-scope core, so it cannot bring this one forward.
+      const step = host.scope === 'user' ? `claude plugin update ${host.id} --scope user` : 'hermitd update';
+      throw new Error(`This agent's installed core predates hermitd approve. Run ${step} first.`);
+    }
     return execute(process.execPath, [approve, project], '/', { BUN_OPTIONS: bunIsolation });
   }
   const project = target(args, verb, cwd, root);
