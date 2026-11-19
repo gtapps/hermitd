@@ -164,6 +164,13 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       if (!entry.reply_to || (legs[0]?.command === '/doctor' && legs[0].status === 'ok')) return { decision: 'ok' };
       return reply(dir, replyText(entry, legs), entry.reply_to);
     }
+    case 'turn-end': {
+      // An interrupted turn fires no Stop or StopFailure; the mod reports its end instead.
+      const input = JSON.parse(payload) as { at: number; reason: string };
+      const { observeExecution } = await import('./lib/tasks');
+      observeExecution(dir, 'idle', sessionId, null, input.reason, input.at);
+      return { decision: 'ok' };
+    }
     default:
       return { decision: 'pass' };
   }

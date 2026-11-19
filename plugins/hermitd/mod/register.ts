@@ -520,8 +520,11 @@ export const register: Register = on => {
   });
 
   on('turn.complete', async ($, e, next) => {
+    // Read before next(e): the next prompt's hook can stamp its turn while this chain runs.
+    const endedAt = !e.agentId && e.isAborted ? await $.clock.now() : null;
     const result = await next(e);
     if (!e.agentId) {
+      if (endedAt !== null) bridge($, 'turn-end', JSON.stringify({ at: endedAt, reason: 'aborted' })).catch(() => undefined);
       mainTurn = undefined;
       lastTurnCompleteAt = await $.clock.now();
       idleSince = lastTurnCompleteAt;

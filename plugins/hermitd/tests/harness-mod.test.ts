@@ -699,3 +699,14 @@ test('approval reasons bind one chat-authority request to the console and reserv
   expect(unattended).not.toContain('permissions.ask');
   expect(approvalReason({ ...input, console: null, variant: 'chat' })).not.toContain(' open .hermit');
 });
+
+test('turn-end idles an interrupted resident turn and ignores other sessions', async () => {
+  const { wd, dir } = fixture();
+  const execution = () => JSON.parse(fs.readFileSync(path.join(dir, 'state/execution.json'), 'utf8'));
+  const at = Date.now();
+  fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'in_flight', turn_id: 't', at: new Date(at - 1000).toISOString(), source: null, cc_session_id: 'resident', reason: null }));
+  expect(await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }), 'guest')).toEqual({ decision: 'pass' });
+  expect(execution().state).toBe('in_flight');
+  expect(await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }))).toEqual({ decision: 'ok' });
+  expect(execution()).toMatchObject({ state: 'idle', reason: 'aborted', turn_id: 't' });
+});

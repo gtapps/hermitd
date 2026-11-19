@@ -317,3 +317,15 @@ test('a later Stop with no delegated work running settles an awaiting routine', 
   await runStop(dir, JSON.stringify(payload));
   expect(readUnfinished(hermit(dir))).toEqual({});
 }));
+
+test('a blocked Stop leaves the turn in flight until the continuation Stop', withDir(async dir => {
+  const execution = () => JSON.parse(fs.readFileSync(hermit(dir, 'state', 'execution.json'), 'utf8'));
+  fs.writeFileSync(hermit(dir, 'state', 'execution.json'), JSON.stringify({ state: 'in_flight', turn_id: 't1', at: new Date().toISOString(), source: null, cc_session_id: SESSION_ID, reason: null }) + '\n');
+  writeTurn(dir);
+  writeAck(dir);
+  const blocked = await runStop(dir);
+  expect(JSON.parse(blocked.stdout).decision).toBe('block');
+  expect(execution().state).toBe('in_flight');
+  await runStop(dir, JSON.stringify({ ...JSON.parse(stopHookInput(dir)), stop_hook_active: true }));
+  expect(execution()).toMatchObject({ state: 'idle', turn_id: 't1' });
+}));

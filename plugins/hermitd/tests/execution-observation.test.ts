@@ -84,6 +84,29 @@ it('a compaction keeps the source only of a tracked running turn', async () => {
   } finally { f.cleanup(); }
 });
 
+it('a reported turn end idles only a turn that started by then', async () => {
+  const f = taskFixture(); try {
+    const { observeExecution, readExecution, evolveTurnRunning } = await taskLib();
+    const stamp = (state: string, at: number, extra: object = {}) => f.put('state/execution.json', { state, turn_id: 't', at: new Date(at).toISOString(), source: null, cc_session_id: 's', reason: null, ...extra });
+    const now = Date.now();
+    stamp('in_flight', now - 1000);
+    observeExecution(f.dir, 'idle', 's', null, 'aborted', now);
+    expect(readExecution(f.dir)).toMatchObject({ state: 'idle', reason: 'aborted', turn_id: 't' });
+    // The next prompt stamped its turn before the late report landed.
+    stamp('in_flight', now + 50);
+    observeExecution(f.dir, 'idle', 's', null, 'aborted', now);
+    expect(readExecution(f.dir).state).toBe('in_flight');
+    // An interrupt after an auto-compaction ends a running hermit-evolve turn.
+    stamp('unknown', now - 1000, { source: 'upgrade', reason: 'precompact' });
+    expect(evolveTurnRunning(readExecution(f.dir))).toBe(true);
+    observeExecution(f.dir, 'idle', 's', null, 'aborted', now);
+    expect(evolveTurnRunning(readExecution(f.dir))).toBe(false);
+    stamp('idle', now - 1000, { reason: 'stop' });
+    observeExecution(f.dir, 'idle', 's', null, 'aborted', now);
+    expect(readExecution(f.dir).reason).toBe('stop');
+  } finally { f.cleanup(); }
+});
+
 for (const prompt of ['/hermitd:hermit-evolve unattended', '/hermitd:hermit-evolve']) it(`a ${prompt} turn is marked as an upgrade`, async () => {
   const f = taskFixture(); try {
     f.put('state/runtime.json', { hermit_pid: process.pid });

@@ -59,7 +59,6 @@ async function main(): Promise<void> {
   // would defer every monitor-delivered routine for the marker's full TTL —
   // the starvation class issue #617 fixed, just time-bounded.
   if (!guest) {
-    observeExecution(HERMIT_DIR, 'idle', sessionId(payload), null, null);
     // One transcript read per Stop, shared by the reply checkpoint and the recovery clear.
     // A failed read is not cached, so each consumer stays fail-open on its own.
     const tPath = transcriptPath(payload);
@@ -76,6 +75,8 @@ async function main(): Promise<void> {
     } catch (e: any) { console.error(`[stop-pipeline] intake-checkpoint: ${e.message}`); }
     let closedOperatorTurn = false;
     if (!blocked) {
+      // A blocked Stop continues the turn; its own later Stop marks it idle.
+      observeExecution(HERMIT_DIR, 'idle', sessionId(payload), null, null);
       const tasks = backgroundTasks(payload);
       if (tasks.state !== 'unsupported_or_unreachable') {
         const delegated = new Set(['subagent', 'workflow', 'teammate', 'cloud session', 'MCP task']);
