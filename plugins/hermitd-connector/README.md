@@ -1,6 +1,6 @@
 # hermitd-connector
 
-Talk to your agent from the Claude app, **typed or in voice mode**, and let people you pair do the same. Each person adds the agent as a custom connector in their own Claude app. Claude passes on what they say, then shows or speaks the agent's answer.
+Talk to your agent from **Claude, ChatGPT, Grok or Gemini**, typed or by voice where the app has it, and let people you pair do the same. Each person adds the agent as a custom connector in their own AI app. The app passes on what they say, then shows or speaks the agent's answer.
 
 The agent works in its usual session, with its memory and tools. Everyone who comes in through the connector is a **plain member**, you included: they can ask for work, but they can't pause, steer or reconfigure the agent.
 
@@ -9,7 +9,7 @@ For your own typed work, [Remote Control](https://code.claude.com/docs/en/remote
 ## How it works
 
 ```
-Claude app, typed or voice
+AI app, typed or voice
   -> your public HTTPS address (your tunnel)
   -> connector server on the agent's machine: sign-in, pairing, hourly cap, message record
   -> this channel -> the agent, as a member
@@ -21,10 +21,10 @@ The connector server ships with core `hermitd` and starts and stops with the age
 ## Requirements
 
 - Core `hermitd` 1.4.36 or newer, set up and running.
-- A **public HTTPS address on port 443**, for example `https://agent.example.com`. Claude does not connect to a connector URL with any other port ([Anthropic help](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)). If another service already holds 443 on that host name, use another host name.
+- A **public HTTPS address on port 443**, for example `https://agent.example.com`. Every supported app reaches it there, and Claude does not connect to a connector URL with any other port ([Anthropic help](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)). If another service already holds 443 on that host name, use another host name.
 - A **tunnel** (or reverse proxy) from that address to a local port on the agent's machine, such as Tailscale Funnel or Cloudflare Tunnel (commands below). The connector server listens on `127.0.0.1` only.
 - On Docker, an agent that does not use host networking.
-- A Claude account for each person. Free accounts can add one custom connector.
+- An account on a supported app for each person. Who may add custom connectors is up to each vendor: Claude Free accounts can add one, while ChatGPT, Grok and Gemini limit them by plan, region or account type.
 
 ## Set up
 
@@ -73,7 +73,7 @@ Set up the hermitd connector for my agent by following https://github.com/gtapps
 
 ## Pair someone
 
-1. In the Claude app, they open **Customize > Connectors**, click **+ Add**, then **Add custom connector**. They name it after the agent and enter your address with `/mcp` at the end, for example `https://agent.example.com/mcp`.
+1. In their app they add a custom connector named after the agent, with your address and `/mcp` at the end, for example `https://agent.example.com/mcp`. In Claude: **Customize > Connectors > + Add > Add custom connector**. In ChatGPT: developer mode, then add a custom MCP server. In Grok: **grok.com/connectors > New Connector > Custom**. In Gemini: **Settings > Connected Apps > Add a custom app**, on the web. [Connector docs](../hermitd/docs/connector.md#how-people-connect) has the details.
 2. They sign in. The page shows an 8-character pairing code, valid for 10 minutes.
 3. They send you the code however you already talk, and you run:
 
@@ -83,7 +83,7 @@ Set up the hermitd connector for my agent by following https://github.com/gtapps
 
    Their page completes and they're connected. Pair yourself the same way to use it yourself.
 
-A pairing is not a verified Claude account: it is whoever completed the sign-in page with the code you approved, so only approve codes you got from the person directly.
+A pairing is not a verified app account: it is whoever completed the sign-in page with the code you approved, so only approve codes you got from the person directly.
 
 On Team and Enterprise plans, an Owner adds the custom connector once under **Organization settings > Connectors**. Each member then clicks **Connect** under **Customize > Connectors** and is paired the same way.
 

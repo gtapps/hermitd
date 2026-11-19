@@ -303,7 +303,7 @@ Optional plugins that add domain tools and workflows to your agent.
 - [homeassistant-hermit](../hermitd-homeassistant/README.md): Home Assistant tools, automation workflows, and safety checks.
 - [fitness-hermit](../hermitd-fitness/README.md): Strava integration, activity analysis, and training routines.
 - [hermitd-feed](../hermitd-feed/README.md): Source curation, recurring briefs, and weekly synthesis.
-- [hermitd-connector](../hermitd-connector/README.md): People you pair talk to the agent from their own Claude app, typed or by voice.
+- [hermitd-connector](../hermitd-connector/README.md): People you pair talk to the agent from their own Claude, ChatGPT, Grok or Gemini app, typed or by voice.
 - [hermitd-laravel-forge](../hermitd-laravel-forge/README.md): Laravel Forge deployments, logs, and server management.
 - [hermitd-scribe](../hermitd-scribe/README.md): GitHub issues and comments from proposals through a dedicated bot identity.
 

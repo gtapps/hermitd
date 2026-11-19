@@ -7,7 +7,7 @@
  *   bun connector-gateway.ts <store>
  *
  * Two listeners. Public TCP (the operator's tunnel points here): OAuth discovery,
- * registration, authorize, token, and `/mcp` with the two tools a Claude app calls.
+ * registration, authorize, token, and `/mcp` with the two tools a person's AI app calls.
  * Unix socket `<store>/bridge/connector.sock` (the agent's channel dials it):
  * `GET /events`, `POST /replies`, `GET /status`. The public listener serves none of
  * the socket routes.
@@ -21,7 +21,18 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { Database } from 'bun:sqlite';
 
-export const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
+// OAuth callbacks of the AI apps that may add the connector, as each vendor documents them:
+// Claude https://www.claude.com/docs/connectors/building/authentication, ChatGPT
+// https://developers.openai.com/apps-sdk/build/auth, Grok https://docs.x.com/x-ads-api/mcp,
+// Gemini https://developers.google.com/connected-apps/mcp/oauth. Only these receive a code.
+const CALLBACKS = [
+  /^https:\/\/claude\.ai\/api\/mcp\/auth_callback$/,
+  /^https:\/\/chatgpt\.com\/connector_platform_oauth_redirect$/,
+  /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/,
+  /^https:\/\/grok\.com\/connectors-oauth-exchange-code\/$/,
+  /^https:\/\/oauth-redirect\.googleusercontent\.com\/[ar]\/[A-Za-z0-9._~-]+$/,
+];
+const isAppCallback = (uri: unknown): uri is string => typeof uri === 'string' && CALLBACKS.some(re => re.test(uri));
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0, O, 1, I, L
 const CODE_LENGTH = 8;
 const CODE_TTL_S = 600;
@@ -190,7 +201,7 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
       issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/token`,
       registration_endpoint: `${issuer}/register`, response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'], code_challenge_methods_supported: ['S256'],
-      token_endpoint_auth_methods_supported: ['none'],
+      token_endpoint_auth_methods_supported: ['none'], authorization_response_iss_parameter_supported: true,
     };
   }
 
@@ -198,23 +209,27 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
     let body: any;
     try { body = await req.json(); } catch { return json({ error: 'invalid_client_metadata' }, 400); }
     const uris = body?.redirect_uris;
-    if (!Array.isArray(uris) || !uris.length || !uris.every((u: unknown) => u === CALLBACK)) {
-      return json({ error: 'invalid_redirect_uri', error_description: `Only ${CALLBACK} is accepted.` }, 400);
+    if (!Array.isArray(uris) || new Set(uris).size !== 1 || !isAppCallback(uris[0])) {
+      return json({ error: 'invalid_redirect_uri', error_description: 'Register exactly one callback of a supported AI app.' }, 400);
     }
+    const callback: string = uris[0];
     const id = `cl-${b64url(randomBytes(12))}`;
-    db.run('INSERT INTO clients (id, redirect_uri, created_at) VALUES (?, ?, ?)', [id, CALLBACK, now()]);
+    db.run('INSERT INTO clients (id, redirect_uri, created_at) VALUES (?, ?, ?)', [id, callback, now()]);
     audit('client_registered', id);
-    return json({ client_id: id, client_id_issued_at: now(), redirect_uris: [CALLBACK], token_endpoint_auth_method: 'none',
+    return json({ client_id: id, client_id_issued_at: now(), redirect_uris: [callback], token_endpoint_auth_method: 'none',
       grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'] }, 201);
   }
+
+  const clientCallback = (id: string) =>
+    (db.query('SELECT redirect_uri FROM clients WHERE id = ?').get(id) as { redirect_uri: string } | null)?.redirect_uri;
 
   function authorize(params: URLSearchParams): Response {
     const requestId = params.get('request');
     if (requestId) return authorizeStatus(requestId);
     const clientId = params.get('client_id') ?? '';
-    const client = db.query('SELECT redirect_uri FROM clients WHERE id = ?').get(clientId) as { redirect_uri: string } | null;
-    if (!client) return page('Sign-in refused', '<p>Unknown client. Add the connector again from the Claude app.</p>');
-    if (params.get('redirect_uri') !== client.redirect_uri) return page('Sign-in refused', '<p>Unexpected callback address.</p>');
+    const callback = clientCallback(clientId);
+    if (!callback) return page('Sign-in refused', '<p>Unknown client. Add the connector again from your app.</p>');
+    if (params.get('redirect_uri') !== callback) return page('Sign-in refused', '<p>Unexpected callback address.</p>');
     const challenge = params.get('code_challenge');
     if (params.get('response_type') !== 'code' || params.get('code_challenge_method') !== 'S256' || !challenge) {
       return page('Sign-in refused', '<p>This sign-in needs an S256 code challenge.</p>');
@@ -237,11 +252,11 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
 
   function authorizeStatus(id: string): Response {
     const row = db.query('SELECT * FROM requests WHERE id = ?').get(id) as any;
-    if (!row) return page('Sign-in expired', '<p>This sign-in has ended. Add the connector again from the Claude app.</p>');
+    if (!row) return page('Sign-in expired', '<p>This sign-in has ended. Add the connector again from your app.</p>');
     if (!row.grant_id) {
       if (now() - row.created_at >= CODE_TTL_S) {
         db.run('DELETE FROM requests WHERE id = ?', [id]);
-        return page('Sign-in expired', '<p>The pairing code expired. Add the connector again from the Claude app.</p>');
+        return page('Sign-in expired', '<p>The pairing code expired. Add the connector again from your app.</p>');
       }
       return waitingPage(id, row.code);
     }
@@ -249,7 +264,9 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
     db.run('INSERT INTO auth_codes (hash, grant_id, client_id, challenge, expires_at) VALUES (?, ?, ?, ?, ?)',
       [sha(code), row.grant_id, row.client_id, row.challenge, now() + AUTH_CODE_TTL_S]);
     db.run('DELETE FROM requests WHERE id = ?', [id]);
-    const target = new URL(CALLBACK);
+    const callback = clientCallback(row.client_id);
+    if (!callback) return page('Sign-in expired', '<p>This sign-in has ended. Add the connector again from your app.</p>');
+    const target = new URL(callback);
     target.searchParams.set('code', code);
     if (row.state) target.searchParams.set('state', row.state);
     target.searchParams.set('iss', issuer);
@@ -272,7 +289,8 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
     if (form.get('grant_type') === 'authorization_code') {
       const row = db.query('SELECT * FROM auth_codes WHERE hash = ?').get(sha(form.get('code') ?? '')) as any;
       if (!row || row.used || row.expires_at <= now() || row.client_id !== client) return invalid();
-      if (form.get('redirect_uri') && form.get('redirect_uri') !== CALLBACK) return invalid();
+      const callback = clientCallback(client);
+      if (!callback || (form.get('redirect_uri') && form.get('redirect_uri') !== callback)) return invalid();
       const verifier = form.get('code_verifier') ?? '';
       if (b64url(createHash('sha256').update(verifier).digest()) !== row.challenge) return invalid();
       db.run('UPDATE auth_codes SET used = 1 WHERE hash = ?', [row.hash]);
@@ -303,11 +321,13 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
       name: 'agent_message',
       description: 'Send a message to the agent in this person\'s own chat with it. The result is the agent\'s new messages in that chat, which may not answer this message yet. Relay them as written and never answer for the agent. If nothing arrived yet, call agent_replies later.',
       inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'The message, as the person said it.' } }, required: ['text'] },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     {
       name: 'agent_replies',
       description: 'Check for the agent\'s new messages in this person\'s chat, waiting briefly. Relay them as written and never answer for the agent.',
       inputSchema: { type: 'object', properties: { wait_seconds: { type: 'number', description: `How long to wait, at most ${MAX_WAIT_S}.` } } },
+      annotations: { readOnlyHint: true, openWorldHint: false },
     },
   ];
 

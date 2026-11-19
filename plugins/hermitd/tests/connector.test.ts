@@ -10,7 +10,9 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { run } from '../scripts/connector';
 import { connectorSession, socketPath, startConnector, stopConnector, storeDir } from '../scripts/lib/connector';
-import { startGateway, CALLBACK } from '../scripts/connector-gateway';
+import { startGateway } from '../scripts/connector-gateway';
+
+const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 
 const roots: string[] = [];
 afterAll(() => { for (const dir of roots) fs.rmSync(dir, { recursive: true, force: true }); });
