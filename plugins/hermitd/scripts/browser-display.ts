@@ -112,20 +112,23 @@ export function browserDisplaySettings(dir: string, deployment = browserDeployme
     viewerBind: deployment === 'container' ? process.env.HERMIT_BROWSER_VIEWER_BIND : port ? `127.0.0.1:${port}` : undefined,
   };
 }
+function closeBrowser(dir: string, holder: string, spawn: typeof spawnSync, timeout: number): void {
+  spawn(process.execPath, [path.join(import.meta.dir, 'browser-agent.ts'), '--task', holder, 'close'], { env: { ...process.env, AGENT_DIR: dir }, stdio: 'ignore', timeout, killSignal: 'SIGKILL' });
+}
 /**
  * One idle check: returns when the signed-in Chrome was first seen with no task and no person,
  * or null. Nothing else closes a Chrome whose task released it or let its claim lapse.
  */
-function closeBrowser(dir: string, holder: string, spawn: typeof spawnSync, timeout: number): void {
-  spawn(process.execPath, [path.join(import.meta.dir, 'browser-agent.ts'), '--task', holder, 'close'], { env: { ...process.env, AGENT_DIR: dir }, stdio: 'ignore', timeout, killSignal: 'SIGKILL' });
-}
 export function idleCloseStep(dir: string, idleSince: number | null, now = Date.now(), chromeAlive = persistentChromeAlive, spawn = spawnSync): number | null {
   const seconds = readSettledConfig(dir).browser.inactivity_timeout;
-  if (!seconds) return null;
+  if (!(seconds > 0)) return null;
   const options = { chromeAlive: () => chromeAlive(dir) };
   // The status read also expires a lapsed claim and wakes its waiter on this clock.
-  if (browserLease('status', undefined, dir, now, options).status !== 'available' || !chromeAlive(dir)) return null;
+  const lease = browserLease('status', undefined, dir, now, options);
+  if (lease.status !== 'available' || !chromeAlive(dir)) return null;
   if (idleSince === null) return now;
+  // A claim made and released between two checks restarts the wait from its release.
+  idleSince = Math.max(idleSince, lease.released_at ?? 0);
   if (now - idleSince < seconds * 1000) return idleSince;
   if (browserLease('idle-claim', undefined, dir, now, options).status !== 'claimed') return null;
   try { closeBrowser(dir, IDLE_CLOSE_HOLDER, spawn, 10_000); } finally { browserLease('release', IDLE_CLOSE_HOLDER, dir, now, options); }

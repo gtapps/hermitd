@@ -47,7 +47,7 @@ const main = document.querySelector('#main'), type = document.querySelector('#ty
 const notice = document.querySelector('#notice'), keyboard = document.querySelector('#keyboard');
 const app = document.querySelector('#app'), stage = document.querySelector('#stage'), view = document.querySelector('#view'), screen = document.querySelector('#screen');
 const DISPLAY = { width: 500, height: 1082 }, viewport = window.visualViewport;
-const MESSAGES = { browser_lost: 'The browser stopped. Ask your agent to reopen the page.' };
+const MESSAGES = { browser_lost: 'The browser stopped. Ask your agent to reopen the page.', browser_closing: 'The browser is closing after being idle. Ask your agent to reopen the page.' };
 let rfb, generation, holding = false, tapY = 0, fullHeight = 0;
 // The frame follows the visible area, so an open keyboard shrinks it and the tapped field stays in view.
 function fit() {

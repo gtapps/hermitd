@@ -65,6 +65,7 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
           return reply({ status: 'recovery', error: 'browser_lost' }, 409);
         }
         const result = lease('takeover', task, { login, admins: admins() });
+        if (result.status === 'closing') return reply({ status: 'closing', error: 'browser_closing' }, 409);
         // A lost HTTP response must also start the no-viewer expiry clock.
         lease('disconnect', undefined, { generation: result.epoch });
         closeStale();

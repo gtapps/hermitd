@@ -226,6 +226,16 @@ test('a task claim or a person in control resets the idle timer and never closes
   expect(spawns).toBe(0);
 });
 
+test('a claim released between two idle checks restarts the wait from its release', () => {
+  const dir = freshDir(); let spawns = 0;
+  const spawn = (() => { spawns++; return { status: 0 }; }) as any;
+  browserLease('claim', 'task-a', dir, 800_000);
+  browserLease('release', 'task-a', dir, 850_000);
+  expect(idleCloseStep(dir, 0, 901_000, () => true, spawn)).toBe(850_000);
+  expect(idleCloseStep(dir, 850_000, 1_750_000, () => true, spawn)).toBeNull();
+  expect(spawns).toBe(1);
+});
+
 test('browser.inactivity_timeout sets the delay and 0 turns the idle close off', () => {
   const dir = freshDir(); let spawns = 0;
   const spawn = (() => { spawns++; return { status: 0 }; }) as any;

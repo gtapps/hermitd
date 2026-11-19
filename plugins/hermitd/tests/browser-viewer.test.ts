@@ -196,3 +196,15 @@ test.serial('host viewer refuses implicit binding', () => {
   try { expect(() => startBrowserViewer({ dir: freshDir(), container: () => false, chromeAlive: () => false })).toThrow('browser_viewer_bind_required'); }
   finally { if (saved === undefined) delete process.env.HERMIT_BROWSER_VIEWER_BIND; else process.env.HERMIT_BROWSER_VIEWER_BIND = saved; }
 });
+
+test('Take over is refused while the idle close holds the browser', async () => {
+  const f = fixture(); try {
+    expect(browserLease('idle-claim', undefined, f.dir).status).toBe('claimed');
+    const refused = await f.request('/takeover', { method: 'POST' });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ status: 'closing', error: 'browser_closing' });
+    expect(browserLease('inspect', undefined, f.dir).human).toBeNull();
+    browserLease('release', 'idle-close', f.dir);
+    expect((await f.request('/takeover', { method: 'POST' })).status).toBe(200);
+  } finally { f.stop(); }
+});
