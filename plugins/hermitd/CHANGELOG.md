@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- The connector accepts sign-ins from ChatGPT, Grok and Gemini as well as Claude, using each app's documented callback address
+- Connector tools carry MCP annotations, so apps that confirm writes skip the prompt when checking for replies
+
 ### Fixed
 
 - `hermitd update` on a Docker agent whose installed core predates Docker approval no longer stops with `Module not found` and the `hermitd docker` usage line

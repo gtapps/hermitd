@@ -31,7 +31,7 @@ const RETRY_MS = 2000;
 
 const INSTRUCTIONS = [
   'Messages from the connector arrive as <channel source="connector" chat_id="..." message_id="..." user="..."> tags.',
-  'They come from people talking to you from their own Claude app, often by voice; Claude in the app relays your words to them.',
+  'They come from people talking to you from their own AI app, often by voice; the assistant in that app relays your words to them.',
   'Your text in this session never reaches them; only the reply tool does. Answer every message with it, passing the chat_id from the tag and, when it helps, reply_to with its message_id.',
   'Keep answers short and easy to say aloud. Each chat is one person; never mention another chat in it.',
 ].join(' ');

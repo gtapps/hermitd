@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Channel instructions name the person's AI app instead of the Claude app
+
 ## [0.0.1] - 2026-11-18
 
 ### Added

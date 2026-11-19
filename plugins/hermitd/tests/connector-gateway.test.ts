@@ -8,8 +8,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
-import { startGateway, CALLBACK } from '../scripts/connector-gateway';
+import { startGateway } from '../scripts/connector-gateway';
 import { adminRequest, socketPath, writeConfig } from '../scripts/lib/connector';
+
+const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 
 const PUBLIC = 'https://agent.example.com';
 const b64url = (buf: Buffer) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -32,16 +34,16 @@ function setup(overrides: Partial<{ wait_seconds: number; rate_per_hour: number 
 
 type Env = ReturnType<typeof setup>;
 
-async function register(env: Env): Promise<string> {
-  const res = await env.http('/register', { method: 'POST', body: JSON.stringify({ redirect_uris: [CALLBACK], client_name: 'Claude' }) });
+async function register(env: Env, callback = CALLBACK): Promise<string> {
+  const res = await env.http('/register', { method: 'POST', body: JSON.stringify({ redirect_uris: [callback], client_name: 'App' }) });
   expect(res.status).toBe(201);
   return (await res.json() as any).client_id;
 }
 
-async function startSignIn(env: Env, client: string) {
+async function startSignIn(env: Env, client: string, callback = CALLBACK) {
   const verifier = b64url(randomBytes(32));
   const challenge = b64url(createHash('sha256').update(verifier).digest());
-  const q = new URLSearchParams({ response_type: 'code', client_id: client, redirect_uri: CALLBACK, code_challenge: challenge, code_challenge_method: 'S256', state: 'st' });
+  const q = new URLSearchParams({ response_type: 'code', client_id: client, redirect_uri: callback, code_challenge: challenge, code_challenge_method: 'S256', state: 'st' });
   const html = await (await env.http(`/authorize?${q}`)).text();
   const code = /<code>([A-Z0-9]+)<\/code>/.exec(html)?.[1];
   const request = /url=\/authorize\?request=([^"]+)"/.exec(html)?.[1];
@@ -49,18 +51,18 @@ async function startSignIn(env: Env, client: string) {
 }
 
 /** Full sign-in for one person: returns their grant id and tokens. */
-async function pair(env: Env, name: string) {
-  const client = await register(env);
-  const { verifier, code, request } = await startSignIn(env, client);
+async function pair(env: Env, name: string, callback = CALLBACK) {
+  const client = await register(env, callback);
+  const { verifier, code, request } = await startSignIn(env, client, callback);
   const paired: any = await adminRequest(env.store, { kind: 'pair', code, name });
   expect(paired.status).toBe('paired');
   const done = await env.http(`/authorize?request=${encodeURIComponent(request!)}`);
   expect(done.status).toBe(302);
   const location = new URL(done.headers.get('location')!);
-  expect(location.origin + location.pathname).toBe(CALLBACK);
+  expect(location.origin + location.pathname).toBe(callback);
   expect(location.searchParams.get('state')).toBe('st');
   const tok = await env.http('/token', { method: 'POST', body: new URLSearchParams({
-    grant_type: 'authorization_code', code: location.searchParams.get('code')!, redirect_uri: CALLBACK, client_id: client, code_verifier: verifier }) });
+    grant_type: 'authorization_code', code: location.searchParams.get('code')!, redirect_uri: callback, client_id: client, code_verifier: verifier }) });
   expect(tok.status).toBe(200);
   const tokens = await tok.json() as any;
   return { grant: paired.id as string, client, access: tokens.access_token as string, refresh: tokens.refresh_token as string };
@@ -88,14 +90,30 @@ describe('sign-in', () => {
       expect(doc.authorization_servers[0]).toBe(PUBLIC);
     }
     const as = await (await env.http('/.well-known/oauth-authorization-server')).json();
-    expect(as).toMatchObject({ issuer: PUBLIC, token_endpoint: `${PUBLIC}/token`, registration_endpoint: `${PUBLIC}/register`, code_challenge_methods_supported: ['S256'] });
+    expect(as).toMatchObject({ issuer: PUBLIC, token_endpoint: `${PUBLIC}/token`, registration_endpoint: `${PUBLIC}/register`, code_challenge_methods_supported: ['S256'], authorization_response_iss_parameter_supported: true });
   });
 
-  test('registration accepts only the official callback', async () => {
+  const APP_CALLBACKS = [CALLBACK, 'https://chatgpt.com/connector_platform_oauth_redirect', 'https://chatgpt.com/connector/oauth/cb_123',
+    'https://grok.com/connectors-oauth-exchange-code/', 'https://oauth-redirect.googleusercontent.com/r/my-project'];
+
+  test('registration accepts exactly one supported app callback', async () => {
     const env = setup();
-    const res = await env.http('/register', { method: 'POST', body: JSON.stringify({ redirect_uris: ['https://evil.example/cb'] }) });
-    expect(res.status).toBe(400);
-    expect(await register(env)).toMatch(/^cl-/);
+    for (const uris of [['https://evil.example/cb'], ['http://127.0.0.1:3000/callback'], ['https://chatgpt.com/connector/oauth/x/../../evil'],
+      ['https://claude.ai/api/mcp/auth_callback?next=https://evil.example'], ['https://chatgpt.com.evil.example/connector_platform_oauth_redirect'], ['https://oauth-redirect.googleusercontent.com/r/..'],
+      [APP_CALLBACKS[0], APP_CALLBACKS[1]], []]) {
+      expect((await env.http('/register', { method: 'POST', body: JSON.stringify({ redirect_uris: uris }) })).status).toBe(400);
+    }
+    for (const callback of APP_CALLBACKS) expect(await register(env, callback)).toMatch(/^cl-/);
+  });
+
+  test('each app signs in through its own callback and no other', async () => {
+    const env = setup();
+    const other = APP_CALLBACKS[1];
+    const { access } = await pair(env, 'Other app', other);
+    expect(access).toBeTruthy();
+    const client = await register(env, other);
+    const q = new URLSearchParams({ response_type: 'code', client_id: client, redirect_uri: CALLBACK, code_challenge: 'x', code_challenge_method: 'S256' });
+    expect(await (await env.http(`/authorize?${q}`)).text()).toContain('Unexpected callback address');
   });
 
   test('authorize refuses a request without an S256 challenge', async () => {
@@ -198,6 +216,16 @@ describe('messages', () => {
     expect(text).toContain('Ten past four.');
     expect(text).toContain(`(in reply to ${event.message_id})`);
   }, 20000);
+
+  test('tools mark checking for replies read-only and sending a message as a write', async () => {
+    const env = setup();
+    const p = await pair(env, 'Ana');
+    const res = await env.http('/mcp', { method: 'POST', headers: { authorization: `Bearer ${p.access}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: ++rpcId, method: 'tools/list' }) });
+    const tools = Object.fromEntries(((await res.json() as any).result.tools as any[]).map(t => [t.name, t.annotations]));
+    expect(tools.agent_replies.readOnlyHint).toBe(true);
+    expect(tools.agent_message.readOnlyHint).toBe(false);
+  });
 
   test('a short wait says nothing yet, then agent_replies returns the late message', async () => {
     const env = setup({ wait_seconds: 1 });
