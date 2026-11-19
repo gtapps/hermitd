@@ -144,3 +144,33 @@ it('a prompt arriving mid-turn keeps a running hermit-evolve turn marked until S
     expect(readExecution(f.dir).source).toBe('channel:discord');
   } finally { f.cleanup(); }
 });
+
+const runner = (status: string, agent_type = 'hermitd:evolve-runner') => ({ id: 'a1', type: 'subagent', status, description: 'Run hermit evolve upgrade', agent_type });
+const endTurn = (dir: string, script: string, event: string, tasks: object[], extra: object = {}) =>
+  runScript(script, { cwd: dir, env: { AGENT_DIR: dir, HERMIT_RESIDENT: '1' }, stdin: JSON.stringify({ hook_event_name: event, session_id: 'resident', background_tasks: tasks, ...extra }) });
+for (const [script, event, extra] of [['stop-pipeline.ts', 'Stop', {}], ['stop-failure-stamp.ts', 'StopFailure', { error: 'api_error' }]] as [string, string, object][]) {
+  for (const [label, tasks, source, state] of [
+    ['a running evolve-runner holds the upgrade mark', [runner('running')], 'upgrade', 'in_flight'],
+    ['a finished evolve-runner releases the upgrade mark', [runner('completed')], 'upgrade', 'idle'],
+    ['another running subagent releases the upgrade mark', [runner('running', 'hermitd:task-worker')], 'upgrade', 'idle'],
+    ['a running evolve-runner does not hold a non-upgrade turn', [runner('running')], 'channel:discord', 'idle'],
+  ] as [string, object[], string, string][]) it(`${event}: ${label}`, async () => { const f = taskFixture(); try {
+    const { observeExecution, readExecution } = await taskLib();
+    observeExecution(f.dir, 'in_flight', 'resident', source, null);
+    expect((await endTurn(f.dir, script, event, tasks, extra)).exitCode).toBe(0);
+    expect(readExecution(f.dir)).toMatchObject({ state, source });
+  } finally { f.cleanup(); } });
+}
+
+it('the evolve-runner hand-back turn inherits the held upgrade mark and its Stop ends it', async () => {
+  const f = taskFixture(); try {
+    const { observeExecution, readExecution, evolveTurnRunning } = await taskLib();
+    observeExecution(f.dir, 'in_flight', 'resident', 'upgrade', null);
+    await endTurn(f.dir, 'stop-pipeline.ts', 'Stop', [runner('running')]);
+    expect(evolveTurnRunning(readExecution(f.dir))).toBe(true);
+    observeExecution(f.dir, 'in_flight', 'resident', 'other', null);
+    expect(readExecution(f.dir).source).toBe('upgrade');
+    await endTurn(f.dir, 'stop-pipeline.ts', 'Stop', []);
+    expect(evolveTurnRunning(readExecution(f.dir))).toBe(false);
+  } finally { f.cleanup(); }
+});

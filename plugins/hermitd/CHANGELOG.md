@@ -11,6 +11,8 @@
 
 - After a host reboot the watchdog restarts the agent on its first check instead of waiting about 10 minutes and sending a false "process may still be running" notice; `hermitd stop` and the start guards no longer treat the previous boot's activity as a live agent
 - The watchdog's orphan notice fires again for a later orphan once the agent has been seen running in between, instead of staying silent until a restart
+- `hermitd update` restarts the agent only after the background upgrade runner has finished and the upgrade summary is delivered, instead of cutting the upgrade off as soon as the versions are stamped
+- A launch that exits right after a restart is restarted at the watchdog's next check instead of reading as a possibly running agent for up to 10 minutes
 - `hermitd update` on a Docker agent whose installed core predates Docker approval no longer stops with `Module not found` and the `hermitd docker` usage line
 - `hermitd approve` on such an agent says to run `hermitd update` first
 

@@ -1,5 +1,5 @@
 import { stampInterrupted } from './lib/routines/unfinished';
-import { observeExecution } from './lib/tasks';
+import { observeTurnEnd } from './lib/tasks';
 // stop-failure-stamp.ts — StopFailure hook
 //
 // Claude Code fires StopFailure when a turn ends in an upstream failure instead
@@ -16,7 +16,7 @@ import { observeExecution } from './lib/tasks';
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { hermitDir, sessionId } from './lib/cc-compat';
+import { backgroundTasks, hermitDir, sessionId } from './lib/cc-compat';
 import { isGuest } from './lib/guest-marker';
 import { runHook } from './lib/hook-input';
 import { localISOStamp } from './lib/time';
@@ -40,7 +40,7 @@ function main(payload: Json): void {
 
   const stateDir = path.join(hermitDir(), 'state');
   if (isGuest(stateDir, sessionId(payload))) return;
-  observeExecution(hermitDir(), 'idle', sessionId(payload), null, 'stop-failure');
+  observeTurnEnd(hermitDir(), sessionId(payload), backgroundTasks(payload).entries, 'stop-failure');
 
   const stamp = {
     error: payload.error,
