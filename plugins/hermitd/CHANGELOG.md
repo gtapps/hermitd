@@ -16,7 +16,6 @@
 - Logins saved with agent-browser's `auth save` before this version are no longer readable by the agent; save them again with `save-login`
 - agent-browser `auth save` and `auth delete` through the wrapper are denied; use `save-login` and `delete-login`
 - agent-browser `state save` writes an encrypted `.enc` file
-
 - `hermitd update` run from a terminal no longer waits for the agent to be quiet; it restarts as soon as the upgrade has applied
 - The channel wizard offers a console walk only in Claude in Chrome and drops browser setup suggestions.
 - On a `non-technical` install, a client chat is no longer told to use a terminal: when a maintainer chat is set it is told the provider handles the step and the detail goes to the maintainer chat, and on a claude.ai sign-in with `remote` on it is pointed to the Claude app.

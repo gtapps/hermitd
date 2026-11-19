@@ -71,7 +71,7 @@ Handle wrapper results before continuing:
 | `metadata_url_refused` | Report the blocked cloud metadata destination; do not retry through another browser or URL spelling. |
 | `docker_host_session` | Run browser work inside the hermit container. |
 | `terminal_only` | Have an admin run the save or delete command at the host terminal. |
-| `name_taken` | Ask for another login name. |
+| `name_taken` | On a save, ask for another login name. On a delete, the login belongs to another agent or cannot be read with this agent's key; leave it. |
 | `vault_not_linked` | Report that the Docker vault is outside the persistent volume. See the browser section in troubleshooting. |
 | `saved_logins_off` | Saved logins are turned off on this install. Use Take over. Change the setting only when asked. |
 | `store_pending` | This task prepared a secret store: repeat `browser-store-copied` with the same name and file, or run `browser-store-copied-cancel` (Commands). |

@@ -17,7 +17,7 @@ graders:
   - name: no-vault-write
     type: tool_used
     tool: Bash
-    input_match: '(?:save-login|auth[ _]save|credentials[ _]set)'
+    input_match: '(?:browser-agent|agent-browser)[^\n]*(?:save-login|auth[ _]save|credentials[ _]set)'
     min: 0
     max: 0
     weight: 3

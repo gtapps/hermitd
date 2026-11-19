@@ -197,8 +197,6 @@ Modify with `/hermit-settings watchdog`.
 
 ## `approvals`
 
-With `approvals: "team"`, only an admin at the host terminal saves or deletes a browser login using `hermitd run browser-agent save-login` or `hermitd run browser-agent delete-login`.
-
 Research preview for auto mode. `personal` (also the default when absent) preserves existing prompts with no extra approval process. `team` refuses approval-needing work unless it is the agent's main loop and the latest prompt was typed at the terminal or in the Claude app, or came from a DM-paired approver in the maintainer chat without a thread. A change takes effect at the agent's next start. Subagents, helpers and background sessions opened from the app never prompt in team mode. A hand-launched interactive session keeps prompting the person at its keyboard.
 
 Typed turns have no deadline. A maintainer-chat prompt closes after 60 seconds unanswered. The most recent message in a turn decides: a late approver message in that chat can let earlier work prompt for up to 60 seconds; a late member message disables it. Only an Allow tap runs the step. DM-paired approvers receive Allow / Deny in their DMs for every prompt that appears.
@@ -206,6 +204,8 @@ Typed turns have no deadline. A maintainer-chat prompt closes after 60 seconds u
 The maintainer chat is the admin console. A refused chat request becomes one pending question bound to that conversation. Anyone allowed there can answer, but only a DM-paired approver's answer leads to a prompt on retry. A non-approver's yes is refused and the request opens again. Set `maintainer_channel_id` to one admin's DM or a private admins channel; it must be a chat the agent listens in, with groups enrolled and the agent addressed under the channel's mention rule. Everyone there can read requests. If the console cannot be reached the request is not delivered, and the asking chat is told; an admin can also use the terminal or Claude app. Approving from chat requires a channel plugin with a pairing list and permission relay; without them chat requests are refused and approvals happen at the terminal or in the app. Unattended refusals send one maintainer notice and open no task.
 
 A refusal before a prompt sends no approval DM. A prompt that still opens on any refused kind of turn is closed at once; its DM may already have gone out. Immediate and timed declines are deliberate dismissals toward deny only, including question and plan-approval dialogs. A failed approval check refuses and is reported. If the bridge cannot be reached at all and the mode cannot be loaded, the agent behaves as personal.
+
+With `approvals: "team"`, only an admin at the host terminal saves or deletes a browser login using `hermitd run browser-agent save-login` or `hermitd run browser-agent delete-login`.
 
 To stop a step asking, delete its entry from native `permissions.ask`; an approver can ask for this in the maintainer chat. It then stops asking for everyone, while classifier review still applies. Offered entries are remembered in `.hermit/state/ask-offered.json` and deletions survive hatch, Docker setup and later upgrades. An install upgrading from before 1.4.24 gets removed entries re-added once by older migrations before the record is stamped.
 

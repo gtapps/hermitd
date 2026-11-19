@@ -200,7 +200,7 @@ function listedLogins(output: string): { name: string; error?: unknown }[] | nul
 }
 
 async function changeLogin(
-  verb: LoginVerb, args: string[], terminal: boolean, binary: string, env: NodeJS.ProcessEnv, socketDir: string,
+  verb: LoginVerb, args: string[], binary: string, env: NodeJS.ProcessEnv, socketDir: string,
 ): Promise<number> {
   const save = verb === 'save-login';
   const [name] = args;
@@ -216,7 +216,8 @@ async function changeLogin(
   try {
     let password: string | undefined;
     if (save) {
-      password = terminal
+      // A terminal on stdin alone gets the hidden prompt, even with stdout redirected.
+      password = process.stdin.isTTY
         ? await readHidden(`Password for ${name} (not shown): `)
         : (await readStdin()).replace(/\r?\n$/, '');
       if (!password) return refuseBrowserCommand('empty_password');
@@ -389,7 +390,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
       return 1;
     }
     if (verb === 'save-login' && !host && !vaultLinked) return refuseBrowserCommand('vault_not_linked');
-    return changeLogin(verb, argv.slice(1), terminal, realBinary, env, socketDir);
+    return changeLogin(verb, argv.slice(1), realBinary, env, socketDir);
   }
   const deny = ['auth_save', 'auth_delete', 'credentials_set', 'credentials_delete'];
   if (!config.browser.saved_logins) deny.push('auth_login');

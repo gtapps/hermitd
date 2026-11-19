@@ -46,8 +46,6 @@ Account connectors are added and authorized on claude.ai, and each one reaches e
 
 ## Browser phone takeover
 
-With team approvals, only an admin at the host terminal saves or deletes a login using `hermitd run browser-agent save-login` or `hermitd run browser-agent delete-login`.
-
 Managed browsers on Docker and hosts work without takeover setup for public pages. Phone sign-in is opt-in: `/hermitd:browser` collects a short `browser.admins` list in chat through the native-prompt settings route, asks for one host `hermitd run browser-host` command, verifies it, and declares one `browser-handback` stream monitor. Existing hermits receive the browser through upgrade; viewer access remains opt-in.
 
 Takeover needs Tailscale. Docker also needs server 28.0.0 or newer and an image whose `/etc/hermit/managed-browser` marker contains `display=plugin`. The plugin owns display startup independently of the entrypoint; older bare markers require `hermitd update`. For an unconverted install, run `/hermitd:docker-customize "Convert"` before the host rebuild. It publishes one loopback port and uses tailnet-only Serve, never Funnel. Linux/WSL2 tmux hosts use the same command for prerequisites and display startup; macOS hosts outside Docker and interactive hermits refuse takeover; Docker Desktop host-networking loopback reachability remains unverified and a failed route check is reported. No image rebuild is needed for takeover on an image already carrying the managed browser.
@@ -57,6 +55,8 @@ Only an exact allowlisted Tailscale user login may load the viewer or its WebSoc
 The login request stays in its original conversation and mentions the admin using the configured handle for that channel. Its `?task=<id>` link names the waiting task. Hand back leaves Chrome and its page running. A durable event wakes the resident; the task writer conditionally clears only the matching `waiting_since`, then the agent checks the expected page and account before continuing once. Forced release, expiry and browser loss wake it too, without claiming sign-in succeeded. The viewer never writes task records. When a secret store is prepared, the preparing task can only run `store-copied` or close the signed-in browser. The store reads the clipboard only after a hand back for that task. A new claim holder triggers cleanup before its first persistent browser command.
 
 This checks tailnet identity, not the agent's honesty: the agent inside the container, a host process reaching loopback, or another container reaching port 6080 on the same Docker network can forge the identity header. See [known limitations](security.md#known-limitations).
+
+With team approvals, only an admin at the host terminal saves or deletes a login using `hermitd run browser-agent save-login` or `hermitd run browser-agent delete-login`.
 
 ## Unattended settings writes
 
