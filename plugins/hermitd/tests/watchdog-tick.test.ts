@@ -17,6 +17,22 @@ test('orphan across two ticks sends one notice and never restarts', async () => 
   } finally { f.cleanup(); }
 });
 
+test('a live session in between lets the next orphan notify again', async () => {
+  const f = watchdogWorld();
+  try {
+    f.signals.alive = false;
+    f.signals.age = 10;
+    await tick(f.world);
+    f.signals.alive = true;
+    await tick(f.world);
+    f.signals.alive = false;
+    await tick(f.world);
+    expect(f.notices).toHaveLength(2);
+    for (const notice of f.notices) expect(notice).toContain('pgrep -af');
+    expect(f.restarts).toEqual([]);
+  } finally { f.cleanup(); }
+});
+
 test('dead session requests one restart', async () => {
   const f = watchdogWorld();
   try {

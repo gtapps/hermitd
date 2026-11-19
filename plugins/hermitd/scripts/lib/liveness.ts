@@ -7,6 +7,7 @@
  * the claude process that spawned them. So a fresh mtime on any of them proves
  * *some* instance of this project is alive right now, readable identically from
  * the host or from inside the container, with no shared PID namespace required.
+ * Files older than the current boot are ignored: no process survives a reboot.
  *
  * Asymmetry that matters: fresh proves alive; stale proves nothing. The routine
  * monitor writes every 60s, but heartbeat-liveness tracks `heartbeat.every`
@@ -17,6 +18,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 /** A liveness signal older than this reads as "unknown", never "alive". */
@@ -28,12 +30,17 @@ const LIVENESS_FILES = [
   'state/.heartbeat',
 ];
 
-/** Age in seconds of the freshest liveness file, or null when none exist. */
-export function sharedLivenessAgeSecs(hermitRoot = '.hermit'): number | null {
+/** Age in seconds of the freshest liveness file written since this boot, or null when none. */
+export function sharedLivenessAgeSecs(
+  hermitRoot = '.hermit',
+  bootMs = Date.now() - os.uptime() * 1000,
+): number | null {
   let best: number | null = null;
   for (const rel of LIVENESS_FILES) {
     try {
-      const age = (Date.now() - fs.statSync(path.join(hermitRoot, rel)).mtimeMs) / 1000;
+      const mtimeMs = fs.statSync(path.join(hermitRoot, rel)).mtimeMs;
+      if (mtimeMs < bootMs) continue;
+      const age = (Date.now() - mtimeMs) / 1000;
       if (best === null || age < best) best = age;
     } catch {}
   }

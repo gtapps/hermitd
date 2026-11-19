@@ -116,7 +116,8 @@ describe('docker-preflight.ts', () => {
 
     const out = await run(dir, { PATH: `${bin}:${process.env.PATH}` });
     expect(out.live_owner.mode).toBe('tmux');
-    expect(out.live_owner.age_secs).toBeGreaterThanOrEqual(660);
+    // null when the machine booted under 660s ago: a pre-boot file is no signal.
+    expect(out.live_owner.age_secs === null || out.live_owner.age_secs >= 660).toBe(true);
   });
 
   // The older `pwd | sed 's|/|-|g'` scheme replaced slashes only, so any dotted
