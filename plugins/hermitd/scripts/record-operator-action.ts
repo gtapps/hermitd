@@ -78,7 +78,7 @@ function write() {
   writeMarker(TMP_PATH, STATE_PATH);
 }
 
-// Stop that closed an operator turn: the turn's end is operator activity too, so quiet
+// Stop (or an interrupt's `turn-end`) that closed an operator turn: the turn's end is operator activity too, so quiet
 // clocks (context clearing, watchdog operator-recent) run from when the work
 // the operator asked for finished, not from when the prompt arrived.
 export function recordOperatorTurnEnd(nowMs: number): void {

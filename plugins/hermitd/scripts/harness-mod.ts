@@ -172,7 +172,10 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       // A marker newer than the reported end is the next prompt's, opened while this chain ran.
       const marker = path.join(dir, 'state', 'operator-turn-open.json');
       if (observeExecution(dir, 'idle', sessionId, null, input.reason, input.at) && !(Date.parse(readJson(marker)?.at ?? '') > input.at)) {
-        try { fs.unlinkSync(marker); } catch {}
+        let closed = false;
+        try { fs.unlinkSync(marker); closed = true; } catch {}
+        // As at Stop, quiet time runs from the operator turn's end; a turn with no marker was not the operator's.
+        if (closed) (await import('./record-operator-action')).recordOperatorTurnEnd(input.at);
       }
       return { decision: 'ok' };
     }

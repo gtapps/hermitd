@@ -730,3 +730,18 @@ test('turn-end clears the open operator turn only when it ends the turn', async 
   await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
   expect(fs.existsSync(marker)).toBe(false);
 });
+
+test('turn-end restarts the quiet clock only when it closes an operator turn', async () => {
+  const { wd, dir } = fixture();
+  const lastAction = path.join(dir, 'state/last-operator-action.json');
+  const at = Date.now();
+  const stamp = () => fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'in_flight', turn_id: 't', at: new Date(at - 1000).toISOString(), source: null, cc_session_id: 'resident', reason: null }));
+  // An interrupted routine or heartbeat turn opened no marker: it is not operator activity.
+  stamp();
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(fs.existsSync(lastAction)).toBe(false);
+  stamp();
+  fs.writeFileSync(path.join(dir, 'state/operator-turn-open.json'), JSON.stringify({ at: new Date(at - 1000).toISOString() }));
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(Date.parse(JSON.parse(fs.readFileSync(lastAction, 'utf8')).at)).toBe(at);
+});
