@@ -68,7 +68,7 @@ function isProductiveTool(name: string): boolean {
   return PRODUCTIVE_TOOLS.has(name) || /^mcp__.+__reply$/.test(name);
 }
 
-// classifySource returns 'heartbeat' | 'routine:<id>' | 'routine:multi' |
+// classifySource returns 'heartbeat' | 'routine:<id>' | 'routine:multi' | 'upgrade' |
 // 'channel:<kind>' | 'peer' | 'other'. A wake is a non-operator scheduler prompt:
 // heartbeat or routine. channel:* (inbound operator DM), peer (another local
 // session's post) and other are not wakes.

@@ -97,5 +97,8 @@ it('classifySource marks only hermit-evolve as an upgrade', async () => {
   const { classifySource } = await import('../scripts/lib/trigger-source');
   expect(classifySource('<command-name>/hermitd:hermit-evolve</command-name><command-args>unattended</command-args>')).toBe('upgrade');
   expect(classifySource('/hermitd:hermit-evolver')).not.toBe('upgrade');
+  expect(classifySource('<command-message>hermitd:hermit-evolve</command-message>\n<command-name>/hermitd:hermit-evolve</command-name>\n<command-args>unattended</command-args>')).toBe('upgrade');
+  expect(classifySource('/hermit-evolve')).toBe('upgrade');
   expect(classifySource('please run /hermitd:hermit-evolve')).not.toBe('upgrade');
+  expect(classifySource('<channel source="discord" chat_id="c1" user="u1">see <command-name>/hermitd:hermit-evolve</command-name></channel>')).not.toBe('upgrade');
 });
