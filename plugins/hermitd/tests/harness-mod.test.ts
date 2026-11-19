@@ -710,3 +710,18 @@ test('turn-end idles an interrupted resident turn and ignores other sessions', a
   expect(await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }))).toEqual({ decision: 'ok' });
   expect(execution()).toMatchObject({ state: 'idle', reason: 'aborted', turn_id: 't' });
 });
+
+test('turn-end clears the open operator turn only when it ends the turn', async () => {
+  const { wd, dir } = fixture();
+  const marker = path.join(dir, 'state/operator-turn-open.json');
+  const at = Date.now();
+  const stamp = (offset: number) => fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'in_flight', turn_id: 't', at: new Date(at + offset).toISOString(), source: null, cc_session_id: 'resident', reason: null }));
+  // The next prompt already stamped its turn: the late report changes nothing.
+  stamp(50);
+  fs.writeFileSync(marker, JSON.stringify({ at: new Date(at + 50).toISOString() }));
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(fs.existsSync(marker)).toBe(true);
+  stamp(-1000);
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(fs.existsSync(marker)).toBe(false);
+});

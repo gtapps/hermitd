@@ -811,19 +811,20 @@ export function passesExecutionBoundary(dir: string, options: { minTokens?: numb
   }
   return { ok: true };
 }
-export function observeExecution(dir: string, state: Execution['state'], session: string | null, source: string | null, reason: string | null, endedAt?: number): void {
+export function observeExecution(dir: string, state: Execution['state'], session: string | null, source: string | null, reason: string | null, endedAt?: number): boolean {
   try {
     const previous = readExecution(dir);
     // A turn end reported after the fact (the mod's interrupt) must not idle a later turn's stamp:
     // the next prompt's hook can run before the mod's write lands.
-    if (endedAt !== undefined && (previous.state === 'idle' || !(Date.parse(previous.at ?? '') <= endedAt))) return;
+    if (endedAt !== undefined && (previous.state === 'idle' || !(Date.parse(previous.at ?? '') <= endedAt))) return false;
     // A compaction keeps the source only of a turn the prompt hook tracked; an untracked turn's
     // compaction (a wake that never stamped in_flight) must not inherit the last turn's source.
     const inherited = reason !== 'precompact' || previous.state === 'in_flight' || previous.reason === 'precompact' ? previous.source : null;
     // A prompt arriving mid-turn (a queued channel message) runs this hook too; it must not clear a
     // running hermit-evolve turn's mark, which only Stop, StopFailure or an interrupt ends.
     writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at: new Date().toISOString(), source: state === 'in_flight' && evolveTurnRunning(previous) ? 'upgrade' : source ?? inherited, cc_session_id: session, reason }) + '\n');
-  } catch { /* advisory, never gates the hook */ }
+    return true;
+  } catch { /* advisory, never gates the hook */ return false; }
 }
 /** A `hermit-evolve` turn is running: the prompt hook marked its source `upgrade`, and an
  *  auto-compaction within the last hour keeps that turn running until Stop marks it idle. */

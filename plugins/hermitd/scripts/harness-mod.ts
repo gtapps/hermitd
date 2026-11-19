@@ -168,7 +168,10 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       // An interrupted turn fires no Stop or StopFailure; the mod reports its end instead.
       const input = JSON.parse(payload) as { at: number; reason: string };
       const { observeExecution } = await import('./lib/tasks');
-      observeExecution(dir, 'idle', sessionId, null, input.reason, input.at);
+      // The open operator-turn marker would otherwise hold monitor-delivered routines for its TTL.
+      if (observeExecution(dir, 'idle', sessionId, null, input.reason, input.at)) {
+        try { fs.unlinkSync(path.join(dir, 'state', 'operator-turn-open.json')); } catch {}
+      }
       return { decision: 'ok' };
     }
     default:
