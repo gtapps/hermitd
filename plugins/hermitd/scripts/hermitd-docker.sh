@@ -785,7 +785,7 @@ case "$CMD" in
       if [ $# -gt 0 ]; then echo "[hermit] Waiting for hermit-evolve (up to 45 min)..."; fi
       # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
       _stamp_update_marker
-      if output=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2> >(grep --line-buffered '^\[hermit\]' >&2)); then
+      if output=$(cd "$PROJECT_DIR" && _dc exec -T "$SERVICE" .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
         parsed=$(bun -e '
           try {
             const r = JSON.parse(process.argv[1]);
@@ -982,10 +982,8 @@ case "$CMD" in
         fi
       fi
     fi
-    # Without a version gap this still waits for an evolve turn that stamped the versions earlier.
-    if [ "$EVOLVE_SENT" = false ]; then
-      _await_upgrade || return 0
-    fi
+    # A hermit-evolve turn still running, typed during the build or left from an earlier update, ends first.
+    _await_upgrade || return 0
     _validate_compose
     if [ "$PLUGINS_ONLY" = true ]; then _build_netguard_cached; fi
     trap 'exit 130' INT

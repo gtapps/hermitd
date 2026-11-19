@@ -2572,17 +2572,7 @@ if (import.meta.main) {
       process.exit(1);
     }
     // An operator-run update waits for evolve and the turn that ran it, never for a quiet agent.
-    let noted = Object.keys(expected).length > 0;
-    const boundary: typeof passesExecutionBoundary = (root) => {
-      const verdict = evolveTurnEnded(root);
-      // The caller prints its own line when it waits for versions; otherwise say why it holds.
-      if (!verdict.ok && !noted) {
-        noted = true;
-        process.stderr.write('[hermit] Waiting for hermit-evolve to finish (up to 15 min)...\n');
-      }
-      return verdict;
-    };
-    console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected, { boundary })));
+    console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected, { boundary: evolveTurnEnded })));
   } else if (subcommand === 'restart') {
     const reason = process.argv[3] ?? 'manual';
     const flags = parseRestartFlags(process.argv.slice(4));

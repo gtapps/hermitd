@@ -817,7 +817,10 @@ export function observeExecution(dir: string, state: Execution['state'], session
     // A compaction keeps the source only of a turn the prompt hook tracked; an untracked turn's
     // compaction (a wake that never stamped in_flight) must not inherit the last turn's source.
     const inherited = reason !== 'precompact' || previous.state === 'in_flight' || previous.reason === 'precompact' ? previous.source : null;
-    writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at: new Date().toISOString(), source: source ?? inherited, cc_session_id: session, reason }) + '\n');
+    // A prompt arriving mid-turn (a queued channel message) runs this hook too; it must not clear a
+    // running hermit-evolve turn's mark, which only Stop or StopFailure ends.
+    const upgrading = previous.source === 'upgrade' && (previous.state === 'in_flight' || (previous.state === 'unknown' && previous.reason === 'precompact'));
+    writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at: new Date().toISOString(), source: state === 'in_flight' && upgrading ? 'upgrade' : source ?? inherited, cc_session_id: session, reason }) + '\n');
   } catch { /* advisory, never gates the hook */ }
 }
 interface Binding { cc_session_id: string; task_ids: string[]; at: string; turn_id: string | null }

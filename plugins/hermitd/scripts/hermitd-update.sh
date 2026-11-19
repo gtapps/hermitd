@@ -271,7 +271,7 @@ _await_upgrade() {
   if [ $# -gt 0 ]; then echo "[hermit] Waiting for hermit-evolve (up to 45 min)..."; fi
   # Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
   _stamp_update_marker
-  if output=$(cd "$PROJECT_DIR" && .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2> >(grep --line-buffered '^\[hermit\]' >&2)); then
+  if output=$(cd "$PROJECT_DIR" && .hermit/bin/hermitd-watchdog await-upgrade "$@" </dev/null 2>/dev/null); then
     parsed=$(bun -e '
       try {
         const r = JSON.parse(process.argv[1]);

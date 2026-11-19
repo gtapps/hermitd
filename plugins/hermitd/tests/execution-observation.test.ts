@@ -102,3 +102,18 @@ it('classifySource marks only hermit-evolve as an upgrade', async () => {
   expect(classifySource('please run /hermitd:hermit-evolve')).not.toBe('upgrade');
   expect(classifySource('<channel source="discord" chat_id="c1" user="u1">see <command-name>/hermitd:hermit-evolve</command-name></channel>')).not.toBe('upgrade');
 });
+
+it('a prompt arriving mid-turn keeps a running hermit-evolve turn marked until Stop', async () => {
+  const f = taskFixture(); try {
+    const { observeExecution, readExecution } = await taskLib();
+    observeExecution(f.dir, 'in_flight', 's', 'upgrade', null);
+    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    expect(readExecution(f.dir)).toMatchObject({ state: 'in_flight', source: 'upgrade' });
+    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
+    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    expect(readExecution(f.dir).source).toBe('upgrade');
+    observeExecution(f.dir, 'idle', 's', null, null);
+    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    expect(readExecution(f.dir).source).toBe('channel:discord');
+  } finally { f.cleanup(); }
+});
