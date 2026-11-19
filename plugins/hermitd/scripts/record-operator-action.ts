@@ -78,15 +78,20 @@ function write() {
   writeMarker(TMP_PATH, STATE_PATH);
 }
 
-// Stop that closed an operator turn: the turn's end is operator activity too, so quiet
+// Stop (or an interrupt's `turn-end`) that closed an operator turn: the turn's end is operator activity too, so quiet
 // clocks (context clearing, watchdog operator-recent) run from when the work
 // the operator asked for finished, not from when the prompt arrived.
 export function recordOperatorTurnEnd(nowMs: number): void {
+  // An interrupt's end is reported after the fact: never move back a stamp a later prompt wrote.
+  let recorded = NaN;
+  try { recorded = Date.parse(JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8')).at); } catch {}
+  if (recorded > nowMs) return;
   writeMarker(TMP_PATH, STATE_PATH, nowMs);
 }
 
 // Marks "an operator turn is in flight" for `routines.ts due`'s defer gate. The pipeline
-// calls this at hook exit for kept, non-blocked prompts; stop-pipeline.ts clears it at Stop,
+// calls this at hook exit for kept, non-blocked prompts; stop-pipeline.ts clears it at Stop
+// (harness-mod.ts `turn-end` on an interrupt),
 // with a 60-min TTL as a backstop so a failed Stop cannot starve routines forever.
 export function openTurnMarker() {
   writeMarker(TURN_TMP, TURN_PATH);

@@ -699,3 +699,55 @@ test('approval reasons bind one chat-authority request to the console and reserv
   expect(unattended).not.toContain('permissions.ask');
   expect(approvalReason({ ...input, console: null, variant: 'chat' })).not.toContain(' open .hermit');
 });
+
+test('turn-end idles an interrupted resident turn and ignores other sessions', async () => {
+  const { wd, dir } = fixture();
+  const execution = () => JSON.parse(fs.readFileSync(path.join(dir, 'state/execution.json'), 'utf8'));
+  const at = Date.now();
+  fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'in_flight', turn_id: 't', at: new Date(at - 1000).toISOString(), source: null, cc_session_id: 'resident', reason: null }));
+  expect(await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }), 'guest')).toEqual({ decision: 'pass' });
+  expect(execution().state).toBe('in_flight');
+  expect(await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }))).toEqual({ decision: 'ok' });
+  expect(execution()).toMatchObject({ state: 'idle', reason: 'aborted', turn_id: 't' });
+});
+
+test('turn-end clears the open operator turn only when it ends the turn', async () => {
+  const { wd, dir } = fixture();
+  const marker = path.join(dir, 'state/operator-turn-open.json');
+  const at = Date.now();
+  const stamp = (offset: number) => fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'in_flight', turn_id: 't', at: new Date(at + offset).toISOString(), source: null, cc_session_id: 'resident', reason: null }));
+  // The next prompt already stamped its turn: the late report changes nothing.
+  stamp(50);
+  fs.writeFileSync(marker, JSON.stringify({ at: new Date(at + 50).toISOString() }));
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(fs.existsSync(marker)).toBe(true);
+  // The next prompt opened its marker after the turn-end check passed: the marker stays.
+  stamp(-1000);
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(fs.existsSync(marker)).toBe(true);
+  stamp(-1000);
+  fs.writeFileSync(marker, JSON.stringify({ at: new Date(at - 1000).toISOString() }));
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(fs.existsSync(marker)).toBe(false);
+});
+
+test('turn-end restarts the quiet clock only when it closes an operator turn', async () => {
+  const { wd, dir } = fixture();
+  const lastAction = path.join(dir, 'state/last-operator-action.json');
+  const at = Date.now();
+  const stamp = () => fs.writeFileSync(path.join(dir, 'state/execution.json'), JSON.stringify({ state: 'in_flight', turn_id: 't', at: new Date(at - 1000).toISOString(), source: null, cc_session_id: 'resident', reason: null }));
+  // An interrupted routine or heartbeat turn opened no marker: it is not operator activity.
+  stamp();
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(fs.existsSync(lastAction)).toBe(false);
+  stamp();
+  fs.writeFileSync(path.join(dir, 'state/operator-turn-open.json'), JSON.stringify({ at: new Date(at - 1000).toISOString() }));
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(Date.parse(JSON.parse(fs.readFileSync(lastAction, 'utf8')).at)).toBe(at);
+  // A prompt recorded after the interrupt (a chat command the mod took in) keeps its later stamp.
+  stamp();
+  fs.writeFileSync(path.join(dir, 'state/operator-turn-open.json'), JSON.stringify({ at: new Date(at - 1000).toISOString() }));
+  fs.writeFileSync(lastAction, JSON.stringify({ at: new Date(at + 500).toISOString() }));
+  await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
+  expect(Date.parse(JSON.parse(fs.readFileSync(lastAction, 'utf8')).at)).toBe(at + 500);
+});

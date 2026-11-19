@@ -245,6 +245,21 @@ test('a request queued mid-turn is claimed on the main turn.complete, not on a s
   expect(r.commands).toEqual(['advisor']);
 });
 
+test('only an interrupted main turn reports its end to the bridge', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on);
+  on('turn.complete', () => ({ text: '' }));
+  await boot($);
+  await $.turn.complete(completed('main'));
+  await $.turn.complete({ ...completed('sub', 'worker'), reason: 'aborted', isAborted: true });
+  await clock.settle();
+  expect(r.calls).not.toContain('turn-end');
+  const before = clock.now();
+  await $.turn.complete({ ...completed('main'), reason: 'aborted', isAborted: true });
+  await clock.settle();
+  expect(r.payloads['turn-end']).toEqual([{ at: before, reason: 'aborted' }]);
+});
+
 test('a pause aborts the running main turn at once, ahead of queued work', async ($, on) => {
   const clock = mock.clock(on);
   const r = rig(on);

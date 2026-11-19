@@ -19,6 +19,7 @@
 - `/hermitd:hermit-settings channels` can set or clear `members_only`, and `channel-register` accepts it
 - `hermitd <verb> --help` prints usage instead of resolving a project or running the verb, so `hermitd stop --help` no longer stops the agent
 - `hermitd-start`, `hermitd-stop` and `hermitd-watchdog` refuse to run from a checkout whose `.hermit/` projects the agent's root above it, and `hermitd` commands, `hermitd-status` and `hermitd-attach` run there target that root, so a stray boot no longer splits state or blocks helper reports
+- Execution state reads idle as soon as a turn is interrupted with Esc, and stays in flight while a Stop hook continues the turn, so watchdog maintenance, `hermitd update` and graceful shutdown no longer wait up to an hour or act mid-turn, and an interrupted turn no longer holds routines back
 
 ## [1.4.36] - 2026-11-18
 
