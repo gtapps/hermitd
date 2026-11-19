@@ -9,9 +9,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { startGateway } from '../scripts/connector-gateway';
+import { adminRequest, socketPath, writeConfig } from '../scripts/lib/connector';
 
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
-import { adminRequest, socketPath, writeConfig } from '../scripts/lib/connector';
 
 const PUBLIC = 'https://agent.example.com';
 const b64url = (buf: Buffer) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -99,7 +99,7 @@ describe('sign-in', () => {
   test('registration accepts exactly one supported app callback', async () => {
     const env = setup();
     for (const uris of [['https://evil.example/cb'], ['http://127.0.0.1:3000/callback'], ['https://chatgpt.com/connector/oauth/x/../../evil'],
-      ['https://claude.ai/api/mcp/auth_callback?next=https://evil.example'], ['https://chatgpt.com.evil.example/connector_platform_oauth_redirect'],
+      ['https://claude.ai/api/mcp/auth_callback?next=https://evil.example'], ['https://chatgpt.com.evil.example/connector_platform_oauth_redirect'], ['https://oauth-redirect.googleusercontent.com/r/..'],
       [APP_CALLBACKS[0], APP_CALLBACKS[1]], []]) {
       expect((await env.http('/register', { method: 'POST', body: JSON.stringify({ redirect_uris: uris }) })).status).toBe(400);
     }

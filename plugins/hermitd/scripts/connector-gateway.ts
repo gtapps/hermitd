@@ -30,7 +30,7 @@ const CALLBACKS = [
   /^https:\/\/chatgpt\.com\/connector_platform_oauth_redirect$/,
   /^https:\/\/chatgpt\.com\/connector\/oauth\/[A-Za-z0-9_-]+$/,
   /^https:\/\/grok\.com\/connectors-oauth-exchange-code\/$/,
-  /^https:\/\/oauth-redirect\.googleusercontent\.com\/[ar]\/[A-Za-z0-9._~-]+$/,
+  /^https:\/\/oauth-redirect\.googleusercontent\.com\/[ar]\/[A-Za-z0-9][A-Za-z0-9._~-]*$/,
 ];
 const isAppCallback = (uri: unknown): uri is string => typeof uri === 'string' && CALLBACKS.some(re => re.test(uri));
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no 0, O, 1, I, L
@@ -260,12 +260,12 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
       }
       return waitingPage(id, row.code);
     }
+    const callback = clientCallback(row.client_id);
+    if (!callback) return page('Sign-in expired', '<p>This sign-in has ended. Add the connector again from your app.</p>');
     const code = token();
     db.run('INSERT INTO auth_codes (hash, grant_id, client_id, challenge, expires_at) VALUES (?, ?, ?, ?, ?)',
       [sha(code), row.grant_id, row.client_id, row.challenge, now() + AUTH_CODE_TTL_S]);
     db.run('DELETE FROM requests WHERE id = ?', [id]);
-    const callback = clientCallback(row.client_id);
-    if (!callback) return page('Sign-in expired', '<p>This sign-in has ended. Add the connector again from your app.</p>');
     const target = new URL(callback);
     target.searchParams.set('code', code);
     if (row.state) target.searchParams.set('state', row.state);
@@ -507,7 +507,7 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
 
   function sweep(): void {
     const t = now();
-    db.run('DELETE FROM clients WHERE created_at < ? AND id NOT IN (SELECT client_id FROM grants)', [t - ORPHAN_CLIENT_TTL_S]);
+    db.run('DELETE FROM clients WHERE created_at < ? AND id NOT IN (SELECT client_id FROM grants) AND id NOT IN (SELECT client_id FROM requests)', [t - ORPHAN_CLIENT_TTL_S]);
     // An approved request whose page never came back to collect its code is gone after twice the TTL.
     db.run('DELETE FROM requests WHERE created_at < ? AND (grant_id IS NULL OR created_at < ?)', [t - CODE_TTL_S, t - 2 * CODE_TTL_S]);
     db.run('DELETE FROM auth_codes WHERE expires_at < ?', [t]);
