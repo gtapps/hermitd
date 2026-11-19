@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- `hermitd update` on a Docker agent whose installed core predates Docker approval no longer stops with `Module not found` and the `hermitd docker` usage line
+- `hermitd approve` on such an agent says to run `hermitd update` first
+
 ## [1.4.37] - 2026-11-19
 
 ### Added

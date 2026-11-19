@@ -113,11 +113,15 @@ function updateProject(project: string, args: string[], docker: boolean): number
     console.log('[hermit] Dry run: skipping the host core update.');
     return dockerScript(project, ['update', ...args], host.installPath);
   }
-  const approval = execute(process.execPath, [path.join(host.installPath, 'scripts/approve.ts'), project], '/', { BUN_OPTIONS: bunIsolation });
-  if (approval !== 0) {
-    console.error('[hermit] Nothing was applied.');
-    dockerScript(project, ['notify-approval'], host.installPath);
-    return approval;
+  // A core older than Docker approval has no checker; the updated install's lifecycle records the baseline after the host update.
+  const approve = path.join(host.installPath, 'scripts/approve.ts');
+  if (fs.existsSync(approve)) {
+    const approval = execute(process.execPath, [approve, project], '/', { BUN_OPTIONS: bunIsolation });
+    if (approval !== 0) {
+      console.error('[hermit] Nothing was applied.');
+      dockerScript(project, ['notify-approval'], host.installPath);
+      return approval;
+    }
   }
   if (host.scope === 'user') console.error(`[hermit] Skipping shared user-scope host update: ${host.id}`);
   else {
@@ -306,8 +310,14 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     if (args.length) throw new Error(usage('approve'));
     if (!isDockerProject(project, root)) throw new Error('hermitd approve requires a Docker project');
     warnProjectContainsHostConfig(project, root);
-    const install = hostInstall(project).installPath;
-    return execute(process.execPath, [path.join(install, 'scripts/approve.ts'), project], '/', { BUN_OPTIONS: bunIsolation });
+    const host = hostInstall(project);
+    const approve = path.join(host.installPath, 'scripts/approve.ts');
+    if (!fs.existsSync(approve)) {
+      // hermitd update skips a shared user-scope core, so it cannot bring this one forward.
+      const step = host.scope === 'user' ? `claude plugin update ${host.id} --scope user` : 'hermitd update';
+      throw new Error(`This agent's installed core predates hermitd approve. Run ${step} first.`);
+    }
+    return execute(process.execPath, [approve, project], '/', { BUN_OPTIONS: bunIsolation });
   }
   const project = target(args, verb, cwd, root);
   const useDocker = isDockerProject(project, root);
