@@ -57,4 +57,23 @@ describe('sharedLivenessAgeSecs', () => {
     writeAged(root, 'state/.heartbeat', 10);
     expect(sharedLivenessAgeSecs(root)!).toBeLessThan(120);
   });
+
+  test('ignores a file written before the current boot', () => {
+    const root = makeRoot();
+    writeAged(root, 'state/routine-monitor-liveness.json', 30);
+    expect(sharedLivenessAgeSecs(root, Date.now() - 10_000)).toBeNull();
+  });
+
+  test('keeps a file written after the boot', () => {
+    const root = makeRoot();
+    writeAged(root, 'state/routine-monitor-liveness.json', 30);
+    expect(sharedLivenessAgeSecs(root, Date.now() - 3_600_000)!).toBeLessThan(120);
+  });
+
+  test('a pre-boot file does not mask a post-boot one', () => {
+    const root = makeRoot();
+    writeAged(root, 'state/routine-monitor-liveness.json', 30);
+    writeAged(root, 'state/.heartbeat', 5);
+    expect(sharedLivenessAgeSecs(root, Date.now() - 20_000)!).toBeLessThan(20);
+  });
 });
