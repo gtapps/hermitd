@@ -4,7 +4,7 @@
 
 ### Added
 
-- The running agent offers console setup when it can sign in, naming the changes, account and credential destination before proceeding.
+- The running agent offers console setup when it can sign in, naming the changes, account and credential destination before proceeding; otherwise it gives the manual steps and keeps the credential out of the chat.
 - `store-copied` saves a credential copied during takeover to a private env file under `.claude.local/` and reports only its length.
 - `hermitd run browser-agent save-login <name> --url <url> --username <user>` saves a login for an account that belongs to the agent; the agent signs in with it and the password stays out of the conversation
 - Docker agents keep saved logins on the `claude-config` volume across recreates

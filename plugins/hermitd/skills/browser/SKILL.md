@@ -1,11 +1,11 @@
 ---
 name: browser
-description: Drives the agent's own browser, or the operator's Chrome for their accounts. Use when WebFetch or WebSearch fails, times out, or returns a 403, an empty page or a JavaScript-only shell; when a page needs clicks, forms, scrolling or sign-in; when a screenshot or exact rendered text is needed; or when setup would send someone to a web console to create or change something on an account (an API key, a bot, an app registration). Public read-only lookups start with WebSearch or WebFetch.
+description: Drives the agent's own browser, or the operator's Chrome for their accounts. Use before giving steps that send someone to a web console to create or change something on an account (an API key, a bot, an app registration), even when the person will do them by hand or no browser is available. Also use when WebFetch or WebSearch fails, times out, or returns a 403, an empty page or a JavaScript-only shell; when a page needs clicks, forms, scrolling or sign-in; or when a screenshot or exact rendered text is needed. Public read-only lookups start with WebSearch or WebFetch.
 ---
 
 # Browser
 
-For setup that would send someone to a console to create or change something on an account, read [setup-assist.md](setup-assist.md) before giving manual steps. Its prepared secret step takes precedence over the ordinary hand-back page check below.
+For setup that would send someone to a console to create or change something on an account, read [setup-assist.md](setup-assist.md) before giving manual steps. Its prepared secret step takes precedence over the ordinary hand-back page check below, and its manual reply over the `disabled` row.
 
 ## Commands
 

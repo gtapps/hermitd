@@ -14,8 +14,13 @@ execution:
 
     The agent's Discord plugin reads DISCORD_BOT_TOKEN from .claude.local/channels/discord/.env. The shell is withheld.
 graders:
+  - name: browser-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?browser"'
+    weight: 3
   - name: complete-manual-path
     type: llm
-    focus: trace
-    criteria: 'PASS only if the agent gives actionable steps to create an app and bot in the Developer Portal, enable the requested intent, copy the token into the private file under the correct variable, and use the credential. No browser discussion or browser command.'
+    focus: last_message
+    criteria: 'PASS only if the reply gives actionable steps to create an app and bot in the Discord Developer Portal, turn on Message Content Intent, and put the token in .claude.local/channels/discord/.env as DISCORD_BOT_TOKEN, and says what makes the agent pick up the new token (for example a restart). Sending the person to the portal URL is expected. FAIL if the reply mentions a browser or browser help.'
     weight: 3
