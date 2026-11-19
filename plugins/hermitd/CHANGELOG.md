@@ -5,6 +5,7 @@
 ### Fixed
 
 - After a host reboot the watchdog restarts the agent on its first check instead of waiting about 10 minutes and sending a false "process may still be running" notice; `hermitd stop` and the start guards no longer treat the previous boot's activity as a live agent
+- The watchdog's orphan notice fires again for a later orphan once the agent has been seen running in between, instead of staying silent until a restart
 
 ## [1.4.37] - 2026-11-19
 

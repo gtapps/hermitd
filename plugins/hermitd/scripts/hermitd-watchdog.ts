@@ -2032,8 +2032,13 @@ const MAINTENANCE: Decision<TickContext>[] = [
 ];
 
 async function deadSession({ world, timezone, snap }: RecoveryContext): Promise<DecisionResult> {
-  if (snap.liveness.state === 'alive') return 'continue';
   const ws = readWatchdogState(world);
+  // Any non-orphan verdict ends the orphan episode, so the next one notifies again.
+  if (snap.liveness.state !== 'orphan' && ws.orphan_notified) {
+    ws.orphan_notified = false;
+    writeWatchdogState(ws, world);
+  }
+  if (snap.liveness.state === 'alive') return 'continue';
   if (snap.liveness.state === 'orphan') {
     if (!ws.orphan_notified) {
       world.notify.operator(composeOrphanMessage(timezone));
@@ -2042,10 +2047,6 @@ async function deadSession({ world, timezone, snap }: RecoveryContext): Promise<
       writeWatchdogState(ws, world);
     }
     return 'stop';
-  }
-  if (ws.orphan_notified) {
-    ws.orphan_notified = false;
-    writeWatchdogState(ws, world);
   }
   await world.actions.restart(snap.sessionName, 'dead-process', snap.runtime, timezone);
   return 'stop';
