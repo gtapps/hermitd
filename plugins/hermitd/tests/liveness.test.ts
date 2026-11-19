@@ -32,7 +32,7 @@ describe('sharedLivenessAgeSecs', () => {
     const root = makeRoot();
     writeAged(root, 'state/heartbeat-liveness.json', 4000);
     writeAged(root, 'state/routine-monitor-liveness.json', 30);
-    const age = sharedLivenessAgeSecs(root);
+    const age = sharedLivenessAgeSecs(root, 0);
     expect(age).not.toBeNull();
     // freshest is the 30s file, not the 4000s one
     expect(age!).toBeLessThan(120);
@@ -55,7 +55,7 @@ describe('sharedLivenessAgeSecs', () => {
   test('picks up the bare .heartbeat file', () => {
     const root = makeRoot();
     writeAged(root, 'state/.heartbeat', 10);
-    expect(sharedLivenessAgeSecs(root)!).toBeLessThan(120);
+    expect(sharedLivenessAgeSecs(root, 0)!).toBeLessThan(120);
   });
 
   test('ignores a file written before the current boot', () => {
@@ -80,7 +80,7 @@ describe('sharedLivenessAgeSecs', () => {
   test('keeps a file written after the last launch', () => {
     const root = makeRoot();
     writeAged(root, 'state/.boot-id', 30);
-    writeAged(root, 'state/routine-monitor-liveness.json', 5);
+    writeAged(root, 'state/routine-monitor-liveness.json', 0);
     expect(sharedLivenessAgeSecs(root)!).toBeLessThan(30);
   });
 });

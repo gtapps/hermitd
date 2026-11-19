@@ -350,7 +350,7 @@ describe('list_hermits + get_status', () => {
       blockers: null,
     };
     writeAged(hermit(wd.dir, 'sessions', '.status.json'), 15, JSON.stringify(status));
-    writeAged(hermit(wd.dir, 'state', '.heartbeat'), 15, '');
+    writeAged(hermit(wd.dir, 'state', '.heartbeat'), 0, '');
 
     const s = McpSession.start(['--roots', wd.dir]);
     try {
@@ -512,7 +512,7 @@ describe('get_health, get_brief, get_version', () => {
     const wd = setupWorkdir();
     tmpdirs.push(wd.dir);
     writeJson(hermit(wd.dir, 'state', 'runtime.json'), { runtime_mode: 'tmux', shutdown_completed_at: null });
-    writeAged(hermit(wd.dir, 'state', 'routine-monitor-liveness.json'), 20);
+    writeAged(hermit(wd.dir, 'state', 'routine-monitor-liveness.json'), 0);
     const ts = new Date(Date.now() - 30_000).toISOString();
     writeJson(hermit(wd.dir, 'state', 'doctor-report.json'), {
       ts,

@@ -166,7 +166,7 @@ describe('loadDashboardState', () => {
   }));
 
   test('alive_now is true when a shared liveness file is fresh', withHermitDir((hermitDir) => {
-    writeLivenessFile(hermitDir, 30); // 30s old, well under the 600s threshold
+    writeLivenessFile(hermitDir, 0); // written now: never below the boot floor, even on a just-booted CI runner
     const state = loadDashboardState(hermitDir);
     expect(state.alive_now).toBe(true);
   }));
@@ -308,7 +308,7 @@ describe('loadDashboardState', () => {
 describe('renderDashboard', () => {
   test('idle + fresh liveness renders "On watch", not "Idle"', withHermitDir((hermitDir) => {
     writeJson(hermitDir, 'state/execution.json', { state: 'idle', at: new Date().toISOString() });
-    writeLivenessFile(hermitDir, 30);
+    writeLivenessFile(hermitDir, 0);
     const { html } = renderDashboard(loadDashboardState(hermitDir));
     expect(html).toContain('On watch');
     expect(html).not.toContain('>Idle<');
@@ -324,7 +324,7 @@ describe('renderDashboard', () => {
 
   test('in_progress + fresh liveness still renders "Working", not "On watch"', withHermitDir((hermitDir) => {
     writeJson(hermitDir, 'state/execution.json', { state: 'in_flight', at: new Date().toISOString() });
-    writeLivenessFile(hermitDir, 30);
+    writeLivenessFile(hermitDir, 0);
     const { html } = renderDashboard(loadDashboardState(hermitDir));
     expect(html).toContain('Working');
     expect(html).not.toContain('On watch');
