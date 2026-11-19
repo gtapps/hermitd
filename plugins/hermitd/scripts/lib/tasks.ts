@@ -775,7 +775,7 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 
-export interface Execution { state: 'in_flight' | 'idle' | 'unknown'; turn_id: string | null; at: string | null; started_at?: string | null; source: string | null; cc_session_id: string | null; reason: string | null; registry?: string | null; waiting_for?: string | null; display?: string }
+export interface Execution { state: 'in_flight' | 'idle' | 'unknown'; turn_id: string | null; at: string | null; source: string | null; cc_session_id: string | null; reason: string | null; registry?: string | null; waiting_for?: string | null; display?: string }
 export function readExecution(dir: string, options: { registryFallback?: true } = {}): Execution {
   const raw = readJson(path.join(dir, 'state/execution.json'));
   const empty: Execution = { state: 'unknown', turn_id: null, at: null, source: null, cc_session_id: null, reason: null };
@@ -814,9 +814,10 @@ export function passesExecutionBoundary(dir: string, options: { minTokens?: numb
 export function observeExecution(dir: string, state: Execution['state'], session: string | null, source: string | null, reason: string | null): void {
   try {
     const previous = readExecution(dir);
-    const at = new Date().toISOString();
-    // `started_at` is when the current turn began; a compaction or a Stop keeps it.
-    writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at, started_at: state === 'in_flight' ? at : previous.started_at ?? null, source: source ?? previous.source, cc_session_id: session, reason }) + '\n');
+    // A compaction keeps the source only of a turn the prompt hook tracked; an untracked turn's
+    // compaction (a wake that never stamped in_flight) must not inherit the last turn's source.
+    const inherited = reason !== 'precompact' || previous.state === 'in_flight' || previous.reason === 'precompact' ? previous.source : null;
+    writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at: new Date().toISOString(), source: source ?? inherited, cc_session_id: session, reason }) + '\n');
   } catch { /* advisory, never gates the hook */ }
 }
 interface Binding { cc_session_id: string; task_ids: string[]; at: string; turn_id: string | null }

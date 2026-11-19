@@ -5674,40 +5674,27 @@ test('legacy resident-missing stamp does not prevent restart without RESIDENT.md
 
 
 describe('await-upgrade', () => {
-  test('evolveTurnEnded holds only a running turn that a queued evolve started', withHermit(async (h) => {
+  test('evolveTurnEnded holds only a running hermit-evolve turn', withHermit(async (h) => {
     const root = path.join(h.dir, '.hermit');
-    const submit = Date.now() - 10 * 60 * 1000;
-    const iso = (ms: number) => new Date(ms).toISOString();
-    const execution = (state: string, startedMs: number, reason: string | null = null) =>
-      writeState(h, 'execution.json', { state, turn_id: 't', at: iso(Date.now()), started_at: iso(startedMs), source: null, cc_session_id: 's', reason });
+    const execution = (state: string, source: string | null, reason: string | null = null, at = new Date()) =>
+      writeState(h, 'execution.json', { state, turn_id: 't', at: at.toISOString(), source, cc_session_id: 's', reason });
     const hold = { ok: false, reason: 'execution-not-idle' } as const;
-    // No queued evolve on record: nothing holds.
-    execution('in_flight', submit);
-    expect(evolveTurnEnded(root)).toEqual({ ok: true });
-    fs.mkdirSync(path.join(root, 'state', 'harness-outcomes'), { recursive: true });
-    writeState(h, 'harness-outcomes/q1.json', { id: 'q1', source: 'update', purpose: 'upgrade', commands: [], finished_at: iso(submit),
-      legs: [{ command: '/reload-plugins', status: 'ok', text: 'Reloaded' }, { command: '/hermitd:hermit-evolve', status: 'ok', text: 'submitted', submitted_at: iso(submit) }] });
+    execution('in_flight', 'upgrade');
     expect(evolveTurnEnded(root)).toEqual(hold);
-    // An auto-compaction keeps the evolve turn running under its start time.
-    execution('unknown', submit + 50, 'precompact');
+    // An auto-compaction keeps the evolve turn running until Stop marks it idle.
+    execution('unknown', 'upgrade', 'precompact');
     expect(evolveTurnEnded(root)).toEqual(hold);
-    execution('idle', submit + 50);
+    execution('idle', 'upgrade');
     expect(evolveTurnEnded(root)).toEqual({ ok: true });
-    // A later turn, compacted or not, never holds.
-    execution('in_flight', submit + 5 * 60 * 1000);
+    // Any other running turn, compacted or not, never holds.
+    execution('in_flight', 'conversation');
     expect(evolveTurnEnded(root)).toEqual({ ok: true });
-    execution('unknown', submit + 5 * 60 * 1000, 'precompact');
+    execution('unknown', 'heartbeat', 'precompact');
     expect(evolveTurnEnded(root)).toEqual({ ok: true });
-    // Unknown after a fresh start holds nothing.
-    execution('unknown', submit, 'resident-start:startup');
+    // A fresh start, or a compaction stamp over an hour old, holds nothing.
+    execution('unknown', 'upgrade', 'resident-start:startup');
     expect(evolveTurnEnded(root)).toEqual({ ok: true });
-  }));
-  test('evolveTurnEnded releases an evolve turn started over an hour ago', withHermit(async (h) => {
-    const root = path.join(h.dir, '.hermit');
-    const submit = Date.now() - 61 * 60 * 1000;
-    fs.mkdirSync(path.join(root, 'state', 'harness-outcomes'), { recursive: true });
-    writeState(h, 'harness-outcomes/q1.json', { id: 'q1', legs: [{ command: '/hermitd:hermit-evolve', status: 'ok', text: 'submitted', submitted_at: new Date(submit).toISOString() }] });
-    writeState(h, 'execution.json', { state: 'unknown', turn_id: 't', at: new Date().toISOString(), started_at: new Date(submit).toISOString(), reason: 'precompact' });
+    execution('unknown', 'upgrade', 'precompact', new Date(Date.now() - 61 * 60 * 1000));
     expect(evolveTurnEnded(root)).toEqual({ ok: true });
   }));
   test('a quiet restart is ready, replaced, or timed out', withHermit(async (h) => {

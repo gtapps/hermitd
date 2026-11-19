@@ -823,6 +823,8 @@ exit 0
       if (scenario === 'evolve-ready' || scenario === 'evolve-pending') {
         expect(idx('harness-request')).toBeLessThan(idx('await-upgrade --expect'));
         expect(idx('await-upgrade --expect')).toBeLessThan(idx(' build '));
+        // The evolve wait already covers the turn that ran it: no second wait before the bounce.
+        expect(calls.filter(l => l.includes('await-upgrade'))).toHaveLength(1);
       }
       if (scenario === 'full' || scenario === 'evolve-ready') {
         expect(idx('claude plugin marketplace update')).toBeLessThan(idx(' build '));

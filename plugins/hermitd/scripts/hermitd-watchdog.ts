@@ -35,7 +35,7 @@ import { contextPolicyHash } from './lib/context-policy';
 import { utcISOStamp as utcStamp, currentHHMM, currentHHMMOrUTC, friendlyBoundary, parseDuration as parseDurationMs } from './lib/time';
 import { writeRuntimeJson, readRuntimeJson, refuseProjectionRoot, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
 import { tmuxSessionAlive, getSessionName as deriveSessionName } from './lib/tmux';
-import { enqueue, failedLeg, readOutcome, OUTCOMES_DIR, type EnqueueResult, type QueueOutcome, type QueueRequest } from './lib/harness-mod';
+import { enqueue, failedLeg, readOutcome, type EnqueueResult, type QueueOutcome, type QueueRequest } from './lib/harness-mod';
 import { paneRootPids, collectTree, verifyTreeExited } from './lib/proc';
 import { residentLiveness, REAL_LIVENESS_DEPS, type LivenessVerdict } from './lib/resident-liveness';
 import { postToSession } from './lib/peer-post';
@@ -2540,31 +2540,14 @@ export async function awaitUpgrade(hermitRoot: string, expected: Record<string, 
   }
 }
 
-/** When the core mod last submitted a queued `hermit-evolve`, from its outcome record. */
-function lastEvolveSubmit(hermitRoot: string): number {
-  let latest = NaN;
-  let names: string[] = [];
-  try { names = fs.readdirSync(path.join(hermitRoot, 'state', OUTCOMES_DIR)); } catch {}
-  for (const name of names) {
-    try {
-      const outcome = JSON.parse(fs.readFileSync(path.join(hermitRoot, 'state', OUTCOMES_DIR, name), 'utf8')) as QueueOutcome;
-      for (const leg of outcome.legs ?? []) {
-        const at = Date.parse(leg.submitted_at ?? '');
-        if (leg.command === '/hermitd:hermit-evolve' && leg.status === 'ok' && !(at <= latest)) latest = at;
-      }
-    } catch {}
-  }
-  return latest;
-}
-
-/** Not ready while a queued `hermit-evolve` turn is still running: the running turn (an auto-compaction
- *  keeps it running under the same start) began within a minute of the last evolve submit, less than an hour ago. */
+/** Not ready while a `hermit-evolve` turn is running: the prompt hook marks its source `upgrade`, and an
+ *  auto-compaction within the last hour keeps that turn running until Stop marks it idle. */
 export function evolveTurnEnded(hermitRoot: string): ReturnType<typeof passesExecutionBoundary> {
   const execution = readExecution(hermitRoot);
-  const running = execution.state === 'in_flight' || (execution.state === 'unknown' && execution.reason === 'precompact');
-  const started = Date.parse(execution.started_at ?? '');
-  const evolving = running && Date.now() - started < 60 * 60 * 1000 && Math.abs(started - lastEvolveSubmit(hermitRoot)) <= 60 * 1000;
-  return evolving ? { ok: false, reason: 'execution-not-idle' } : { ok: true };
+  const compacting = execution.state === 'unknown' && execution.reason === 'precompact'
+    && Date.now() - Date.parse(execution.at ?? '') < 60 * 60 * 1000;
+  return execution.source === 'upgrade' && (execution.state === 'in_flight' || compacting)
+    ? { ok: false, reason: 'execution-not-idle' } : { ok: true };
 }
 
 if (import.meta.main) {
