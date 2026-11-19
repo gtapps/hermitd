@@ -67,3 +67,19 @@ it('resident SessionStart records its source in session-start.json and a later p
 } finally { f.cleanup(); } });
 it('blocked guest prompt does not write execution', async () => { const f = taskFixture(); try { markGuest(path.join(f.dir, 'state'), 'guest'); await runScript('user-prompt-pipeline.ts', { cwd: f.dir, env: { AGENT_DIR: f.dir }, stdin: JSON.stringify({ session_id: 'guest', prompt: '<channel source="discord" chat_id="c1" user="u1">Hello</channel>' }) }); expect(fs.existsSync(path.join(f.dir, 'state/execution.json'))).toBe(false); } finally { f.cleanup(); } });
 it('old in_flight and malformed observations read unknown', async () => { const f = taskFixture(); try { const lib = await taskLib(); f.put('state/execution.json', { state: 'in_flight', at: '2020-01-01T00:00:00Z' }); expect(lib.readExecution(f.dir).state).toBe('unknown'); fs.writeFileSync(path.join(f.dir, 'state/execution.json'), '{'); expect(lib.readExecution(f.dir).state).toBe('unknown'); } finally { f.cleanup(); } });
+
+it('a compaction or Stop keeps the turn start; a new turn resets it', async () => {
+  const f = taskFixture(); try {
+    const { observeExecution, readExecution } = await taskLib();
+    observeExecution(f.dir, 'in_flight', 's', 'terminal', null);
+    const started = readExecution(f.dir).started_at;
+    expect(typeof started).toBe('string');
+    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
+    expect(readExecution(f.dir).started_at).toBe(started);
+    observeExecution(f.dir, 'idle', 's', null, null);
+    expect(readExecution(f.dir).started_at).toBe(started);
+    await Bun.sleep(5);
+    observeExecution(f.dir, 'in_flight', 's', 'terminal', null);
+    expect(readExecution(f.dir).started_at).not.toBe(started);
+  } finally { f.cleanup(); }
+});

@@ -35,7 +35,7 @@ import { contextPolicyHash } from './lib/context-policy';
 import { utcISOStamp as utcStamp, currentHHMM, currentHHMMOrUTC, friendlyBoundary, parseDuration as parseDurationMs } from './lib/time';
 import { writeRuntimeJson, readRuntimeJson, refuseProjectionRoot, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
 import { tmuxSessionAlive, getSessionName as deriveSessionName } from './lib/tmux';
-import { enqueue, failedLeg, readOutcome, type EnqueueResult, type QueueOutcome, type QueueRequest } from './lib/harness-mod';
+import { enqueue, failedLeg, readOutcome, OUTCOMES_DIR, type EnqueueResult, type QueueOutcome, type QueueRequest } from './lib/harness-mod';
 import { paneRootPids, collectTree, verifyTreeExited } from './lib/proc';
 import { residentLiveness, REAL_LIVENESS_DEPS, type LivenessVerdict } from './lib/resident-liveness';
 import { postToSession } from './lib/peer-post';
@@ -2540,23 +2540,31 @@ export async function awaitUpgrade(hermitRoot: string, expected: Record<string, 
   }
 }
 
-/** A boundary that waits for the turn that stamped the versions to end: the turn running at its first
- *  check, held only when it started no later than the last `config.json` write. An auto-compaction
- *  leaves the turn running under the same id, so it still counts until Stop marks it idle. */
-export function turnEnded(): typeof passesExecutionBoundary {
-  let held: string | null | undefined;
-  return (hermitRoot) => {
-    const execution = readExecution(hermitRoot);
-    const running = execution.state === 'in_flight' || (execution.state === 'unknown' && execution.reason === 'precompact');
-    if (held === undefined) {
-      let stamped = Infinity;
-      try { stamped = fs.statSync(path.join(hermitRoot, 'config.json')).mtimeMs; } catch {}
-      // A compaction stamp records when it compacted, not when the turn started.
-      held = running && (execution.state !== 'in_flight' || Date.parse(execution.at!) <= stamped) ? execution.turn_id : null;
-    }
-    return held !== null && running && execution.turn_id === held
-      ? { ok: false, reason: 'execution-not-idle' } : { ok: true };
-  };
+/** When the core mod last submitted a queued `hermit-evolve`, from its outcome record. */
+function lastEvolveSubmit(hermitRoot: string): number {
+  let latest = NaN;
+  let names: string[] = [];
+  try { names = fs.readdirSync(path.join(hermitRoot, 'state', OUTCOMES_DIR)); } catch {}
+  for (const name of names) {
+    try {
+      const outcome = JSON.parse(fs.readFileSync(path.join(hermitRoot, 'state', OUTCOMES_DIR, name), 'utf8')) as QueueOutcome;
+      for (const leg of outcome.legs ?? []) {
+        const at = Date.parse(leg.submitted_at ?? '');
+        if (leg.command === '/hermitd:hermit-evolve' && leg.status === 'ok' && !(at <= latest)) latest = at;
+      }
+    } catch {}
+  }
+  return latest;
+}
+
+/** Not ready while a queued `hermit-evolve` turn is still running: the running turn (an auto-compaction
+ *  keeps it running under the same start) began within a minute of the last evolve submit, less than an hour ago. */
+export function evolveTurnEnded(hermitRoot: string): ReturnType<typeof passesExecutionBoundary> {
+  const execution = readExecution(hermitRoot);
+  const running = execution.state === 'in_flight' || (execution.state === 'unknown' && execution.reason === 'precompact');
+  const started = Date.parse(execution.started_at ?? '');
+  const evolving = running && Date.now() - started < 60 * 60 * 1000 && Math.abs(started - lastEvolveSubmit(hermitRoot)) <= 60 * 1000;
+  return evolving ? { ok: false, reason: 'execution-not-idle' } : { ok: true };
 }
 
 if (import.meta.main) {
@@ -2581,7 +2589,17 @@ if (import.meta.main) {
       process.exit(1);
     }
     // An operator-run update waits for evolve and the turn that ran it, never for a quiet agent.
-    console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected, { boundary: turnEnded() })));
+    let noted = Object.keys(expected).length > 0;
+    const boundary: typeof passesExecutionBoundary = (root) => {
+      const verdict = evolveTurnEnded(root);
+      // The caller prints its own line when it waits for versions; otherwise say why it holds.
+      if (!verdict.ok && !noted) {
+        noted = true;
+        process.stderr.write('[hermit] Waiting for hermit-evolve to finish (up to 15 min)...\n');
+      }
+      return verdict;
+    };
+    console.log(JSON.stringify(await awaitUpgrade(REAL_WORLD.paths.hermitRoot, expected, { boundary })));
   } else if (subcommand === 'restart') {
     const reason = process.argv[3] ?? 'manual';
     const flags = parseRestartFlags(process.argv.slice(4));
