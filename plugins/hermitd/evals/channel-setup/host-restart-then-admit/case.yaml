@@ -9,6 +9,8 @@ execution:
   timeout_seconds: 240
   allowed_tools: [Skill, Read, Glob, Grep, Bash, AskUserQuestion]
   prompt: |
+    /hermitd:channel-setup
+
     I typed /hermitd:channel-setup in a separate host session. The project has a live tmux agent with no chat and the existing Telegram entry is selected. In this run I saved the valid token in the private file. My answer to the restart choice is Restart now. After the restart command, the liveness check reports a running tmux agent. Then I DM the bot and choose Ready to pair with code ABC123. The admitted sender id is 12345, the project access file is present, and I accept the recommended wake restriction. Any later choices keep current settings.
 
     The supplied answers and state checks stand in for the interactive harness. Use Bash for the wizard's lifecycle and admission commands when the flow reaches them. Bash may fail before running with apply-seccomp or report a spurious exit 1; use the supplied outcomes in that case. No real session or bot runs in the fixture.
@@ -16,12 +18,19 @@ graders:
   - name: lifecycle-command
     type: tool_used
     tool: Bash
-    input_match: 'hermitd\s+restart(?:\s|$)'
+    input_match: 'hermitd\s+restart\b'
     min: 1
     max: 1
     weight: 3
-  - name: stage-order
-    type: llm
-    focus: trace
-    criteria: "PASS only if the trace runs a plain host restart after consent, establishes that the agent is up, and attempts shared admission in the same run. The restart must come before the pairing command. Mentioning a restart, using --fresh, or asking the operator to invoke the wizard again fails."
+  - name: no-fresh-restart
+    type: tool_used
+    tool: Bash
+    input_match: 'hermitd\s+restart[^"]*--fresh'
+    min: 0
+    max: 0
+    weight: 3
+  - name: restart-before-pair
+    type: tool_order
+    before: {tool: Bash, input_match: 'hermitd\s+restart\b'}
+    after: {tool: Bash, input_match: 'channel-access\.ts.*?\bpair\s+telegram\b'}
     weight: 3
