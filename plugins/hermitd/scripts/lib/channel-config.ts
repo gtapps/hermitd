@@ -35,7 +35,10 @@ export function* iterChannelConfigs(config: Json): Generator<[string, Json]> {
 export function* channelStateDirs(hermitDir: string, config: Json): Generator<[string, string]> {
   if (!isDict(config)) return;
   for (const [name, cfg] of iterChannelConfigs(config)) {
-    yield [name, channelStateDir(hermitDir, name, cfg)];
+    // A malformed `state_dir` names no folder; it must not throw out of a caller's gate.
+    let dir: string;
+    try { dir = channelStateDir(hermitDir, name, cfg); } catch { continue; }
+    yield [name, dir];
   }
 }
 

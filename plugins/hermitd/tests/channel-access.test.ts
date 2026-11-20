@@ -129,6 +129,7 @@ for (const [verb, args, error] of [
   ['group-remove', ['maintainer'], 'maintainer_chat'],
   ['group-remove', ['123', 'extra'], 'invalid_options'],
   ['unpair', ['a/b'], 'invalid_id'],
+  ['unpair', ['..'], 'invalid_id'],
   ['unpair', ['1', 'extra'], 'invalid_options'],
 ] as const) {
   test(`${verb} refuses ${error} without writes`, async () => {

@@ -12,7 +12,8 @@ import { writeFileAtomic } from './lib/md-write';
 import { failJson, printJson } from './lib/cli';
 
 export const CODE_RE = /^[A-Za-z0-9]{6}$/;
-export const GROUP_ID_RE = /^[\w.~+@;=-]{1,128}$/;
+// Dot segments cannot name an approval file or a Discord API path.
+export const GROUP_ID_RE = /^(?!\.+$)[\w.~+@;=-]{1,128}$/;
 
 interface GroupEntry {
   requireMention: boolean;
@@ -240,16 +241,13 @@ async function main(): Promise<void> {
     const allowFrom = previous.filter(id => id !== value);
     const channelConfig = config.channels[channel];
     let markerRemoved = false;
-    // Dot segments cannot name an approval file.
-    if (value !== '.' && value !== '..') {
-      try {
-        fs.unlinkSync(path.join(path.dirname(file), 'approved', value));
-        markerRemoved = true;
-        auditConfigChange(dir, { approved: { [value]: true } }, { approved: {} },
-          'channel-access', `${channel}/access.json`);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      }
+    try {
+      fs.unlinkSync(path.join(path.dirname(file), 'approved', value));
+      markerRemoved = true;
+      auditConfigChange(dir, { approved: { [value]: true } }, { approved: {} },
+        'channel-access', `${channel}/access.json`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
     if (allowFrom.length === previous.length && !markerRemoved) {
       printJson({ changed: false });
@@ -258,7 +256,10 @@ async function main(): Promise<void> {
     if (allowFrom.length !== previous.length) writeAccess(dir, channel, file, access, { ...access, allowFrom });
     const warnings = [];
     if (previous.length && !allowFrom.length) warnings.push('last_approver');
-    if (configuredIds(channelConfig.operators).includes(value) || channelConfig.allowed_users?.[0] === value) {
+    // Mirrors isPrimaryOperator: `operators`, when present, replaces the first `allowed_users` entry.
+    if (channelConfig.operators !== undefined
+      ? configuredIds(channelConfig.operators).includes(value)
+      : configuredIds(channelConfig.allowed_users)[0] === value) {
       warnings.push('primary_operator');
     }
     printJson({ changed: true, channel, sender_id: value, warnings });

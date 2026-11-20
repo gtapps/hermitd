@@ -621,6 +621,7 @@ for (const mode of ['bypassPermissions', 'auto', 'default']) {
     ['group-allow discord 123 --open', 'let in discord chat 123: open to everyone'],
     ['group-remove discord 123', 'stop listening in discord chat 123'],
     ['unpair discord 123', 'remove approver 123 on discord'],
+    ['\\\n  unpair \\\n  discord 123', 'remove approver 123 on discord'],
   ]) {
     test(`channel access ${mode}: ${args}`, async () => {
       const dir = fixture();
@@ -758,7 +759,9 @@ test('channel state writes ask on chat and unknown turns and are silent on typed
     for (const name of ['access.json', '.env']) {
       await check(tool, { file_path: path.join(alias, name) });
     }
-    for (const file_path of ['channel-state/inbox/item', 'channel-state-other/access.json', 'channel-state/$file', 'channel-state/`file`']) {
+    // Edit/Write paths are literal, so `$` names a file rather than an expansion.
+    await check(tool, { file_path: path.join(folder, '$x', '..', 'access.json') });
+    for (const file_path of ['channel-state/inbox/item', 'channel-state-other/access.json']) {
       const base = JSON.parse(payload({ dir, tool, input: { file_path } }));
       expectSilent(await runGate(JSON.stringify({ ...base, transcript_path: channelTranscript }), dir));
     }
@@ -771,6 +774,8 @@ test('channel state writes ask on chat and unknown turns and are silent on typed
     'mv fixture alias/.env',
     'tee alias/.env',
     "sed -i 's/x/y/' alias/.env",
+    'mv fixture alias',
+    'cp fixture alias/',
   ]) {
     await check('Bash', { command });
   }

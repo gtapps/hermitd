@@ -204,6 +204,7 @@ export function turnConversation(payload: Json): RoutineOrigin {
     return { kind: 'channel', key: conversationKey(env.sourceKey, env.chatId, env.thread),
       primary: isPrimaryOperator(config, env.source, env.userId, env.chatId),
       canCompleteAuthentication: canCompleteAuthentication(config, env.source, env.userId, env.chatId),
+      // A display name is sender-chosen, so the ID that sent it rides along.
       requester: env.userName ? clip(safeForLLM(env.userName).trim(), 100) : undefined,
       proven: !prompt.joined };
   } catch {
@@ -720,8 +721,9 @@ const SHELL_COMMAND_PARTS = /(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g;
 
 const CHANNEL_FILE_BYPASS_DENIAL = 'Channel access file changes from chat are refused in bypass mode; use a normal session or edit from the terminal.';
 
-function channelFileLabels(targets: string[], cwd: string, origin: () => RoutineOrigin): string[] {
-  const literalTargets = targets.filter(target => target && !SHELL_EXPANDS.test(target));
+function channelFileLabels(targets: string[], cwd: string, origin: () => RoutineOrigin, shell = true): string[] {
+  // Edit/Write paths are literal; only a shell target can still expand.
+  const literalTargets = targets.filter(target => target && !(shell && SHELL_EXPANDS.test(target)));
   if (!literalTargets.length) return [];
   const dir = hermitDir();
   const channels = [...channelStateDirs(dir, readConfigRaw(dir))];
@@ -731,7 +733,8 @@ function channelFileLabels(targets: string[], cwd: string, origin: () => Routine
     const root = resolvedTarget(folder, cwd);
     const prefix = root.endsWith(path.sep) ? root : root + path.sep;
     const inbox = path.join(root, 'inbox');
-    return paths.some(target => target.startsWith(prefix) && target !== root
+    // A `cp`/`mv` onto the folder itself lands inside it.
+    return paths.some(target => (target === root || target.startsWith(prefix))
       && target !== inbox && !target.startsWith(inbox + path.sep))
       ? [`channel access files (${name})`] : [];
   });
@@ -740,12 +743,16 @@ function channelFileLabels(targets: string[], cwd: string, origin: () => Routine
   return value.kind === 'terminal' && value.proven ? [] : labels;
 }
 
+const CHANNEL_ACCESS_WRITES = new Set(['pair', 'policy', 'unpair', 'group-remove', 'group-allow', 'group-add']);
+
 /** Label recognized channel writes; shell expansions remain opaque. */
 function channelAccessAsks(command: string): string[] {
   if (!/channel-access(?:\.ts)?\b/.test(command)) return [];
   const commands = command.match(SHELL_COMMAND_PARTS) ?? [];
   const labels: string[] = [];
-  for (const part of commands) {
+  for (const raw of commands) {
+    // A backslash-newline continues the same command.
+    const part = raw.replace(/\\\n/g, ' ');
     const call = /channel-access(?:\.ts)?['"]?\s+(?:'[^']*'|"[^"]*"|\S+)\s+(\S+)(?:\s+(.*))?/.exec(part);
     if (!call) continue;
     const verb = call[1].replace(/['"\\]/g, '');
@@ -756,7 +763,10 @@ function channelAccessAsks(command: string): string[] {
       continue;
     }
     const args = (call[2] ?? '').replace(/['"\\]/g, '').match(/^(\S+)\s+(\S+)(.*)/);
-    if (!args) continue;
+    if (!args) {
+      if (CHANNEL_ACCESS_WRITES.has(verb)) labels.push('channel-access');
+      continue;
+    }
     const [, channel, value, flags] = args;
     if (verb === 'pair') labels.push(`pair ${channel} code ${value} (home chat if unset)`);
     if (verb === 'policy') labels.push(`policy ${channel} ${value}`);
@@ -1077,7 +1087,7 @@ function main(payload: any): void {
     const fp = typeof input.file_path === 'string' ? input.file_path : '';
     const match = targetsConfigFile(fp);
     const nativePermissions = /(?:^|\/)\.claude\/settings(?:\.local)?\.json$/i.test(fp.replace(/\\/g, '/'));
-    const channelFiles = channelFileLabels([fp], cwd, origin);
+    const channelFiles = channelFileLabels([fp], cwd, origin, false);
     // Only a proven terminal turn is the operator; a wake, a joined sender or an unreadable turn is not.
     const notOperator = () => { const value = origin(); return !(value.kind === 'terminal' && value.proven); };
     if (payload.permission_mode === 'bypassPermissions' && channelFiles.length) {
