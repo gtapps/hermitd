@@ -12,6 +12,10 @@
 - Access management works with third-party channel plugins that use the official `access.json` format.
 - The agent asks before writing channel state files from chat or an unknown turn, apart from `inbox/` files.
 
+### Fixed
+
+- Reports and notes that only mention channel access, settings, or routine commands in quoted heredocs run without an approval prompt or a bypass-mode refusal.
+
 ### Upgrade Instructions
 
 **Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`).
