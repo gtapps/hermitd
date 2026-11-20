@@ -35,4 +35,4 @@ graders:
   - name: approval-pending
     type: llm
     focus: mock_calls
-    criteria: 'PASS only if the channel reply identifies Joana and #geral and says approval is needed or pending. FAIL if it says the change already happened.'
+    criteria: 'PASS if the channel reply names Joana and #geral and says the change is prepared but still needs approval or is waiting on one. Saying Joana cannot talk there yet is correct and passes. FAIL only if it says Joana can already talk there or that the change was applied.'
