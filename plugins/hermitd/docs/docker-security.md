@@ -19,7 +19,7 @@
 
 New and existing Docker hermits include a browser through hatch or upgrade unless `browser.enabled` is false or the Dockerfile already installs `agent-browser`. Decline through `/hermitd:hermit-settings`, then run `hermitd update` to remove it. Full parallel use needs 4 GiB; the resource wizard defaults to `4g`. Docker Desktop's VM and the WSL 2 VM each default to 50% of host memory shared by all containers, so an 8 GiB host needs that limit raised in Docker Desktop's Resources settings or `.wslconfig`.
 
-DNS enforce mode limits the browser, like every other process, to allowlisted names and the addresses they resolved. It does not contain the browser: a page can still send data to any allowlisted host. Chrome renders arbitrary pages with `--no-sandbox` beside the agent's credentials. Metadata URL refusal is a guard, not containment. This adds no vault or network filter. Host Chrome separately keeps its own sandbox; avoid shared hosts because local users can reach debugging ports and forge loopback viewer headers. Tailnet peers were not tested; `100.64.0.0/10` is not in netguard's drop list.
+DNS enforce mode limits the browser, like every other process, to addresses resolved by allowlisted names and explicit carve-outs. A page can still send data to any allowlisted host. Chrome renders arbitrary pages with `--no-sandbox` beside the agent's credentials, and the browser supports [saved logins for agent-owned accounts](how-to-use.md#browser-tasks). Metadata URL checks provide an additional guard. Host Chrome keeps its own sandbox; avoid shared hosts because local users can reach debugging ports and forge loopback viewer headers. Tailnet peers were not tested; `100.64.0.0/10` is not in netguard's drop list.
 
 ## What each toggle does
 

@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/84012a4d-4ca1-475e-b82d-1db45634a5e3
 <details open>
 <summary>Already run Claude Code? Install the plugin</summary>
 
-With Claude Code 2.1.327+ and Bun 1.4+ installed:
+With Claude Code 2.1.327+ and Bun 1.4.2+ installed:
 
 ```bash
 claude plugin install hermitd --marketplace gtapps/hermitd --scope local
@@ -248,6 +248,8 @@ Reflection runs daily when something is due, after routines configured to reflec
 | “Start X in `~/code/api` on Opus at high effort, in its own worktree.” | Starts a session in any project, on your model and effort. |
 | “Tell me when my session in `~/code/web` finishes.” | Watches your other Claude Code sessions. |
 | `!pause` · `!snooze 2h` · `!model sonnet` · `!effort high` | Claude Code controls, straight from chat. |
+| `!status` · `!scheduled` | See work in progress, what’s waiting on you, and this chat’s routines and watches without a model turn. |
+| Voice messages | The agent transcribes it and replies in text in the same chat. See [voice-note requirements and controls](plugins/hermitd/docs/voice-notes.md). |
 | “`/later` check tomorrow whether those errors have returned.” | Checks whether a fix held up over time. |
 | “remind me Monday at 14:00 to pay the invoice” | Delivers a durable reminder at the due minute in monitor mode, even after a restart. |
 | “Download last month's invoices from the supplier portal.” | Uses its [own managed browser](plugins/hermitd/docs/how-to-use.md#browser-tasks) by default and offers phone Take over and Hand back on Docker and Linux/WSL2 tmux. The operator's Chrome is opt-in for their account. |
@@ -283,6 +285,8 @@ See [budgets](plugins/hermitd/docs/config-reference.md#budget) and [routine sche
 
 ## Remote work
 
+**Live chat & voice through your AI app.** Reach your running agent from a conversation in Claude, ChatGPT, Grok, or Gemini with [hermitd-connector](plugins/hermitd-connector/README.md).
+
 Reach the running agent through your connected channels or Claude Code Remote Control. You can also start separate sessions for additional work:
 
 - **Background sessions with follow-up.** Through [`/spawn-session`](plugins/hermitd/skills/spawn-session/SKILL.md), the agent launches a local Claude Code helper in the project, or in another folder with `--cwd`, and relays its status when it becomes idle. Claude Code isolates the helper's edits in a Git worktree unless the project sets `worktree.bgIsolation` to `none`; pass `--worktree` to give it one from the start. Set the helper’s model and effort with options such as `--model sonnet --effort high`.
@@ -303,7 +307,7 @@ Optional plugins that add domain tools and workflows to your agent.
 - [homeassistant-hermit](plugins/hermitd-homeassistant/README.md): Home Assistant tools, automation workflows, and safety checks.
 - [fitness-hermit](plugins/hermitd-fitness/README.md): Strava integration, activity analysis, and training routines.
 - [hermitd-feed](plugins/hermitd-feed/README.md): Source curation, recurring briefs, and weekly synthesis.
-- [hermitd-connector](plugins/hermitd-connector/README.md): People you pair talk to the agent from their own Claude, ChatGPT, Grok or Gemini app, typed or by voice.
+- [hermitd-connector](plugins/hermitd-connector/README.md): Pair people to talk to the agent from their own Claude, ChatGPT, Grok or Gemini app.
 - [hermitd-laravel-forge](plugins/hermitd-laravel-forge/README.md): Laravel Forge deployments, logs, and server management.
 - [hermitd-scribe](plugins/hermitd-scribe/README.md): GitHub issues and comments from proposals through a dedicated bot identity.
 

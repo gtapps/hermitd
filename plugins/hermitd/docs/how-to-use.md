@@ -6,7 +6,7 @@ A paid Claude plan (Pro, Max, Teams, or Enterprise). Linux, macOS, or Windows vi
 
 Claude Code auto memory must stay enabled (the default): learning, preferences, and standing roles live there. Setting `autoMemoryEnabled: false` or `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` disables them.
 
-The installer below provisions the rest: [Claude Code](https://code.claude.com) v2.1.327+, **Bun** ≥1.4 (the hooks and scripts are TypeScript run directly by `bun`), and **tmux** for always-on mode.
+The installer below provisions the rest: [Claude Code](https://code.claude.com) v2.1.327+, **Bun** ≥1.4.2 (the hooks and scripts are TypeScript run directly by `bun`), and **tmux** for always-on mode.
 
 ---
 
@@ -149,7 +149,7 @@ Hermit isn't just a work engine. During any session, you can ask it to reflect a
 - **"remember for this channel: when X, do Y"** saves a standing role in memory. "For this channel" pins it to that chat; a plain "remember" applies hermit-wide only from a primary operator (`channels.<name>.operators`, or the first allowed user when unset). Other senders pin to the requesting chat. Ask "what do you remember about this channel?" to list roles or "forget the X rule" to remove one. Roles apply to messages addressed to the hermit: every DM, or a group message mentioning it. Use [chat instructions](review-channel.md) for rules members must not change.
 - **"From now on, in this chat, do X"** saves a durable chat-behavior correction as a pinned memory rule with a one-line confirmation. Ask “every Friday, review this chat's rules” to schedule [role-review](../skills/role-review/SKILL.md): repeated agreeing corrections become proposals in that chat, a reply applies memory changes, and chat-instruction changes still need the native permission prompt.
 - **"From now on, always X"** about an output updates the skill that owns it, and the reply names the change and offers a revert. A complaint alone, such as "the brief is too long", is only remembered.
-- **"Can you understand voice notes?"** Not out of the box. [Voice Notes](voice-notes.md) is the two-step setup: a speech-to-text tool where the hermit runs, then one standing role.
+- **"Can you understand voice notes?"** Transcription is enabled by default. See [Voice Notes](voice-notes.md) for platform requirements and how to turn off transcription or transcript echoes.
 - **Review documents in a dedicated chat:** [Review channel](review-channel.md) covers setup, protected instructions, fixes and sign-off.
 - **"What slowed you down recently?"** — Reviews its experience and tells you what caused delays.
 - **"What permissions do you keep getting blocked on?"** — Suggests the exact `settings.json` entries to add so it stops getting prompted.

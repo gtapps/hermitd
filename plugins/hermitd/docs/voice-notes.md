@@ -1,6 +1,6 @@
 # Voice Notes
 
-Voice notes work by default on every agent. When an audio attachment arrives from any channel, the agent downloads it with that channel's tool, transcribes it, echoes `🎙️ "…"` in the same chat, and replies to its content as the sender's message. The transcript is added to the original inbound log row, preserving the sender and making the spoken words searchable when channel logging is enabled. Echoes do not ping everyone, here or roles; user mentions remain enabled.
+Voice-note transcription is enabled by default. The agent downloads audio attachments with the channel's tool and transcribes them when an engine is available. On success, it echoes `🎙️ "…"` in the same chat by default and replies to the content as the sender's message. The transcript is added to the original inbound log row, preserving the sender and making the spoken words searchable when channel logging is enabled. Echoes do not ping everyone, here or roles; user mentions remain enabled.
 
 Use `/hermitd:hermit-settings transcription` to turn transcription off. Disabled transcription downloads no engine or models and uploads no audio; the agent acknowledges the note without exposing a file path. Use `/hermitd:hermit-settings transcription-echo` to turn the echo off independently. Both changes apply to the next voice note; Docker package changes take effect after the next `hermitd update`.
 

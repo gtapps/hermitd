@@ -100,23 +100,23 @@ This builds the image, starts the container, and prints the tmux attach command.
 
 ## Advanced Hardening (opt-in)
 
-Once the container is up and stable, consider running the advanced hardening wizard:
+To enable optional hardening, open the wizard from a host terminal once the container is running:
 
 ```
-/hermitd:docker-security
+hermitd setup docker-security
 ```
 
-It applies a `docker-compose.security.yml` overlay that the `hermitd-docker` wrapper auto-detects on the next `up`. Each toggle is opt-in with honest cost/benefit framing, fully reversible, and verified live against your container:
+The wizard saves opt-in toggles under `docker.security` in `config.json`. Host lifecycle commands render `docker-compose.security.yml` from those settings and start the container from approved copies.
 
 | Toggle | What it adds | Honest limitation |
 | --- | --- | --- |
-| LAN containment + DNS policy | nftables firewall + dnsmasq sidecar sharing hermit's netns; blocks RFC1918, cloud metadata; port-53 redirect for actual DNS-policy enforcement | Direct-IP egress to a hardcoded public IP is **not** blocked (no DNS lookup to intercept) |
+| LAN containment + DNS policy | nftables firewall and dnsmasq sidecar. Enforce mode restricts outbound connections to addresses resolved by allowlisted names and explicit carve-outs. | Log-only mode leaves public egress open. |
 | Resource bounds + sysctls | `mem_limit`, `cpus`, ICMP-redirect / source-route hardening | Network sysctls auto-skip when `network_mode: host` |
 | Plugin install audit log | One JSONL line per boot-time `claude plugin install` to `state/plugin-installs.jsonl` | Post-boot installs run via tmux are not captured |
 
 The wizard is fleet-aware: it scans installed sibling plugins whose names contain `hermit` (for example `hermitd-homeassistant` and `hermitd-fitness`) for a `## Docker network requirements` section and offers their domains and LAN suggestions for per-entry confirmation. The LAN containment toggle is **hard-skipped** when `docker.network_mode: "host"` — host mode and bridge-based netns sharing are mutually exclusive.
 
-Reverse anytime: re-run `/docker-security` and answer No to every prompt, or `rm docker-compose.security.yml` and `hermitd-docker up`. See [Security](security.md#advanced-hardening--docker-security) for the deeper treatment of what each toggle protects against and the documented limitations.
+To disable a toggle, rerun `hermitd setup docker-security` and answer No for that toggle. You can also turn it off under `docker.security` in `config.json`, then run `hermitd restart` from the host terminal and review any approval prompt. See [Docker Security](docker-security.md#reversal).
 
 ---
 
