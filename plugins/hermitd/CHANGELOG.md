@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Chat senders, listening chats and paired approvers can be managed from the admin chat through `/hermitd:channel-access` with native approval.
+
+### Changed
+
+- New team channel setups leave the member list open and recommend allowing everyone in each enrolled chat. Setup names the paired operator whenever the member list is left open.
+- Access management works with third-party channel plugins that use the official `access.json` format.
+- The agent asks before writing channel state files from chat or an unknown turn, apart from `inbox/` files.
+
+### Upgrade Instructions
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`).
+
+Existing access settings need no migration. To keep a team chat restricted, choose specific sender IDs when enrolling it. For a channel-wide restriction, set `allowed_users` through `/hermitd:hermit-settings channels`.
+
 ## [1.4.38] - 2026-11-19
 
 ### Added

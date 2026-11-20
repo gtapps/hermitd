@@ -1,7 +1,6 @@
 # Channel access
 
-This stage covers the same channels as the [credential stage](credential.md).
-For every other channel plugin, follow [Credentials and plugin procedures](other-channel.md#credentials-and-plugin-procedures) for admission and the [Shared flow boundary](other-channel.md#shared-flow-boundary) for agent access control.
+Use the shared procedures for Discord, Telegram, and custom channels with an official-shape `access.json`. For a custom channel, use [Credentials and plugin procedures](other-channel.md#credentials-and-plugin-procedures) and check the [Shared flow boundary](other-channel.md#shared-flow-boundary) before choosing the admission procedure.
 
 Use the absolute project `.hermit` directory as `<hermit_state_dir>`, distinct from the channel's `<state_dir>`. On Docker, use the host-visible channel folder resolved in the credential stage, with no host plugin install. Set `<CHANNEL_UPPERCASE>_STATE_DIR` to that absolute folder for the channel access commands.
 
@@ -37,14 +36,17 @@ Check for `<state_dir>/access.json`. On a bare host, if it is missing and `~/.cl
 
 If the project file is still missing, report that pairing could not be verified and return to the calling wizard with that result.
 
+Run `channel-show` (Commands) to verify the file shape and see its approvers. For **Already paired**, use the verified paired ID of the operator completing setup. If multiple IDs are possible, ask which one is theirs and verify it against the returned approvers.
+
 ## Who may wake the agent?
 
-Read the current channel config. Only set or ask about `allowed_users` after an admission in this run, when the pairing receipt has a `sender_id` and `allowed_users` is absent. Preserve any existing value.
+Read `approvals` and the current channel config. When `allowed_users` already exists, preserve it. Use the receipt's `sender_id` or the verified ID from access verification.
 
-In the agent's own managed session (routing 2 in [channel setup](../SKILL.md)), apply **Only <paired id>** without asking and point to `/hermitd:hermit-settings channels` for later changes. In a separate setup session, ask once with header "Access ctrl" and question "Who may wake the agent on this channel?" Offer **Only <paired id>** (recommended), **Allow everyone**, or additional ids through Other. Use the receipt's `sender_id` for the paired id. For additional ids include the paired id.
+- With `approvals: "team"`, leave `allowed_users` unset. Explain that anyone admitted by the channel plugin can talk to the agent. To restrict access later, use `/hermitd:channel-access` for a chat or `/hermitd:hermit-settings channels` for the channel-wide list.
+- In personal mode, apply **Only <paired id>** in the agent's own managed session. In a separate setup session, ask once who may wake the agent. Offer **Only <paired id>** (recommended), **Allow everyone**, or additional IDs through Other. For additional IDs include the paired ID.
 
-For an id selection, run `channel-config-merge` (Commands) with `{"channels":{"<channel>":{"allowed_users":<selected_string_array>}}}` on stdin. Stop this channel on a nonzero exit. For Allow everyone or a skipped setting, omit the key.
+For an ID selection, run `channel-config-merge` (Commands) with `{"channels":{"<channel>":{"allowed_users":<selected_string_array>}}}` on stdin. Whenever setup leaves `allowed_users` unset, merge `{"channels":{"<channel>":{"operators":["<paired id>"]}}}` if `operators` is absent. In both modes this keeps operator authority with the named person even in a group home chat. Preserve an existing `operators`. If no paired ID can be verified, report that operator authority was not set and ask for the ID before finishing access. Stop this channel on a nonzero merge exit.
 
 ## Default delivery settings
 
-After verifying project access, run `channel-ensure-defaults` (Commands) for Discord or Telegram. Report `ack` (`set` or `kept`). The default is `👀` only when `ackReaction` is absent. An empty string and customized values are preserved. On `{"error"}`, report the error token and stop this channel. Return the access result to the calling wizard.
+After verifying an official-shape project file with `channel-show` (Commands), run `channel-ensure-defaults` (Commands) for that channel. Report `ack` (`set` or `kept`). The default is `👀` only when `ackReaction` is absent. An empty string and customized values are preserved. On `{"error"}`, report the error token and stop this channel. Return the access result to the calling wizard.

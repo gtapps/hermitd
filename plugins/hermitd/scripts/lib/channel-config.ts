@@ -1,6 +1,8 @@
 // Reading the channels{} block of config.json. Shared by the booter and doctor
 // so neither has to import the other.
 
+import { channelStateDir } from './channel-token';
+
 type Json = any;
 
 /** A valid POSIX shell / env-var identifier. Re-exported by validate-config.ts. */
@@ -26,6 +28,14 @@ export function* iterChannelConfigs(config: Json): Generator<[string, Json]> {
   if (!isDict(channels)) return;
   for (const [name, cfg] of Object.entries(channels)) {
     if (isDict(cfg)) yield [name, cfg];
+  }
+}
+
+/** Yield [name, directory] for configured channel plugins. */
+export function* channelStateDirs(hermitDir: string, config: Json): Generator<[string, string]> {
+  if (!isDict(config)) return;
+  for (const [name, cfg] of iterChannelConfigs(config)) {
+    yield [name, channelStateDir(hermitDir, name, cfg)];
   }
 }
 

@@ -114,6 +114,8 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Answering a wait**: use [approvals.md](approvals.md) § Answering a wait and `task answer`. A proposal and a question use this same route; there is no separate precedence or suggestion-number route.
 
+- **Chat access request** (who may talk in a chat, where the agent listens, or removing a paired approver): invoke `/hermitd:channel-access`.
+
 - **Settings change request** ("change the model", "add a routine", "turn off the heartbeat" — anything that alters `.hermit/config.json`)
   - Route every config write through `/hermitd:hermit-settings` and `.hermit/bin/hermitd-run settings-edit …`. Never Edit or Write `config.json`, from any turn origin. `settings-gate` raises native permission prompts for asked paths.
   - Route standing rules about actions allowed without asking or never allowed to `/hermitd:hermit-settings rules`; judge meaning, not wording.

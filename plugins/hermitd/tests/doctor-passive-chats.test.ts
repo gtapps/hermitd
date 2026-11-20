@@ -63,6 +63,28 @@ test('no passive chats is ok; custom channels refer to plugin access settings', 
   } finally { wd.cleanup(); }
 });
 
+test('a custom channel with official access settings gets the same passive chat checks', () => {
+  const wd = setupWorkdir();
+  const stateDir = path.join(wd.dir, 'custom-state');
+  const paths = resolvePaths(path.join(wd.dir, '.hermit'), path.resolve(import.meta.dir, '..'));
+  try {
+    fs.mkdirSync(stateDir);
+    fs.writeFileSync(paths.configPath, JSON.stringify({
+      channels: { 'custom-test': {
+        state_dir: stateDir, passive_chats: ['room'], bot_user_id: 'bot', allowed_users: ['admin'], log_chats: true,
+      } },
+    }));
+    const file = path.join(stateDir, 'access.json');
+    fs.writeFileSync(file, JSON.stringify({ groups: { room: { requireMention: true, allowFrom: ['admin'] } } }));
+    const gated = checkPassiveChats(paths);
+    expect(gated.status).toBe('warn');
+    expect(gated.detail).toContain('custom-test chat room: set requireMention:false');
+    expect(gated.detail).toContain('custom-test chat room: set allowFrom:[]');
+    fs.writeFileSync(file, JSON.stringify({ groups: { room: { requireMention: false, allowFrom: [] } } }));
+    expect(checkPassiveChats(paths).status).toBe('ok');
+  } finally { wd.cleanup(); }
+});
+
 
 test('passive chats warn when their channel is unrecorded', () => {
   const wd = setupWorkdir();

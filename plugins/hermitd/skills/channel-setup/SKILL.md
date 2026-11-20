@@ -9,6 +9,7 @@ disable-model-invocation: true
 Activate a channel, adding the `config.json` entry first when there isn't one. This wizard prepares the credential, brings up the channel, and guides access.
 
 ## Commands
+- `channel-show`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" show <channel>`
 - `channel-group-add`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" group-add`
 - `channel-register`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json channel-register`
 - `channel-pair`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" pair <channel> <code>`

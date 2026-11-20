@@ -18,6 +18,7 @@ Templates live in `${CLAUDE_SKILL_DIR}/../../state-templates/docker/`.
 
 - `channel-pair`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" pair <channel> <code>`
 - `channel-policy`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" policy <channel> allowlist`
+- `channel-show`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" show <channel>`
 - `channel-ensure-defaults`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" ensure-defaults <channel>`
 - `channel-bot-id`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts "<hermit_state_dir>" <channel> --write`
 - `channel-config-merge`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit`
