@@ -1,9 +1,19 @@
 # Changelog
 
-## [Unreleased]
+## [0.0.2] - 2026-11-20
 
 ### Changed
 - Channel instructions name the person's AI app instead of the Claude app
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Confirm the connector is at 0.0.2** — no files to migrate.
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`).
+
+No `config.json` changes required.
 
 ## [0.0.1] - 2026-11-18
 
