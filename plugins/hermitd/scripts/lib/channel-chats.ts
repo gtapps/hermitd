@@ -52,7 +52,7 @@ export function cachedGuildRoles(hermitDir: string, guildId: string): GuildRoles
   return entry && 'role_ids' in entry ? entry as GuildRoles : null;
 }
 
-async function lookup(hermitDir: string, config: Json, bucket: Bucket, id: string, retryError = false): Promise<Entry | null> {
+async function lookup(hermitDir: string, config: Json, bucket: Bucket, id: string, retryError = false, cacheResult = true): Promise<Entry | null> {
   try {
     const cached = cachedEntry(hermitDir, bucket, id);
     if (cached && !('error' in cached && retryError)) return 'error' in cached ? null : cached;
@@ -74,7 +74,7 @@ async function lookup(hermitDir: string, config: Json, bucket: Bucket, id: strin
           : { role_ids: body.roles, fetched_at };
       }
     } catch { entry = { error: 'network', fetched_at }; }
-    try {
+    if (cacheResult) try {
       const all = readCache(hermitDir);
       all.discord ??= {};
       all.discord.chats ??= {};
@@ -90,8 +90,8 @@ async function lookup(hermitDir: string, config: Json, bucket: Bucket, id: strin
 
 // `retryError` refetches past a cached failure. A task open asks for it, since a day-long
 // cached timeout would otherwise refuse every task in that chat.
-export async function lookupChat(hermitDir: string, config: Json, chatId: string, retryError = false): Promise<Chat | null> {
-  return await lookup(hermitDir, config, 'chats', chatId, retryError) as Chat | null;
+export async function lookupChat(hermitDir: string, config: Json, chatId: string, retryError = false, cacheResult = true): Promise<Chat | null> {
+  return await lookup(hermitDir, config, 'chats', chatId, retryError, cacheResult) as Chat | null;
 }
 
 export type ThreadParent = { status: 'none' } | { status: 'public'; parent: string } | { status: 'unresolved' };

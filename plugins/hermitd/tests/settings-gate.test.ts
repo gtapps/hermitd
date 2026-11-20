@@ -41,7 +41,7 @@ async function runGate(stdin: string, dir: string) {
   return runScript('settings-gate.ts', {
     stdin,
     cwd: dir,
-    env: { AGENT_DIR: path.join(dir, '.hermit') },
+    env: { AGENT_DIR: path.join(dir, '.hermit'), DISCORD_STATE_DIR: '', TELEGRAM_STATE_DIR: '' },
   });
 }
 
@@ -615,7 +615,13 @@ for (const mode of ['bypassPermissions', 'auto', 'default']) {
     ['pair discord ABC123', 'pair discord code ABC123 (home chat if unset)'],
     ['policy telegram allowlist', 'policy telegram allowlist'],
     ['group-add discord 123 --mention no --allow none --shared no --passive yes --ack-off', 'listen in discord chat 123: mention=no allow=anyone shared=no passive=yes + seen-emoji off (channel-wide)'],
-    ["'group-add' 'telegram' '-123' --mention 'yes' --allow '1,2' --shared yes --passive no --nicknames '[\"bot\"]'", 'listen in telegram chat -123: mention=yes allow=2 ids shared=yes passive=no + nickname triggers (channel-wide)'],
+    ["'group-add' 'telegram' '-123' --mention 'yes' --allow '1,2' --shared yes --passive no --nicknames '[\"bot\"]'", 'listen in telegram chat -123: mention=yes allow=1,2 shared=yes passive=no + nickname triggers (channel-wide)'],
+    ["group-allow custom 'chat;geral' --add joana,hugo", 'let in custom chat chat;geral: add joana,hugo'],
+    ['group-allow telegram -123 --remove 2,3', 'let in telegram chat -123: remove 2,3'],
+    ['group-allow discord 123 --open', 'let in discord chat 123: open to everyone'],
+    ['group-remove discord 123', 'stop listening in discord chat 123'],
+    ['unpair discord 123', 'remove approver 123 on discord'],
+    ['\\\n  unpair \\\n  discord 123', 'remove approver 123 on discord'],
   ]) {
     test(`channel access ${mode}: ${args}`, async () => {
       const dir = fixture();
@@ -624,11 +630,44 @@ for (const mode of ['bypassPermissions', 'auto', 'default']) {
       const output = JSON.parse(r.stdout).hookSpecificOutput;
       expect(output.permissionDecision).toBe(mode === 'bypassPermissions' ? 'deny' : 'ask');
       expect(output.permissionDecisionReason).toBe(mode === 'bypassPermissions'
-        ? 'Channel pairing and group enrolment are refused in bypass mode; run /hermitd:channel-setup from a normal session.'
+        ? 'Channel access changes are refused in bypass mode; use a normal session.'
         : `Hermit setting: ${label}`);
     });
   }
 }
+
+test('show and ensure-defaults do not ask, including with a variable state path', async () => {
+  const dir = fixture();
+  for (const verb of ['show', 'ensure-defaults']) {
+    const command = `bun channel-access.ts "$STATE" ${verb} custom`;
+    for (const permission_mode of ['default', 'bypassPermissions']) {
+      expectSilent(await runGate(payload({ dir, tool: 'Bash', permission_mode, input: { command } }), dir));
+    }
+  }
+});
+
+test('a chained access approval names the channel requester and omits the suffix for a typed turn', async () => {
+  const dir = fixture({ channels: {
+    discord: {},
+    custom: { attributes: { user: 'display', user_id: 'sender', chat_id: 'room' } },
+  } });
+  const transcript = path.join(dir, 'channel-access-turn.jsonl');
+  const command = `bun channel-access.ts /state group-allow custom geral --add joana && ${cmd('append channels.custom.allowed_users \'"joana"\'')}`;
+  const base = JSON.parse(payload({ dir, tool: 'Bash', input: { command } }));
+  fs.writeFileSync(transcript, JSON.stringify({
+    type: 'user', origin: { kind: 'human' }, message: { content: 'Let Joana talk in geral' },
+  }) + '\n');
+  const run = () => runGate(JSON.stringify({ ...base, transcript_path: transcript }), dir);
+  const reason = 'Hermit setting: channels.custom.allowed_users="joana", let in custom chat geral: add joana';
+  expectAsk((await run()).stdout, reason);
+  for (const envelope of [
+    '<channel source="discord" chat_id="geral" user_id="1" user="Hugo">add Joana</channel>',
+    '<channel source="custom" room="geral" sender="1" display="Hugo">add Joana</channel>',
+  ]) {
+    fs.writeFileSync(transcript, JSON.stringify({ type: 'user', message: { content: envelope } }) + '\n');
+    expectAsk((await run()).stdout, `${reason}, asked by Hugo`);
+  }
+});
 
 test('channel access expansion fallback and multiple writes remain guarded', async () => {
   const dir = fixture();
@@ -683,6 +722,68 @@ test('bypass mode denies chat edits of operator and native settings', async () =
     expect(output.permissionDecisionReason).toContain('normal session or edit from the terminal');
   }
 });
+
+test('channel state writes ask on chat and unknown turns and are silent on typed turns', async () => {
+  const dir = fixture({ channels: { discord: { state_dir: 'channel-state' }, custom: {} } });
+  const folder = path.join(dir, 'channel-state');
+  fs.mkdirSync(folder);
+  const alias = path.join(dir, 'alias');
+  fs.symlinkSync(folder, alias);
+  const channelTranscript = path.join(dir, 'channel-write.jsonl');
+  fs.writeFileSync(channelTranscript, JSON.stringify({
+    type: 'user', message: { content: '<channel source="discord" chat_id="100" user_id="u1">change access</channel>' },
+  }) + '\n');
+  const typed = path.join(dir, 'typed-write.jsonl');
+  fs.writeFileSync(typed, JSON.stringify({
+    type: 'user', origin: { kind: 'human' }, message: { content: 'change access' },
+  }) + '\n');
+  const reason = 'Hermit setting: channel access files (discord)';
+  const bypass = 'Channel access file changes from chat are refused in bypass mode; use a normal session or edit from the terminal.';
+  async function check(tool: 'Edit' | 'Write' | 'Bash', input: any, expected = reason) {
+    const base = JSON.parse(payload({ dir, tool, input }));
+    const run = (transcript_path: string, permission_mode = 'default') =>
+      runGate(JSON.stringify({ ...base, transcript_path, permission_mode }), dir);
+    expectAsk((await run(channelTranscript)).stdout, expected);
+    expectAsk((await run(path.join(dir, 'missing.jsonl'))).stdout, expected);
+    expectSilent(await run(typed));
+    expectSilent(await run(typed, 'bypassPermissions'));
+    for (const transcript of [channelTranscript, path.join(dir, 'missing.jsonl')]) {
+      const result = await run(transcript, 'bypassPermissions');
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout).hookSpecificOutput).toMatchObject({
+        permissionDecision: 'deny', permissionDecisionReason: bypass,
+      });
+    }
+  }
+  for (const tool of ['Edit', 'Write'] as const) {
+    for (const name of ['access.json', '.env']) {
+      await check(tool, { file_path: path.join(alias, name) });
+    }
+    // Edit/Write paths are literal, so `$` names a file rather than an expansion.
+    await check(tool, { file_path: path.join(folder, '$x', '..', 'access.json') });
+    for (const file_path of ['channel-state/inbox/item', 'channel-state-other/access.json']) {
+      const base = JSON.parse(payload({ dir, tool, input: { file_path } }));
+      expectSilent(await runGate(JSON.stringify({ ...base, transcript_path: channelTranscript }), dir));
+    }
+  }
+  await check('Write', { file_path: '.claude.local/channels/custom/access.json' },
+    'Hermit setting: channel access files (custom)');
+  for (const command of [
+    'printf x > alias/access.json',
+    'cp fixture alias/.env',
+    'mv fixture alias/.env',
+    'tee alias/.env',
+    "sed -i 's/x/y/' alias/.env",
+    'mv fixture alias',
+    'cp fixture alias/',
+  ]) {
+    await check('Bash', { command });
+  }
+  for (const command of ['printf x > alias/inbox/item', 'printf x > "alias/$file"', 'tee "alias/`echo file`"']) {
+    const base = JSON.parse(payload({ dir, tool: 'Bash', input: { command } }));
+    expectSilent(await runGate(JSON.stringify({ ...base, transcript_path: channelTranscript }), dir));
+  }
+}, 30_000);
 
 describe('routine chat binding', () => {
   const ROUTINES = [

@@ -30,7 +30,9 @@ import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTurn, transcriptPath } from './lib/cc-compat';
 import { resolveMaintainerTarget } from './resolve-outbound-channel';
 import { channelStateDir } from './lib/channel-token';
+import { channelStateDirs } from './lib/channel-config';
 import { resolveProjectScript } from './lib/routines/gate';
+import { clip, safeForLLM } from './lib/sanitize';
 
 type Json = any;
 
@@ -183,7 +185,7 @@ function currentTurn(tPath: string): ReturnType<typeof readTurn> {
 }
 
 type RoutineOrigin = { kind: 'terminal'; proven: boolean } | { kind: 'unknown' }
-  | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean; proven: boolean };
+  | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean; proven: boolean; requester?: string };
 
 /**
  * A terminal requires a readable turn boundary without a channel envelope, which a wake also has; all unproven origins ask.
@@ -202,6 +204,8 @@ export function turnConversation(payload: Json): RoutineOrigin {
     return { kind: 'channel', key: conversationKey(env.sourceKey, env.chatId, env.thread),
       primary: isPrimaryOperator(config, env.source, env.userId, env.chatId),
       canCompleteAuthentication: canCompleteAuthentication(config, env.source, env.userId, env.chatId),
+      // A display name is sender-chosen, so the ID that sent it rides along.
+      requester: env.userName ? clip(safeForLLM(env.userName).trim(), 100) : undefined,
       proven: !prompt.joined };
   } catch {
     return { kind: 'unknown' };
@@ -443,8 +447,8 @@ function resolvedTarget(target: string, cwd: string): string {
   try {
     return fs.realpathSync(absolute);
   } catch {
-    try { return path.join(fs.realpathSync(path.dirname(absolute)), path.basename(absolute)); }
-    catch { return absolute; }
+    const parent = path.dirname(absolute);
+    return parent === absolute ? absolute : path.join(resolvedTarget(parent, cwd), path.basename(absolute));
   }
 }
 
@@ -712,28 +716,77 @@ function shellWriteTargets(command: string): string[] {
 /** A token the shell would still expand: the hook cannot know what it names. */
 const SHELL_EXPANDS = /[$`]/;
 
+// Split commands without treating separators inside quotes as shell syntax.
+const SHELL_COMMAND_PARTS = /(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g;
+
+const CHANNEL_FILE_BYPASS_DENIAL = 'Channel access file changes from chat are refused in bypass mode; use a normal session or edit from the terminal.';
+
+function channelFileLabels(targets: string[], cwd: string, origin: () => RoutineOrigin, shell = true): string[] {
+  // Edit/Write paths are literal; only a shell target can still expand.
+  const literalTargets = targets.filter(target => target && !(shell && SHELL_EXPANDS.test(target)));
+  if (!literalTargets.length) return [];
+  const dir = hermitDir();
+  const channels = [...channelStateDirs(dir, readConfigRaw(dir))];
+  if (!channels.length) return [];
+  const paths = literalTargets.map(target => resolvedTarget(target, cwd));
+  const labels = channels.flatMap(([name, folder]) => {
+    const root = resolvedTarget(folder, cwd);
+    const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+    const inbox = path.join(root, 'inbox');
+    // A `cp`/`mv` onto the folder itself lands inside it.
+    return paths.some(target => (target === root || target.startsWith(prefix))
+      && target !== inbox && !target.startsWith(inbox + path.sep))
+      ? [`channel access files (${name})`] : [];
+  });
+  if (!labels.length) return [];
+  const value = origin();
+  return value.kind === 'terminal' && value.proven ? [] : labels;
+}
+
+const CHANNEL_ACCESS_WRITES = new Set(['pair', 'policy', 'unpair', 'group-remove', 'group-allow', 'group-add']);
+
 /** Label recognized channel writes; shell expansions remain opaque. */
 function channelAccessAsks(command: string): string[] {
-  const at = command.search(/channel-access(?:\.ts)?\b/);
-  if (at < 0) return [];
-  const tail = command.slice(at);
-  // Single-quoted text is literal, so a nickname regex's `$` anchor stays readable.
-  if (SHELL_EXPANDS.test(tail.replace(/'[^']*'/g, ''))) return ['channel-access'];
-  // Separate shell commands before stripping quotes: nickname regexes can contain pipes.
-  const commands = tail.match(/(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g) ?? [];
-  return commands.flatMap(command => {
-    const rest = command.replace(/['"\\]/g, '');
-    return [...rest.matchAll(/(?:^|\s)(pair|policy|group-add)\s+(\S+)\s+(\S+)(.*)/g)].map(m => {
-      const [, verb, channel, value, flags] = m;
-      if (verb === 'pair') return `pair ${channel} code ${value} (home chat if unset)`;
-      if (verb === 'policy') return `policy ${channel} ${value}`;
+  if (!/channel-access(?:\.ts)?\b/.test(command)) return [];
+  const commands = command.match(SHELL_COMMAND_PARTS) ?? [];
+  const labels: string[] = [];
+  for (const raw of commands) {
+    // A backslash-newline continues the same command.
+    const part = raw.replace(/\\\n/g, ' ');
+    const call = /channel-access(?:\.ts)?['"]?\s+(?:'[^']*'|"[^"]*"|\S+)\s+(\S+)(?:\s+(.*))?/.exec(part);
+    if (!call) continue;
+    const verb = call[1].replace(/['"\\]/g, '');
+    if (verb === 'show' || verb === 'ensure-defaults') continue;
+    // Single-quoted text is literal, so a nickname regex's `$` anchor stays readable.
+    if (SHELL_EXPANDS.test(part.replace(/'[^']*'/g, ''))) {
+      labels.push('channel-access');
+      continue;
+    }
+    const args = (call[2] ?? '').replace(/['"\\]/g, '').match(/^(\S+)\s+(\S+)(.*)/);
+    if (!args) {
+      if (CHANNEL_ACCESS_WRITES.has(verb)) labels.push('channel-access');
+      continue;
+    }
+    const [, channel, value, flags] = args;
+    if (verb === 'pair') labels.push(`pair ${channel} code ${value} (home chat if unset)`);
+    if (verb === 'policy') labels.push(`policy ${channel} ${value}`);
+    if (verb === 'unpair') labels.push(`remove approver ${value} on ${channel}`);
+    if (verb === 'group-remove') labels.push(`stop listening in ${channel} chat ${value}`);
+    if (verb === 'group-allow') {
+      const change = /(?:^|\s)--(add|remove)\s+(\S+)/.exec(flags);
+      const action = change ? `${change[1]} ${change[2]}`
+        : /(?:^|\s)--open(?:\s|$)/.test(flags) ? 'open to everyone' : 'change senders';
+      labels.push(`let in ${channel} chat ${value}: ${action}`);
+    }
+    if (verb === 'group-add') {
       const option = (name: string) => flags.match(new RegExp(`(?:^|\\s)--${name}\\s+(\\S+)`))?.[1] ?? '?';
       const allow = option('allow');
-      return `listen in ${channel} chat ${value}: mention=${option('mention')} allow=${allow === 'none' ? 'anyone' : allow === '?' ? '?' : `${allow.split(',').length} ids`} shared=${option('shared')} passive=${option('passive')}`
+      labels.push(`listen in ${channel} chat ${value}: mention=${option('mention')} allow=${allow === 'none' ? 'anyone' : allow} shared=${option('shared')} passive=${option('passive')}`
         + (/--nicknames(?:\s|$)/.test(flags) ? ' + nickname triggers (channel-wide)' : '')
-        + (/--ack-off(?:\s|$)/.test(flags) ? ' + seen-emoji off (channel-wide)' : '');
-    });
-  });
+        + (/--ack-off(?:\s|$)/.test(flags) ? ' + seen-emoji off (channel-wide)' : ''));
+    }
+  }
+  return labels;
 }
 
 /**
@@ -746,7 +799,7 @@ function localAnswerAsks(command: string): string[] {
   const fallback = /\btask(?:\.ts)?\s+close\b/.test(plain) && !/\btask(?:\.ts)?\s+answer\b/.test(plain)
     ? 'task close --local' : 'task answer --local';
   if (SHELL_EXPANDS.test(command.replace(/'[^']*'/g, ''))) return [fallback];
-  const commands = command.match(/(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g) ?? [];
+  const commands = command.match(SHELL_COMMAND_PARTS) ?? [];
   const labels = commands.flatMap(part => {
     const tokens = (part.match(/'[^']*'|"[^"]*"|[^\s]+/g) ?? []).map(stripQuotes);
     const at = tokens.findIndex(token => /(?:^|\/)task(?:\.ts)?$/.test(token));
@@ -769,7 +822,7 @@ function claimsSender(text: string): boolean {
 
 function taskSenderClaims(command: string): SenderClaim[] | null {
   if (!claimsSender(command)) return [];
-  const commands = command.match(/(?:'[^']*'|"[^"]*"|\\[\s\S]|[^;&|\n])+/g) ?? [];
+  const commands = command.match(SHELL_COMMAND_PARTS) ?? [];
   // Only expansions that can reach a task invocation or a --user flag are opaque; piped text such as `echo "$5"` is not.
   if (commands.some(part => /\btask(?:\.ts)?\b|--user\b/.test(part.replace(/['"\\]/g, ''))
     && SHELL_EXPANDS.test(part.replace(/'[^']*'/g, '')))) return null;
@@ -813,13 +866,17 @@ function taskSenderClaims(command: string): SenderClaim[] | null {
  * permission_mode bypassPermissions`), and a leading safe write must not
  * launder a protected one behind it.
  */
-export function protectedMutation(command: string, cwd: string, origin: () => RoutineOrigin, mode: string): string[] | null {
+export function protectedMutation(
+  command: string, cwd: string, origin: () => RoutineOrigin, mode: string,
+  listen = channelAccessAsks(command), inspectedWrites?: { targets: string[]; channelFiles: string[] },
+): string[] | null {
   const turn = () => { const value = origin(); return value.kind === 'channel' ? value.key : null; };
   const originAsks = () => {
     const value = origin();
     return value.kind === 'unknown' || (value.kind === 'channel' && !value.primary);
   };
-  const listen = channelAccessAsks(command);
+  const targets = inspectedWrites?.targets ?? shellWriteTargets(command);
+  const channelFiles = inspectedWrites?.channelFiles ?? channelFileLabels(targets, cwd, origin);
 
   // An opaque write of the whole file can replace any asked path, so it
   // raises the native prompt regardless of what it happens to contain.
@@ -831,11 +888,10 @@ export function protectedMutation(command: string, cwd: string, origin: () => Ro
     // alternative starts at `>` so it holds only one. Taking the first would
     // name the source of `cp .../config.json .../claude-settings.json` in the prompt.
     const names = fileWrite[0].match(new RegExp(PROTECTED_FILE_ALT, 'g'));
-    return [...listen, names ? names[names.length - 1] : 'config.json'];
+    return [...listen, ...channelFiles, names ? names[names.length - 1] : 'config.json'];
   }
 
-  const shown: string[] = [...listen];
-  const targets = shellWriteTargets(command);
+  const shown: string[] = [...listen, ...channelFiles];
   if (targets.length) {
     const scripts = configScripts();
     for (const target of targets) {
@@ -916,9 +972,13 @@ function main(payload: any): void {
   // Pure string matching first, no I/O: this hook fires on every Bash, Edit
   // and Write, and almost none of them are settings mutations.
   const input = payload?.tool_input ?? {};
+  const cwd = typeof payload.cwd === 'string' ? payload.cwd : process.cwd();
+  let turn: RoutineOrigin | undefined;
+  const origin = () => (turn === undefined ? (turn = turnConversation(payload)) : turn);
   let asked: string[] | null = null;
   let localAnswers: string[] = [];
   let decideHint = '<id> <token>';
+  let requester: string | undefined;
 
   if (tool === 'Bash') {
     const command = typeof input.command === 'string' ? input.command : '';
@@ -962,9 +1022,6 @@ function main(payload: any): void {
       deny('The named sender did not write in this turn or could not be verified; they must reply themselves.');
       return;
     }
-    // Read lazily: only an operator decision or a routines write needs the transcript.
-    let turn: RoutineOrigin | undefined;
-    const origin = () => (turn === undefined ? (turn = turnConversation(payload)) : turn);
     const labels = localAnswerAsks(taskText);
     const answers = labels.filter(label => !label.startsWith('close ') && label !== 'task close --local');
     // `task dismiss` can only cancel a proposal (task.ts enforces that), so it needs no parsing:
@@ -1006,31 +1063,45 @@ function main(payload: any): void {
         if (parsed) decideHint = `${parsed.id} ${parsed.token}`;
       }
     }
-    if (payload.permission_mode === 'bypassPermissions'
-      && channelAccessAsks(typeof input.command === 'string' ? input.command : '').length > 0) {
-      deny('Channel pairing and group enrolment are refused in bypass mode; run /hermitd:channel-setup from a normal session.');
+    const channelAccess = channelAccessAsks(command);
+    if (payload.permission_mode === 'bypassPermissions' && channelAccess.length) {
+      deny('Channel access changes are refused in bypass mode; use a normal session.');
       return;
     }
-    asked = protectedMutation(typeof input.command === 'string' ? input.command : '',
-      typeof payload.cwd === 'string' ? payload.cwd : process.cwd(),
-      origin,
-      payload.permission_mode);
+    let inspectedWrites: { targets: string[]; channelFiles: string[] } | undefined;
+    if (payload.permission_mode === 'bypassPermissions') {
+      const targets = shellWriteTargets(command);
+      const channelFiles = channelFileLabels(targets, cwd, origin);
+      if (channelFiles.length) {
+        deny(CHANNEL_FILE_BYPASS_DENIAL);
+        return;
+      }
+      inspectedWrites = { targets, channelFiles };
+    }
+    if (channelAccess.length) {
+      const value = origin();
+      if (value.kind === 'channel') requester = value.requester;
+    }
+    asked = protectedMutation(command, cwd, origin, payload.permission_mode, channelAccess, inspectedWrites);
   } else {
     const fp = typeof input.file_path === 'string' ? input.file_path : '';
     const match = targetsConfigFile(fp);
     const nativePermissions = /(?:^|\/)\.claude\/settings(?:\.local)?\.json$/i.test(fp.replace(/\\/g, '/'));
-    let turn: RoutineOrigin | undefined;
-    const origin = () => (turn === undefined ? (turn = turnConversation(payload)) : turn);
+    const channelFiles = channelFileLabels([fp], cwd, origin, false);
     // Only a proven terminal turn is the operator; a wake, a joined sender or an unreadable turn is not.
     const notOperator = () => { const value = origin(); return !(value.kind === 'terminal' && value.proven); };
+    if (payload.permission_mode === 'bypassPermissions' && channelFiles.length) {
+      deny(CHANNEL_FILE_BYPASS_DENIAL);
+      return;
+    }
     if (payload.permission_mode === 'bypassPermissions'
       && (match === 'claude-settings.json' || nativePermissions) && notOperator()) {
       deny('Permission settings changes from chat are refused in bypass mode; use a normal session or edit from the terminal.');
       return;
     }
-    const cwd = typeof payload.cwd === 'string' ? payload.cwd : process.cwd();
     const script = fp && !match ? scriptWriteLabel(fp, cwd, configScripts()) : undefined;
     asked = match ? [match] : script ? [script] : null;
+    if (channelFiles.length) asked = [...(asked ?? []), ...channelFiles];
     if (nativePermissions && notOperator()) asked = [...(asked ?? []), 'native permissions'];
   }
 
@@ -1039,7 +1110,7 @@ function main(payload: any): void {
     return;
   }
   if (!asked) return;
-  ask(`Hermit setting: ${asked.join(', ')}`);
+  ask(`Hermit setting: ${asked.join(', ')}${requester ? `, asked by ${requester}` : ''}`);
 }
 
 if (import.meta.main) runHook(main, () => {

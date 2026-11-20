@@ -3,6 +3,7 @@ import { readTaskInventory } from './lib/tasks';
 import { readSeedPatterns } from './lib/settings/seed-patterns';
 import { readTargetState, settingsFile } from './lib/domain-hatch/target';
 import { isLoggingEnabled } from './lib/channel-log';
+import { readAccess } from './channel-access';
 // Fail-open: a failing check records "fail" in its own entry; the orchestrator
 // never crashes and the process always exits 0.
 
@@ -1770,29 +1771,24 @@ function checkPassiveChats(p: DoctorPaths = PATHS) {
       if (!Array.isArray(channel.allowed_users)) {
         warnings.push(`${name}: set allowed_users — without it any member who mentions the bot wakes it`);
       }
-      if (name !== 'discord' && name !== 'telegram') {
-        notes.push(`${name}: verify in the plugin's own access settings`);
-        continue;
-      }
       try {
-        const access = JSON.parse(fs.readFileSync(path.join(channelStateDir(p.hermitDir, name, channel), 'access.json'), 'utf8'));
-        if (!access?.groups || typeof access.groups !== 'object' || Array.isArray(access.groups)) {
-          throw new Error('unexpected access.json shape');
-        }
+        const { groups = {} } = readAccess(path.join(channelStateDir(p.hermitDir, name, channel), 'access.json'));
         for (const chat of channel.passive_chats) {
-          const group = access.groups[chat];
-          if (group === undefined) {
+          if (!Object.hasOwn(groups, chat)) {
             warnings.push(`${name} chat ${chat}: add groups.${chat} with requireMention:false and allowFrom:[] in access.json`);
-          } else if (!group || typeof group !== 'object' || Array.isArray(group)
-            || (group.allowFrom !== undefined && !Array.isArray(group.allowFrom))) {
-            warnings.push(`${name} chat ${chat}: could not verify unexpected group shape`);
-          } else {
-            if (group.requireMention !== false) warnings.push(`${name} chat ${chat}: set requireMention:false in access.json`);
-            if (group.allowFrom?.length) warnings.push(`${name} chat ${chat}: set allowFrom:[] in access.json`);
+            continue;
           }
+          const group = groups[chat];
+          if (group.requireMention !== false) warnings.push(`${name} chat ${chat}: set requireMention:false in access.json`);
+          if (group.allowFrom?.length) warnings.push(`${name} chat ${chat}: set allowFrom:[] in access.json`);
         }
-      } catch {
-        warnings.push(`${name} chats ${channel.passive_chats.join(', ')}: could not verify access.json; check the plugin state directory and group settings`);
+      } catch (error) {
+        if (name !== 'discord' && name !== 'telegram' && error instanceof Error
+          && ['no_access_file', 'access_format_unsupported'].includes(error.message)) {
+          notes.push(`${name}: verify in the plugin's own access settings`);
+        } else {
+          warnings.push(`${name} chats ${channel.passive_chats.join(', ')}: could not verify access.json; check the plugin state directory and group settings`);
+        }
       }
     }
     return { id, tier, status: warnings.length ? 'warn' : 'ok', detail: [...warnings, ...notes, note].join('; ') };

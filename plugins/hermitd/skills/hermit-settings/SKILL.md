@@ -10,6 +10,7 @@ View or modify the hermit configuration for this project.
 ## Commands
 - `artifact-render`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts render <type> .hermit`
 - `channel-group-add`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" group-add`
+- `channel-show`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" show <channel>`
 
 ## Step 0 — Channel reply
 
@@ -209,7 +210,7 @@ Loop until operator says "done":
   - **instructions:** Show current entries with `settings-edit … get channels.<name>.instructions`. Add or replace with `set channels.<name>.instructions.<n> '{"chat_id":"<id>","text":"<text>"}'` (append at index = length); when the key is absent, create it with `set channels.<name>.instructions '[{"chat_id":"<id>","text":"<text>"}]'`. Remove with `unset channels.<name>.instructions.<n>`. Each chat ID must be unique and nonempty; text must be nonempty and at most 2,000 characters, with line breaks written as `\n` inside the JSON. Escape `'` in text as `'\''` so the approval label shows the whole value. Every write raises the native permission prompt. These instructions take precedence over memory roles in that chat and apply live.
   - **format:** Offer discord / telegram / signal / matrix / mattermost / sms / bluebubbles / line / irc / email / ntfy / slack / google_chat / whatsapp / passthrough. Write `set channels.<name>.format <value>`; clear with `unset channels.<name>.format` to infer built-in Discord or Telegram formatting. This protected setting raises the native permission prompt.
   - **record:** "Record this channel? (yes / no / inherit)" Yes: `set channels.<name>.log_chats true`; no: `set channels.<name>.log_chats false`; inherit: `unset channels.<name>.log_chats`.
-  - **group:** Run [the group questionnaire](../channel-setup/references/group-enrollment.md) with the selected channel key, absolute Hermit state directory, and channel-reply delivery on a channel-tagged turn (native prompts otherwise). Relay its result. Pairing and enrolment are refused in bypass mode; pair or enrol from a normal terminal session. Never route a refusal through another writer.
+  - **group:** For sender changes, opening or turning off a chat, and removing an approver, invoke `/hermitd:channel-access`. For a new chat, run [the group questionnaire](../channel-setup/references/group-enrollment.md) with the selected channel key, absolute Hermit state directory, and channel-reply delivery on a channel-tagged turn (native prompts otherwise). Relay its result. Pair or enrol from a normal terminal session if bypass mode refuses the change. Never route a refusal through another writer.
 
 
 - **primary <name>:** Validate `<name>` exists as a key in `channels` (and is not `primary` itself). If valid, `set channels.primary <name>`. If invalid, reject: "No channel named `<name>` configured. Add it first with `add <name>`."

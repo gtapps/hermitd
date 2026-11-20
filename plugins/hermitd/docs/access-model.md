@@ -4,7 +4,7 @@ Access is owned by the existing channel, native settings, and hermit configurati
 
 ## Approvers
 
-The channel plugin's DM-paired `allowFrom` list owns native permission-prompt delivery and approval. DM-pair only people who may approve tool use: every listed DM receives and can answer prompts. An empty list reaches nobody; in `approvals: "personal"` an unattended prompt waits. In auto mode, `approvals: "team"` refuses it instead. Removing a person from this list removes their DM approval relay; it does not remove their group membership or undo an earlier approval. The saved pairing list survives restart. See **Settings from chat** in [security](security.md#auto-mode-classifier).
+The channel plugin relays native permission prompts to the DM-paired `allowFrom` list. Pair only people who may approve tool use. An empty list reaches nobody. In `approvals: "personal"` an unattended prompt waits. In auto mode, `approvals: "team"` refuses it. Use `/hermitd:channel-access` to unpair an approver. Removing their DM relay leaves their group membership and earlier approvals in place. The agent warns when the last approver is removed or the person retains primary operator authority. Pair a new approver from the terminal. See **Settings from chat** in [security](security.md#auto-mode-classifier).
 
 Only the agent's primary operator may request a standing classifier approval-rule change through `/hermitd:hermit-settings rules`; other participants are told an admin must set it. A terminal operator may also request one. The native prompt still decides each edit, and a classifier `allow` cannot override native ask or deny rules.
 
@@ -16,7 +16,9 @@ A refusal before a prompt sends no approval DM. A prompt that still opens on a r
 
 ## Participants
 
-Groups own admission independently of the DM `allowFrom` list. Other participants should join through groups. Hermit `channels.<name>.allowed_users` narrows who can wake the hermit, never who can approve tool use: absent means accept all delivered senders, while `[]` accepts none. Removing an ID from an explicit list blocks that sender's wake eligibility; deleting the list restores accept-all. Group membership and saved allowlists survive restart. Any member of an enabled group can attempt a permission reply by guessing its code before a hermit hook sees it. See [channel configuration](config-reference.md#channels) and [known limitations](security.md#known-limitations).
+Groups own admission independently of the DM `allowFrom` list. Hermit `channels.<name>.allowed_users` narrows who can wake the hermit and grants listed senders channel-wide control commands. Absent means accept all delivered senders, while `[]` accepts none. New team channel setups leave it unset and recommend allowing anyone in each enrolled chat. Personal setup recommends the paired sender alone. Whenever setup leaves the list open, it sets `operators` to the paired ID if the key is absent. Existing access lists survive upgrades.
+
+For plugins using the official access file, use `/hermitd:channel-access` to show access, add or remove named senders, open a chat to everyone, or stop listening in a chat. Adding someone may also require appending their ID to an existing `allowed_users` list, which grants channel-wide control commands. Its first entry is primary when `operators` is absent. For a team, make the request as a paired approver in the admin chat and approve the native prompt in a paired DM. A member's request asks the admin chat first. In personal mode the plugin relays the prompt to the paired DMs. See [channel configuration](config-reference.md#channels) and [known limitations](security.md#known-limitations).
 
 A member's requested watch is saved disabled until a primary sender says yes in that chat. A no leaves it disabled.
 
@@ -60,7 +62,9 @@ With team approvals, only an admin at the host terminal saves or deletes a login
 
 ## Unattended settings writes
 
-`channel-access.ts` owns pairing, policy, delivery defaults, and group enrolment from settings and chat. Channel plugins remain writers of `access.json` too. Group changes write `config.json` first through the shared config persister, then re-read and write access state. There is a brief window between files, without a lock, journal, or rollback. If the access write fails after config lands, the command reports `{"error":"partial_config_written"}` and asks the operator to re-run the same command; it does not report complete success.
+`channel-access.ts` manages the official `access.json` format for any configured channel. Enrolling a chat writes `config.json` before the access file. Turning off a chat removes access first and then clears its passive and shared settings. If the second write fails, the command reports `partial_config_written` or `partial_access_written` and tells the operator to rerun it. Plugins can write `access.json` concurrently, which can overwrite one writer's changes. Official Discord and Telegram reload access for incoming messages unless configured for static access, which needs a restart.
+
+The settings gate asks on recognized direct writes into the configured channel state directory outside `inbox/` unless the turn was typed at the terminal or in the Claude app. Bypass mode refuses such writes on chat and unknown turns. Shell expansions and the Claude home fallback file are outside this check. See [known limitations](security.md#known-limitations).
 
 The shipped `SEALED_SETTINGS_OPS` list owns the enumerated classifier exception, rendered into a per-session overlay at each boot. An absent op has no exception from this list. Removing an overlay entry by hand does not persist across restart: boot renders it again from the installed list. The exact constraints remain in [the sealed exception](security.md#auto-mode-classifier).
 

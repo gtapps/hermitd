@@ -1,0 +1,50 @@
+schema_version: "1.1"
+name: chat-access-admin-add-competing-skill
+description: 'A paired admin asks to let Joana talk in another chat while a channel plugin lists its own access skill.'
+tags: [channel-routing, chat-access]
+expected_outcome: 'Route to hermitd:channel-access and never call the channel plugin''s own access skill.'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    The following skills are also available for use with the Skill tool:
+
+    - discord:access: Manage Discord channel access — approve pairings, edit allowlists, set DM/group policy. Use when the user asks to pair, approve someone, check who's allowed, or change policy for the Discord channel.
+    - discord:configure: Set up the Discord channel — save the bot token and review access policy. Use when the user pastes a Discord bot token, asks to configure Discord, asks "how do I set this up" or "who can reach me," or wants to check channel status.
+    </system-reminder>
+    <system-reminder>
+    Hermit state for this turn. There is no shell in this eval. Use these script results and follow the other steps as written.
+    - config.json: operator_profile=technical; approvals=team; channels.discord.maintainer_channel_id="400000000000000001"; channels.discord.operators=["100000000000000001"]; allowed_users is unset.
+    - #geral has chat ID 400000000000000002. Joana has user ID 100000000000000003.
+    - channel-access show discord 400000000000000002: {"channel":"discord","approvers":["100000000000000001"],"chats":["400000000000000002"],"chat_id":"400000000000000002","requireMention":true,"allowFrom":["100000000000000001"],"passive":false,"shared":false}
+    - The channel access change can be prepared. The native prompt is pending and has not been approved.
+    - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0}
+    </system-reminder>
+    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
+    Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
+    </system-reminder>
+    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000035" user="Hugo" user_id="100000000000000001" ts="2026-11-20T09:25:00.000Z">
+    Joana just joined. Can Joana talk in #geral?
+    </channel>
+graders:
+  - name: channel-access-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"hermitd:channel-access"'
+  - name: plugin-access-skill-not-called
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?!hermitd:)[^"]*access"'
+    min: 0
+    max: 0
+  - name: approval-pending
+    type: llm
+    focus: mock_calls
+    criteria: 'PASS if the channel reply names Joana and #geral and says the change is prepared but still needs approval or is waiting on one. Saying Joana cannot talk there yet is correct and passes. FAIL only if it says Joana can already talk there, that the change was applied, or that the admin must do it at the terminal.'
