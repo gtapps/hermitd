@@ -219,7 +219,7 @@ test('CLI final --quick reports settings observed in the written files', async (
     settings: 'committed',
     config: {
       permission_mode: 'acceptEdits',
-      routines: [{ id: 'active', enabled: true }, { id: 'off', enabled: false }],
+      routines: [{ id: 'active', enabled: true }, { id: 'off', enabled: false }, { id: 'hermitd:heartbeat-restart', enabled: true }],
       heartbeat: { enabled: true, every: '45m' },
     },
   });

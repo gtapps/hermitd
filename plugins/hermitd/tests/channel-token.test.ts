@@ -46,6 +46,13 @@ test.each([
   expect(fs.readdirSync(root)).toEqual([]);
 });
 
+test('trims surrounding whitespace from the token', async () => {
+  const root = freshDir();
+  const result = await save(root, { stdin: `  ${token} \n` });
+  expect(result.exitCode).toBe(0);
+  expect(fs.readFileSync(path.join(root, defaultFile), 'utf8')).toBe(`${name}=${token}\n`);
+});
+
 test('rejects a symlink that escapes the private directory', async () => {
   const root = freshDir();
   const outside = freshDir();

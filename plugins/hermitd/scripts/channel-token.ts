@@ -29,7 +29,9 @@ async function save(argv: string[]): Promise<object> {
   } catch {
     return { error: 'cancelled' };
   }
-  if (!value.trim() || /[\r\n\0]/.test(value)) return { error: 'bad_value' };
+  // Trim: official channel plugins would keep surrounding whitespace as part of the token.
+  value = value.trim();
+  if (!value || /[\r\n\0]/.test(value)) return { error: 'bad_value' };
 
   // Check again after the operator has finished entering the value.
   const file = privateEnvPath(project, destination);

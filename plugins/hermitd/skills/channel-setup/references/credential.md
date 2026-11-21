@@ -40,7 +40,7 @@ A pasted value enters the conversation and its history. The private file is the 
 hermitd run channel-token <channel> <TOKEN_VAR>
 ```
 
-Append `--docker` when docker-setup calls this stage. The command prompts with input hidden. Wait for the operator to confirm it reports `status: saved` and share the reported `file` path, then use its parent as the channel folder for validation below. If deferred, return to the calling wizard with the credential skipped.
+Append `--docker` on Docker. The command prompts with input hidden. Wait for the operator to confirm it reports `status: saved` and share the reported `file` path, then use its parent as the channel folder for validation below. If it reports an `error`, relay the error and offer Paste here instead. If deferred, return to the calling wizard with the credential skipped.
 
 **Paste here:** prepare an empty private file in one Bash call:
 
