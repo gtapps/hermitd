@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { run } from '../scripts/connector';
-import { connectorSession, socketPath, startConnector, stopConnector, storeDir } from '../scripts/lib/connector';
+import { connectorSession, socketPath, startConnector, stopConnector, storeDir, writeConfig } from '../scripts/lib/connector';
 import { startGateway } from '../scripts/connector-gateway';
 
 const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
@@ -17,7 +17,7 @@ const CALLBACK = 'https://claude.ai/api/mcp/auth_callback';
 const roots: string[] = [];
 afterAll(() => { for (const dir of roots) fs.rmSync(dir, { recursive: true, force: true }); });
 
-function fixture(docker?: object) {
+function fixture(docker?: object, probe: (port: number) => boolean = () => true) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'connector-cmd-')));
   roots.push(root);
   const project = path.join(root, 'project');
@@ -25,16 +25,21 @@ function fixture(docker?: object) {
   fs.mkdirSync(path.join(project, '.hermit'), { recursive: true });
   fs.writeFileSync(path.join(project, '.hermit/config.json'), JSON.stringify(docker ? { docker } : {}));
   if (docker) fs.writeFileSync(path.join(project, 'docker-compose.hermit.yml'), 'services: {}\n');
-  const cmd = (...argv: string[]) => run([argv[0], project, ...argv.slice(1)], () => false, config);
+  const cmd = (...argv: string[]) => run([argv[0], project, ...argv.slice(1)], () => false, config, probe);
   return { root, project, config, cmd, store: storeDir(project, config) };
 }
 
 const mode = (p: string) => (fs.statSync(p).mode & 0o777).toString(8);
 const ENABLE = ['enable', '--port', '8790', '--public-url', 'https://agent.example.com/'];
 
+function claimSibling(store: string, port: number, public_url = 'https://other.example.com') {
+  writeConfig(path.join(path.dirname(store), 'other-agent'), { port, public_url, wait_seconds: 25, rate_per_hour: 60 });
+}
+
 describe('enable', () => {
   test('creates the store with its folder modes and copies the server; nothing under the project', async () => {
     const f = fixture();
+    expect(fs.existsSync(path.dirname(f.store))).toBe(false);
     expect(await f.cmd(...ENABLE)).toMatchObject({ status: 'enabled', port: 8790, public_url: 'https://agent.example.com', wait_seconds: 25, rate_per_hour: 60 });
     expect(f.store.startsWith(path.join(f.config, 'hermitd/connector/'))).toBe(true);
     expect([mode(path.join(f.store, 'sidecar')), mode(path.join(f.store, 'data')), mode(path.join(f.store, 'bridge'))]).toEqual(['700', '700', '755']);
@@ -47,6 +52,84 @@ describe('enable', () => {
     const f = fixture();
     await f.cmd(...ENABLE, '--wait-seconds', '40');
     expect(await f.cmd('enable', '--rate-per-hour', '5')).toMatchObject({ status: 'updated', port: 8790, wait_seconds: 40, rate_per_hour: 5 });
+  });
+
+  test('picks the first unclaimed port the probe can bind', async () => {
+    const f = fixture(undefined, (port) => port !== 8790);
+    claimSibling(f.store, 8791);
+    expect(await f.cmd('enable', '--public-url', 'https://agent.example.com')).toMatchObject({ status: 'enabled', port: 8792 });
+    expect(await f.cmd('enable')).toMatchObject({ status: 'updated', port: 8792 });
+  });
+
+  test('refuses explicit and stored port claims from siblings', async () => {
+    const f = fixture();
+    await f.cmd(...ENABLE);
+    claimSibling(f.store, 8790);
+    const refusal = { status: 'refused', reason: 'port_used_by_other_agent' };
+    expect(await f.cmd(...ENABLE)).toEqual(refusal);
+    expect(await f.cmd('enable')).toEqual(refusal);
+  });
+
+  test('a bound port is refused unless this store reports that exact listener port', async () => {
+    const f = fixture(undefined, () => false);
+    const refusal = { status: 'refused', reason: 'port_in_use' };
+    expect(await f.cmd(...ENABLE)).toEqual(refusal);
+    fs.mkdirSync(path.dirname(socketPath(f.store)), { recursive: true });
+    let port = 8791;
+    const server = Bun.serve({ unix: socketPath(f.store), fetch: () => Response.json({ port }) });
+    try {
+      expect(await f.cmd(...ENABLE)).toEqual(refusal);
+      port = 8790;
+      expect(await f.cmd(...ENABLE)).toMatchObject({ status: 'enabled', port });
+    } finally { server.stop(true); }
+  });
+
+  test('reports exhaustion if no port can bind', async () => {
+    const f = fixture(undefined, () => false);
+    await expect(f.cmd('enable', '--public-url', 'https://agent.example.com')).rejects.toThrow('no_free_port');
+  });
+
+  test.each(['https://agent.example.com/path/', 'https://agent.example.com:8443'])('refuses %s before probing', async (url) => {
+    const f = fixture(undefined, () => { throw new Error('unexpected_probe'); });
+    await expect(f.cmd('enable', '--public-url', url)).rejects.toThrow('invalid_public_url');
+  });
+
+  test('refuses a duplicate origin even when the sibling config uses a path', async () => {
+    const f = fixture();
+    claimSibling(f.store, 8791, 'https://AGENT.example.com:443/old/');
+    expect(await f.cmd(...ENABLE)).toEqual({ status: 'refused', reason: 'public_url_used_by_other_agent' });
+  });
+
+  test('skips an unreadable sibling config', async () => {
+    const f = fixture();
+    claimSibling(f.store, 8790);
+    fs.writeFileSync(path.join(path.dirname(f.store), 'other-agent', 'sidecar', 'connector.json'), '{');
+    expect(await f.cmd(...ENABLE)).toMatchObject({ status: 'enabled', port: 8790 });
+  });
+
+  test('concurrent enables in two projects share port claims under one HOME', async () => {
+    const first = fixture();
+    const second = fixture();
+    const script = path.resolve(import.meta.dir, '../scripts/connector.ts');
+    const env = { ...process.env, HOME: path.dirname(first.config) };
+    const launch = (project: string, host: string) => Bun.spawn({
+      cmd: [process.execPath, script, 'enable', project, '--public-url', `https://${host}.example.com`],
+      cwd: project,
+      env,
+      stdout: 'pipe',
+      stderr: 'inherit',
+    });
+    const results = await Promise.all([launch(first.project, 'first'), launch(second.project, 'second')].map(async (child) => {
+      const [output, code] = await Promise.all([new Response(child.stdout).json(), child.exited]);
+      if (code === 1) {
+        expect(output).toEqual({ error: 'connector_store_busy' });
+        return null;
+      }
+      expect(code).toBe(0);
+      expect(output).toMatchObject({ status: 'enabled', port: expect.any(Number) });
+      return (output as { port: number }).port;
+    }));
+    expect(results[0]).not.toBe(results[1]);
   });
 
   test('refusals', async () => {
@@ -92,7 +175,9 @@ describe('disable, render, status and the admin handshake', () => {
       const code = /<code>([A-Z0-9]+)<\/code>/.exec(await (await fetch(`${base}/authorize?${q}`)).text())![1];
       const paired: any = await f.cmd('pair', code.toLowerCase(), '--name', 'Ana');
       expect(paired).toMatchObject({ status: 'paired', label: 'Ana' });
-      expect(await f.cmd('status')).toMatchObject({ enabled: true, server: 'running', grants: 1, channel_connected: false });
+      expect(await f.cmd('status')).toMatchObject({
+        enabled: true, server: 'running', port: gw.port, grants: 1, channel: 'absent', unanswered: 0, oldest_unanswered_at: null,
+      });
       expect(await f.cmd('disable')).toMatchObject({ status: 'disabled' });
       expect(await f.cmd('status')).toEqual({ enabled: false });
       expect(await f.cmd(...ENABLE)).toMatchObject({ status: 'enabled' });

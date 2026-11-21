@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 const SOCKET = process.env.HERMIT_CONNECTOR_SOCKET || '';
+const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18'];
 
 /**
  * Claude Code starts this server in every session that enables the plugin, but only a session
@@ -100,8 +101,11 @@ async function handle(message: any): Promise<void> {
   if (method === 'notifications/initialized') { void poll(); return; }
   if (id === undefined || id === null) return;
   if (method === 'initialize') {
+    const requested = params?.protocolVersion;
+    const protocolVersion = typeof requested === 'string' && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+      ? requested : SUPPORTED_PROTOCOL_VERSIONS[0];
     return result(id, {
-      protocolVersion: params?.protocolVersion ?? '2025-06-18',
+      protocolVersion,
       capabilities: { experimental: { 'claude/channel': {} }, tools: {} },
       serverInfo: { name: 'connector', version: '0.0.1' },
       instructions: INSTRUCTIONS,

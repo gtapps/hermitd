@@ -81,6 +81,17 @@ function standIn() {
 }
 
 describe('channel server', () => {
+  test.each([
+    ['2025-06-18', '2025-06-18'],
+    ['2026-07-28', '2025-11-25'],
+  ])('negotiates %s as %s', async (requested, expected) => {
+    const c = channel({});
+    try {
+      const init = await c.request('initialize', { protocolVersion: requested });
+      expect(init.result.protocolVersion).toBe(expected);
+    } finally { c.proc.kill(); }
+  });
+
   test('declares a channel and the reply tool, and answers unknown requests with an error', async () => {
     const c = channel({});
     try {

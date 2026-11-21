@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
+import { Database } from 'bun:sqlite';
 import { startGateway } from '../scripts/connector-gateway';
 import { adminRequest, socketPath, writeConfig } from '../scripts/lib/connector';
 
@@ -20,9 +21,13 @@ type Gateway = ReturnType<typeof startGateway>;
 const cleanups: (() => void)[] = [];
 afterAll(() => { for (const fn of cleanups.splice(0)) fn(); });
 
-function setup(overrides: Partial<{ wait_seconds: number; rate_per_hour: number }> = {}) {
+function setup(overrides: Partial<{ wait_seconds: number; rate_per_hour: number }> = {}, seed?: (db: Database) => void) {
   const store = fs.mkdtempSync(path.join(os.tmpdir(), 'connector-gw-'));
   writeConfig(store, { port: 0, public_url: PUBLIC, wait_seconds: 2, rate_per_hour: 60, ...overrides });
+  if (seed) {
+    using db = new Database(path.join(store, 'data/connector.db'), { create: true });
+    seed(db);
+  }
   const clock = { t: 1_800_000_000 };
   const gw = startGateway(store, { now: () => clock.t, port: 0, pollHoldSeconds: 1, settleMs: 20 });
   cleanups.push(() => { gw.stop(); fs.rmSync(store, { recursive: true, force: true }); });
@@ -80,6 +85,51 @@ const poll = async (env: Env, instance: string, after = 0) =>
   (await (await env.sock(`/events?after=${after}&instance=${instance}`)).json() as any).events as any[];
 const reply = async (env: Env, grant: string, text: string, reply_to?: string) =>
   (await (await env.sock('/replies', { method: 'POST', body: JSON.stringify({ chat_id: `c-${grant}`, text, reply_to }) })).json() as any).status;
+const status = async (env: Env) => (await env.sock('/status')).json();
+
+describe('status', () => {
+  test('reports the bound port and tracks recent polling', async () => {
+    const env = setup();
+    expect(await status(env)).toEqual({
+      ok: true, port: env.gw.port, channel: 'absent', unanswered: 0, oldest_unanswered_at: null, grants: 0,
+    });
+    await poll(env, 'i1');
+    expect(await status(env)).toMatchObject({ channel: 'polling' });
+    env.clock.t += 11;
+    expect(await status(env)).toMatchObject({ channel: 'absent' });
+  });
+
+  test('starts age at dispatch and clears it on reply', async () => {
+    const env = setup();
+    const { access, grant } = await pair(env, 'Ana');
+    expect(await call(env, access, 'agent_message', { text: 'hello' })).toContain('offline');
+    expect(await status(env)).toMatchObject({ unanswered: 0, oldest_unanswered_at: null });
+    env.clock.t += 601;
+    expect(await poll(env, 'i1')).toHaveLength(1);
+    expect(await status(env)).toMatchObject({
+      unanswered: 1, oldest_unanswered_at: new Date(env.clock.t * 1000).toISOString(),
+    });
+    await reply(env, grant, 'hi');
+    expect(await status(env)).toMatchObject({ unanswered: 0, oldest_unanswered_at: null });
+  });
+
+  test('migrates legacy sent rows and excludes revoked grants and uncertain rows', async () => {
+    const env = setup({}, (db) => {
+      db.exec(`
+        CREATE TABLE grants (id TEXT PRIMARY KEY, label TEXT NOT NULL, client_id TEXT NOT NULL,
+          created_at INTEGER NOT NULL, revoked_at INTEGER);
+        CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, grant_id TEXT NOT NULL,
+          text TEXT, status TEXT NOT NULL, created_at INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0);
+        INSERT INTO grants VALUES ('live', 'Ana', 'cl-1', 1, NULL), ('revoked', 'Bo', 'cl-2', 1, 2);
+        INSERT INTO events (grant_id, status, created_at)
+        VALUES ('live', 'sent', 1), ('revoked', 'sent', 1), ('live', 'uncertain', 1);
+      `);
+    });
+    using db = new Database(path.join(env.store, 'data/connector.db'), { readonly: true });
+    expect(db.query('PRAGMA table_info(events)').all()).toContainEqual(expect.objectContaining({ name: 'sent_at' }));
+    expect(await status(env)).toMatchObject({ grants: 1, unanswered: 1, oldest_unanswered_at: null });
+  });
+});
 
 describe('sign-in', () => {
   test('discovery documents name the resource and the issuer', async () => {
@@ -159,6 +209,25 @@ describe('sign-in', () => {
     expect(await adminRequest(env.store, { kind: 'revoke', id: p.grant })).toEqual({ status: 'revoked', id: p.grant });
     expect((await refresh(next.refresh_token)).status).toBe(400);
     expect((await env.http('/mcp', { method: 'POST', headers: { authorization: `Bearer ${next.access_token}` }, body: '{}' })).status).toBe(401);
+  });
+
+  test('public MCP negotiates supported versions and validates subsequent version headers', async () => {
+    const env = setup();
+    const { access } = await pair(env, 'Ana');
+    const rpc = (method: string, params?: object, version?: string) => env.http('/mcp', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${access}`, ...(version === undefined ? {} : { 'MCP-Protocol-Version': version }) },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    });
+    for (const protocolVersion of ['2025-11-25', '2024-11-05', '2026-07-28']) {
+      const res = await rpc('initialize', { protocolVersion }, protocolVersion);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ result: { protocolVersion: '2025-11-25' } });
+    }
+    const unsupported = await rpc('tools/list', undefined, '2026-07-28');
+    expect(unsupported.status).toBe(400);
+    expect(await unsupported.json()).toMatchObject({ jsonrpc: '2.0', id: 1, error: { code: -32600 } });
+    for (const version of [undefined, '2025-06-18']) expect((await rpc('tools/list', undefined, version)).status).toBe(200);
   });
 
   test('register and authorize share a 60-a-minute limit; /token still answers', async () => {
@@ -298,6 +367,6 @@ describe('messages', () => {
     const env = setup();
     for (const p of ['/events?instance=x', '/status']) expect((await env.http(p)).status).toBe(404);
     expect((await env.http('/replies', { method: 'POST', body: '{}' })).status).toBe(404);
-    expect(await (await env.sock('/status')).json() as any).toMatchObject({ ok: true, grants: 0 });
+    expect(await status(env)).toMatchObject({ ok: true, grants: 0 });
   });
 });

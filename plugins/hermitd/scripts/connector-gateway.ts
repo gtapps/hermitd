@@ -48,6 +48,7 @@ const SETTLE_MS = 1500;
 const MAX_TEXT = 8000;
 const MAX_WAIT_S = 200;
 const AUDIT_TTL_S = 30 * 86400;
+const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18'];
 
 const NOTHING_YET = 'Nothing from the agent yet. Call agent_replies to check again.';
 const OFFLINE = 'The agent is offline; your message is held and will reach it when it is back.';
@@ -88,13 +89,17 @@ CREATE TABLE IF NOT EXISTS grants (id TEXT PRIMARY KEY, label TEXT NOT NULL, cli
 CREATE TABLE IF NOT EXISTS tokens (hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL, client_id TEXT NOT NULL, kind TEXT NOT NULL,
   expires_at INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, grant_id TEXT NOT NULL, text TEXT, status TEXT NOT NULL,
-  created_at INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0);
+  created_at INTEGER NOT NULL, reported INTEGER NOT NULL DEFAULT 0, sent_at INTEGER);
 CREATE TABLE IF NOT EXISTS replies (id INTEGER PRIMARY KEY AUTOINCREMENT, grant_id TEXT NOT NULL, text TEXT, reply_to TEXT,
   status TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, kind TEXT NOT NULL, ref TEXT);
 CREATE INDEX IF NOT EXISTS events_grant ON events (grant_id, created_at);
 CREATE INDEX IF NOT EXISTS replies_grant ON replies (grant_id, status);`);
+  db.transaction(() => {
+    const columns = db.query<{ name: string }, []>('PRAGMA table_info(events)').all();
+    if (!columns.some(column => column.name === 'sent_at')) db.exec('ALTER TABLE events ADD COLUMN sent_at INTEGER');
+  }).immediate();
 }
 
 export function startGateway(store: string, options: GatewayOptions = {}) {
@@ -354,15 +359,26 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
   async function mcp(req: Request, server: any): Promise<Response> {
     const grant = bearerGrant(req);
     if (!grant) return json({ error: 'invalid_token' }, 401, { 'www-authenticate': `Bearer resource_metadata="${metadataUrl}"` });
-    if (req.method !== 'POST') return new Response(null, { status: 405, headers: { allow: 'POST' } });
+    const isPost = req.method === 'POST';
     let msg: any;
-    try { msg = await req.json(); } catch { return json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, 400); }
+    if (isPost) {
+      try { msg = await req.json(); } catch { return json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, 400); }
+    }
+    const version = req.headers.get('MCP-Protocol-Version');
+    if (msg?.method !== 'initialize' && version !== null && !SUPPORTED_PROTOCOL_VERSIONS.includes(version)) {
+      return json({ jsonrpc: '2.0', id: msg?.id ?? null, error: { code: -32600, message: 'Unsupported MCP-Protocol-Version' } }, 400);
+    }
+    if (!isPost) return new Response(null, { status: 405, headers: { allow: 'POST' } });
     if (msg?.id === undefined || msg?.id === null) return new Response(null, { status: 202 });
     const reply = (result: object) => json({ jsonrpc: '2.0', id: msg.id, result });
     switch (msg.method) {
-      case 'initialize':
-        return reply({ protocolVersion: msg.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} },
+      case 'initialize': {
+        const requested = msg.params?.protocolVersion;
+        const protocolVersion = typeof requested === 'string' && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+          ? requested : SUPPORTED_PROTOCOL_VERSIONS[0];
+        return reply({ protocolVersion, capabilities: { tools: {} },
           serverInfo: { name: 'hermitd-connector', version: '1' } });
+      }
       case 'ping': return reply({});
       case 'tools/list': return reply({ tools: TOOLS });
       case 'tools/call': {
@@ -427,7 +443,7 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
         rows = pending(after);
       }
       const out = db.transaction(() => rows.map(row => {
-        db.run("UPDATE events SET status = 'sent' WHERE id = ?", [row.id]);
+        db.run("UPDATE events SET status = 'sent', sent_at = ? WHERE id = ?", [now(), row.id]);
         return { id: row.id, chat_id: `c-${row.grant_id}`, message_id: `e-${row.id}`, user_id: row.grant_id,
           user: grantLabel(row.grant_id), ts: new Date(row.created_at * 1000).toISOString(), via: 'claude_app', text: row.text };
       }))();
@@ -451,7 +467,19 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
 
   function status(): Response {
     const grants = (db.query('SELECT COUNT(*) AS n FROM grants WHERE revoked_at IS NULL').get() as { n: number }).n;
-    return json({ ok: true, channel_connected: connected(), grants });
+    const { unanswered, oldest } = db.query<{ unanswered: number; oldest: number | null }, []>(`
+      SELECT COUNT(*) AS unanswered, MIN(events.sent_at) AS oldest
+      FROM grants JOIN events ON events.grant_id = grants.id
+      WHERE grants.revoked_at IS NULL AND events.status = 'sent'
+    `).get()!;
+    return json({
+      ok: true,
+      port: publicServer.port,
+      channel: connected() ? 'polling' : 'absent',
+      unanswered,
+      oldest_unanswered_at: oldest === null ? null : new Date(oldest * 1000).toISOString(),
+      grants,
+    });
   }
 
   function socketFetch(req: Request): Promise<Response> | Response {

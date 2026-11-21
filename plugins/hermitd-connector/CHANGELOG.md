@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- The channel negotiates a supported MCP protocol version.
+
 ## [0.0.2] - 2026-11-20
 
 ### Changed
