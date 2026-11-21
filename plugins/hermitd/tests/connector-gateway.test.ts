@@ -211,25 +211,6 @@ describe('sign-in', () => {
     expect((await env.http('/mcp', { method: 'POST', headers: { authorization: `Bearer ${next.access_token}` }, body: '{}' })).status).toBe(401);
   });
 
-  test('public MCP negotiates supported versions and validates subsequent version headers', async () => {
-    const env = setup();
-    const { access } = await pair(env, 'Ana');
-    const rpc = (method: string, params?: object, version?: string) => env.http('/mcp', {
-      method: 'POST',
-      headers: { authorization: `Bearer ${access}`, ...(version === undefined ? {} : { 'MCP-Protocol-Version': version }) },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    });
-    for (const protocolVersion of ['2025-11-25', '2024-11-05', '2026-07-28']) {
-      const res = await rpc('initialize', { protocolVersion }, protocolVersion);
-      expect(res.status).toBe(200);
-      expect(await res.json()).toMatchObject({ result: { protocolVersion: '2025-11-25' } });
-    }
-    const unsupported = await rpc('tools/list', undefined, '2026-07-28');
-    expect(unsupported.status).toBe(400);
-    expect(await unsupported.json()).toMatchObject({ jsonrpc: '2.0', id: 1, error: { code: -32600 } });
-    for (const version of [undefined, '2025-06-18']) expect((await rpc('tools/list', undefined, version)).status).toBe(200);
-  });
-
   test('register and authorize share a 60-a-minute limit; /token still answers', async () => {
     const env = setup();
     const statuses: number[] = [];

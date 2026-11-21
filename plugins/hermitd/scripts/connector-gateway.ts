@@ -48,7 +48,6 @@ const SETTLE_MS = 1500;
 const MAX_TEXT = 8000;
 const MAX_WAIT_S = 200;
 const AUDIT_TTL_S = 30 * 86400;
-const SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18'];
 
 const NOTHING_YET = 'Nothing from the agent yet. Call agent_replies to check again.';
 const OFFLINE = 'The agent is offline; your message is held and will reach it when it is back.';
@@ -359,26 +358,15 @@ export function startGateway(store: string, options: GatewayOptions = {}) {
   async function mcp(req: Request, server: any): Promise<Response> {
     const grant = bearerGrant(req);
     if (!grant) return json({ error: 'invalid_token' }, 401, { 'www-authenticate': `Bearer resource_metadata="${metadataUrl}"` });
-    const isPost = req.method === 'POST';
+    if (req.method !== 'POST') return new Response(null, { status: 405, headers: { allow: 'POST' } });
     let msg: any;
-    if (isPost) {
-      try { msg = await req.json(); } catch { return json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, 400); }
-    }
-    const version = req.headers.get('MCP-Protocol-Version');
-    if (msg?.method !== 'initialize' && version !== null && !SUPPORTED_PROTOCOL_VERSIONS.includes(version)) {
-      return json({ jsonrpc: '2.0', id: msg?.id ?? null, error: { code: -32600, message: 'Unsupported MCP-Protocol-Version' } }, 400);
-    }
-    if (!isPost) return new Response(null, { status: 405, headers: { allow: 'POST' } });
+    try { msg = await req.json(); } catch { return json({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }, 400); }
     if (msg?.id === undefined || msg?.id === null) return new Response(null, { status: 202 });
     const reply = (result: object) => json({ jsonrpc: '2.0', id: msg.id, result });
     switch (msg.method) {
-      case 'initialize': {
-        const requested = msg.params?.protocolVersion;
-        const protocolVersion = typeof requested === 'string' && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
-          ? requested : SUPPORTED_PROTOCOL_VERSIONS[0];
-        return reply({ protocolVersion, capabilities: { tools: {} },
+      case 'initialize':
+        return reply({ protocolVersion: msg.params?.protocolVersion ?? '2025-06-18', capabilities: { tools: {} },
           serverInfo: { name: 'hermitd-connector', version: '1' } });
-      }
       case 'ping': return reply({});
       case 'tools/list': return reply({ tools: TOOLS });
       case 'tools/call': {

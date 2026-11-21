@@ -12,10 +12,6 @@
 - `hermitd connector status` reports `channel`, `unanswered` and `oldest_unanswered_at` in place of `channel_connected`.
 - Doctor warns about unanswered connector messages.
 
-### Fixed
-
-- The connector's public endpoint negotiates a supported MCP protocol version.
-
 ## [1.4.39] - 2026-11-21
 
 ### Added
