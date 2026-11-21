@@ -624,8 +624,9 @@ const CONFIG_FILE_WRITE = new RegExp(
 
 /** Command substitution, which still runs inside double quotes and unquoted-tag heredocs. */
 const COMMAND_SUBSTITUTION = /\$\(|`/;
+const SETTINGS_SCRIPT_MENTION = /\b(?:channel-access|settings-edit|proposal)\b/;
 /** Text that re-runs quoted or heredoc text as code: a shell, an interpreter, or a command runner. */
-const RUNS_SHELL_TEXT = /\b(?:(?:ba|z|da|k|c|tc|a|mk|ya|pw)?sh|fish|eval|source|[gnm]?awk|perl|python[\d.]*|ruby|php|node|deno|tmux|screen|watch|ssh|su|script|parallel)\b|\bbun\s+(?:-\S+\s+)*(?:-e|--eval|-p|--print)\b|(?:^|[;&|]\s*)\.\s/m;
+const RUNS_SHELL_TEXT = /\b(?:(?:ba|z|da|k|c|tc|a|mk|ya|pw)?sh|fish|eval|source|[gnm]?awk|perl|python[\d.]*|ruby|php|node|deno|tmux|screen|watch|ssh|su|script|parallel|xargs)\b|\bbun\s+(?:-\S+\s+)*(?:(?:-e|--eval|-p|--print)\b|run\s+-(?!\S))|(?:^|[;&|]\s*)\.\s/m;
 
 /**
  * The command with literal text blanked so CONFIG_FILE_WRITE sees only real
@@ -691,6 +692,12 @@ function literalShellText(command: string, conservative = true): string {
   return conservative && RUNS_SHELL_TEXT.test(out) ? command : out;
 }
 
+function settingsScriptText(command: string, taskBlanked = ''): string {
+  if (!SETTINGS_SCRIPT_MENTION.test(command.replace(/['"\\]/g, ''))) return command;
+  const blanked = taskBlanked || literalShellText(command);
+  return COMMAND_SUBSTITUTION.test(blanked) ? command : blanked;
+}
+
 function shellWriteTargets(command: string): string[] {
   if (!/>|\b(?:cp|mv|tee|sed)\s/.test(command)) return [];
   const targets: string[] = [];
@@ -746,23 +753,23 @@ function channelFileLabels(targets: string[], cwd: string, origin: () => Routine
 const CHANNEL_ACCESS_WRITES = new Set(['pair', 'policy', 'unpair', 'group-remove', 'group-allow', 'group-add']);
 
 /** Label recognized channel writes; shell expansions remain opaque. */
-function channelAccessAsks(command: string): string[] {
+function channelAccessAsks(command: string, settingsText: string): string[] {
   if (!/channel-access(?:\.ts)?\b/.test(command)) return [];
-  const commands = command.match(SHELL_COMMAND_PARTS) ?? [];
   const labels: string[] = [];
-  for (const raw of commands) {
-    // A backslash-newline continues the same command.
-    const part = raw.replace(/\\\n/g, ' ');
-    const call = /channel-access(?:\.ts)?['"]?\s+(?:'[^']*'|"[^"]*"|\S+)\s+(\S+)(?:\s+(.*))?/.exec(part);
-    if (!call) continue;
-    const verb = call[1].replace(/['"\\]/g, '');
+  // Split the blanked text so an apostrophe in a heredoc body cannot join a real call to the body.
+  for (const { 0: text, index } of settingsText.matchAll(SHELL_COMMAND_PARTS)) {
+    // A backslash-newline continues the command. Keep offsets when normalizing it.
+    const part = command.slice(index, index + text.length).replace(/\\\n/g, '  ');
+    const call = /(channel-access(?:\.ts)?)['"]?\s+(?:'[^']*'|"[^"]*"|\S+)\s+(\S+)(?:\s+(.*))?/.exec(part);
+    if (!call || !settingsText.startsWith(call[1], index + call.index)) continue;
+    const verb = call[2].replace(/['"\\]/g, '');
     if (verb === 'show' || verb === 'ensure-defaults') continue;
     // Single-quoted text is literal, so a nickname regex's `$` anchor stays readable.
     if (SHELL_EXPANDS.test(part.replace(/'[^']*'/g, ''))) {
       labels.push('channel-access');
       continue;
     }
-    const args = (call[2] ?? '').replace(/['"\\]/g, '').match(/^(\S+)\s+(\S+)(.*)/);
+    const args = (call[3] ?? '').replace(/['"\\]/g, '').match(/^(\S+)\s+(\S+)(.*)/);
     if (!args) {
       if (CHANNEL_ACCESS_WRITES.has(verb)) labels.push('channel-access');
       continue;
@@ -868,8 +875,10 @@ function taskSenderClaims(command: string): SenderClaim[] | null {
  */
 export function protectedMutation(
   command: string, cwd: string, origin: () => RoutineOrigin, mode: string,
-  listen = channelAccessAsks(command), inspectedWrites?: { targets: string[]; channelFiles: string[] },
+  listen?: string[], inspectedWrites?: { targets: string[]; channelFiles: string[] },
+  settingsText = settingsScriptText(command),
 ): string[] | null {
+  listen ??= channelAccessAsks(command, settingsText);
   const turn = () => { const value = origin(); return value.kind === 'channel' ? value.key : null; };
   const originAsks = () => {
     const value = origin();
@@ -909,13 +918,20 @@ export function protectedMutation(
   // and raise a prompt for every routine add. A single-quoted value may splice
   // apostrophes as `'\''`, so the label keeps the text after one.
   for (const m of command.matchAll(PROPOSAL_ROUTINE)) {
+    if (!settingsText.startsWith('proposal', m.index)) continue;
     const asked = proposalRoutineAsks(command.slice(m.index + m[0].length), turn, originAsks);
     if (asked && !shown.includes(asked)) shown.push(asked);
   }
 
-  const matches = [...command.matchAll(
-    /(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('(?:[^']|'\\'')*'|"[^"]*"|\S+))?/g
-  )];
+  // Calls are found in the blanked text, so a heredoc mention cannot swallow the call after it;
+  // the arguments are read from the raw command at the same offset.
+  const settingsEdit = String.raw`(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('(?:[^']|'\\'')*'|"[^"]*"|\S+))?`;
+  const rawCall = new RegExp(settingsEdit, 'y');
+  const matches = [...settingsText.matchAll(new RegExp(settingsEdit, 'g'))].flatMap(found => {
+    rawCall.lastIndex = found.index;
+    const m = rawCall.exec(command);
+    return m ? [m] : [];
+  });
   if (matches.length === 0) return shown.length ? shown : null;
 
   for (const m of matches) {
@@ -998,6 +1014,7 @@ function main(payload: any): void {
     // A substitution left after blanking can splice a blanked body back in as arguments, so it keeps the raw command.
     const blanked = /\btask(?:\.ts)?\b/.test(command.replace(/['"\\]/g, '')) ? literalShellText(command) : '';
     const taskText = COMMAND_SUBSTITUTION.test(blanked) ? command : blanked;
+    const settingsText = settingsScriptText(command, blanked);
     if (/\btask(?:\.ts)?\s+decide\b/.test(command.replace(/['"\\]/g, ''))) {
       const value = turnConversation(payload);
       const tPath = transcriptPath(payload);
@@ -1063,7 +1080,7 @@ function main(payload: any): void {
         if (parsed) decideHint = `${parsed.id} ${parsed.token}`;
       }
     }
-    const channelAccess = channelAccessAsks(command);
+    const channelAccess = channelAccessAsks(command, settingsText);
     if (payload.permission_mode === 'bypassPermissions' && channelAccess.length) {
       deny('Channel access changes are refused in bypass mode; use a normal session.');
       return;
@@ -1082,7 +1099,7 @@ function main(payload: any): void {
       const value = origin();
       if (value.kind === 'channel') requester = value.requester;
     }
-    asked = protectedMutation(command, cwd, origin, payload.permission_mode, channelAccess, inspectedWrites);
+    asked = protectedMutation(command, cwd, origin, payload.permission_mode, channelAccess, inspectedWrites, settingsText);
   } else {
     const fp = typeof input.file_path === 'string' ? input.file_path : '';
     const match = targetsConfigFile(fp);

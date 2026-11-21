@@ -1184,6 +1184,56 @@ test('quoted heredoc bodies that only mention a decision call are data', async (
   expect(JSON.parse((await runGate(payload({ dir, tool: 'Bash', input: { command: spliced } }), dir)).stdout).hookSpecificOutput.permissionDecision).toBe('deny');
 });
 
+describe('settings commands in heredocs', () => {
+  const report = 'bun /p/scripts/task.ts report .hermit T-20261101-120000';
+  const channelWrite = 'bun /p/scripts/channel-access.ts /state group-add discord 123';
+  const settingsWrite = cmd('set permission_mode auto');
+  const channelBody = '`' + channelWrite + '`';
+
+  for (const body of [
+    'The report names channel-access.ts `/state` group-add.',
+    'The report says channel-access.ts was mentioned in `a note`.',
+    channelBody,
+    '`' + settingsWrite + '`',
+    'The upsert uses bun /p/scripts/proposal.ts routine .hermit.',
+  ]) {
+    test(`quoted report text is silent: ${body}`, async () => {
+      const dir = fixture();
+      const command = `${report} <<'EOF'\n${body}\nEOF`;
+      for (const permission_mode of ['auto', 'bypassPermissions']) {
+        expectSilent(await runGate(payload({ dir, tool: 'Bash', permission_mode, input: { command } }), dir));
+      }
+    });
+  }
+
+  for (const [title, command, label] of [
+    ['unquoted heredoc substitution', `${report} <<EOF\n${channelBody}\nEOF`, 'channel-access'],
+    ['heredoc fed to bash', `bash <<'EOF'\n${channelBody}\nEOF`, 'channel-access'],
+    ['heredoc fed to xargs', `xargs bun <<'EOF'\n${channelWrite.slice(4)}\nEOF`, 'listen in discord chat 123: mention=? allow=? shared=? passive=?'],
+    ['call after a body with an apostrophe', `${report} <<'EOF'\nThe agent's note\nEOF\n${channelWrite} --mention 'on'`, 'listen in discord chat 123: mention=on allow=? shared=? passive=?'],
+    ['settings write after a body ending in a mention', `${report} <<'EOF'\nsee settings-edit.ts\nEOF\n${settingsWrite}`, 'permission_mode=auto'],
+    ['direct channel access write', channelWrite, 'listen in discord chat 123: mention=? allow=? shared=? passive=?'],
+    ['direct settings write', settingsWrite, 'permission_mode=auto'],
+  ]) {
+    test(`${title} still asks`, async () => {
+      const dir = fixture();
+      const r = await runGate(payload({ dir, tool: 'Bash', permission_mode: 'auto', input: { command } }), dir);
+      expect(r.exitCode).toBe(0);
+      expectAsk(r.stdout, `Hermit setting: ${label}`);
+    });
+  }
+
+  test('a direct channel access write is still denied in bypass mode', async () => {
+    const dir = fixture();
+    const r = await runGate(payload({ dir, tool: 'Bash', permission_mode: 'bypassPermissions', input: { command: channelWrite } }), dir);
+    expect(r.exitCode).toBe(0);
+    expect(JSON.parse(r.stdout).hookSpecificOutput).toMatchObject({
+      permissionDecision: 'deny',
+      permissionDecisionReason: 'Channel access changes are refused in bypass mode; use a normal session.',
+    });
+  });
+});
+
 describe('task sender binding', () => {
   const channel = (user: string, chat = '100', extra = '') =>
     `<channel source="plugin:discord:discord" chat_id="${chat}" user_id="${user}"${extra}>yes</channel>`;
