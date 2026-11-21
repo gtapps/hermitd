@@ -12,7 +12,8 @@ on:
     branches: [main]
     paths:
       # The platform-specific surfaces: shell that meets BSD userland, scripts
-      # that branch on process.platform, and every plugin's tests/. The last one
+      # that branch on process.platform (including a plugin's root-level .ts
+      # entry point, such as the connector's server.ts), and every plugin's tests/. The last one
       # is load-bearing: the first run of this job failed on test fixtures, not on
       # product code (unresolved os.tmpdir() compared against resolved
       # process.cwd()), so a test-only push has to be able to retrigger it.
@@ -21,6 +22,7 @@ on:
       - 'plugins/*/state-templates/bin/**'
       - 'plugins/*/tests/**'
       - 'plugins/*/bunfig.toml'
+      - 'plugins/*/*.ts'
       - '.github/workflows/test-macos-compat.yml'
       - 'package.json'
       - 'bun.lock'
@@ -32,6 +34,7 @@ on:
       - 'plugins/*/state-templates/bin/**'
       - 'plugins/*/tests/**'
       - 'plugins/*/bunfig.toml'
+      - 'plugins/*/*.ts'
       - '.github/workflows/test-macos-compat.yml'
       - 'package.json'
       - 'bun.lock'
@@ -46,7 +49,7 @@ concurrency:
 jobs:
   macos:
     runs-on: macos-latest
-    # Sequential across six suites, and 20+ core test files spawn real tmux: a wedged pane
+    # Sequential across seven suites, and 20+ core test files spawn real tmux: a wedged pane
     # would otherwise sit on the 6h job default and the weekly run reports
     # nothing at all. Green runs take about 2m; 5m fails a hung run fast.
     timeout-minutes: 5
@@ -89,6 +92,10 @@ jobs:
         if: '!cancelled()'
         run: bun test --timeout=45000
         working-directory: plugins/hermitd-feed
+      - name: Connector suite
+        if: '!cancelled()'
+        run: bun test --timeout=45000
+        working-directory: plugins/hermitd-connector
       - name: Dev suite
         if: '!cancelled()'
         run: bash tests/run-all.sh

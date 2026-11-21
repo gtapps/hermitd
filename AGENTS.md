@@ -4,7 +4,7 @@ Before changing a plugin, read its `plugins/<slug>/AGENTS.md`. Load only the gui
 
 ## Repository and architecture
 
-- Seven independently versioned Claude Code plugins live under `plugins/<slug>/`, each owning its manifest, code, templates, tests, and changelog. `.claude-plugin/marketplace.json` is the sole catalog; `README.md` is the marketplace overview.
+- Eight independently versioned Claude Code plugins live under `plugins/<slug>/`, each owning its manifest, code, templates, tests, and changelog. `.claude-plugin/marketplace.json` is the sole catalog; `README.md` is the marketplace overview.
 - Hermit runs continuously inside Claude Code. Evaluate features for downstream chat operators, not only this repository's development workflow. Do not use this development hermit's session history as evidence of core feature utility. Check Claude Code documentation and the plugin catalog before adding a capability; when one already covers it, link to it instead of reimplementing.
 - Domain plugins depend on core. Core discovers siblings generically from metadata; it must not import siblings, hardcode their slugs in logic, or branch on their installation. Siblings use core commands with an appropriate version floor instead of importing core code. Preserve `${CLAUDE_PLUGIN_ROOT}/../*/.claude-plugin/plugin.json` discovery.
 - Domain plugin `skills/`, `agents/`, `state-templates/`, and `docs/` carry core-facing terminology; sweep them when core wording changes.
@@ -27,7 +27,7 @@ From the root: `bun install --frozen-lockfile` installs tooling; `bunx tsc` chec
 
 | Plugins | Suite |
 |---|---|
-| Core, Home Assistant, Feed | `bun test` |
+| Core, Home Assistant, Feed, Connector | `bun test` |
 | Dev, Fitness, Scribe, Forge | `bash tests/run-all.sh` |
 
 Local guides cover special prerequisites. Behavior changes need regression coverage, the affected plugin's complete suite, and `bunx tsc`. Shared contract changes also need root `bun test tests/cross-plugin/ tests/lib/`. CI is path-filtered under `.github/workflows/`; root toolchain changes affect every suite. For docs-only changes, check references, effective scope, and applicable documentation contracts.

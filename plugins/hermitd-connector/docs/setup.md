@@ -13,7 +13,7 @@ Run these steps on the host. Substitute the agent's folder, registered name, and
    cd "<agent folder>" && .hermit/bin/hermitd-run settings-edit .hermit/config.json get docker.recommended_plugins
    cd "<agent folder>" && claude plugin list --json
    cd "<agent folder>" && claude plugin marketplace list --json
-   ls /etc/claude-code/managed-settings.d/
+   ls "<managed settings folder>"  # see step 5
    ```
 
    For Funnel, run `tailscale status --json`, `tailscale serve status --json` and `tailscale funnel status --json`. For Cloudflare, run `cloudflared tunnel list` and inspect the chosen tunnel's public host names in its local config or Cloudflare dashboard. Reuse existing matching settings, installations, and routes. If the connector entry is explicitly disabled (`enabled: false`), report it to the operator and stop. If core is missing, follow the [core setup instructions](../../../README.md#quick-start) after inspecting what is available, then repeat these checks. Update an existing agent that needs a newer core with `hermitd update <name>`.
@@ -45,7 +45,7 @@ Run these steps on the host. Substitute the agent's folder, registered name, and
 
    A session started in the target agent folder with hermitd enabled loads the native settings approval hook. Use its prompt. In any other session, show the exact command and get the operator's explicit yes before running it. After approval and execution, reread `channels.connector` and, for Docker, `docker.recommended_plugins` with the commands from step 1. If an existing boot entry is disabled, report it to the operator.
 
-5. **Approve the channel in Claude Code.** Docker generates its local channel allowlist at build time. For tmux on Linux, read the effective managed policy and prepare the exact merged contents of `/etc/claude-code/managed-settings.d/hermitd-channels.json` for the operator to review. Set `channelsEnabled: true` and include `hermitd-connector` from the registered marketplace in `allowedChannelPlugins`. Preserve existing settings and list every channel the operator wants available, including official plugins, since the explicit list replaces the default. For example, a host with the official Discord channel and the connector would include these entries.
+5. **Approve the channel in Claude Code.** Docker generates its local channel allowlist at build time. For tmux, read the effective managed policy and prepare the exact merged contents of `hermitd-channels.json` in the managed settings folder for the operator to review. The folder is `/etc/claude-code/managed-settings.d` on Linux and WSL2, and `/Library/Application Support/ClaudeCode/managed-settings.d` on macOS. Set `channelsEnabled: true` and include `hermitd-connector` from the registered marketplace in `allowedChannelPlugins`. Preserve existing settings and list every channel the operator wants available, including official plugins, since the explicit list replaces the default. For example, a host with the official Discord channel and the connector would include these entries.
 
    ```json
    {
@@ -57,10 +57,10 @@ Run these steps on the host. Substitute the agent's folder, registered name, and
    }
    ```
 
-   Save the reviewed JSON to a local file and give the operator one command to install it. After they run it, read back the drop-in and check the channel's startup notice after restart. Use the platform's managed settings path on other systems. [Claude Code managed settings](https://code.claude.com/docs/en/managed-settings)
+   Save the reviewed JSON to a local file and give the operator one command to install it. After they run it, read back the drop-in and check the channel's startup notice after restart. [Claude Code managed settings](https://code.claude.com/docs/en/managed-settings)
 
    ```bash
-   sudo install -D -m 0644 "<reviewed file>" /etc/claude-code/managed-settings.d/hermitd-channels.json
+   sudo mkdir -p "<managed settings folder>" && sudo install -m 0644 "<reviewed file>" "<managed settings folder>/hermitd-channels.json"
    ```
 
    On Team and Enterprise plans, an Owner enables channels in **Organization settings > Claude Code > Channels**. After the Owner confirms, check the next startup notice for organization policy or allowlist refusals. [Claude Code channel controls](https://code.claude.com/docs/en/channels#enterprise-controls)
