@@ -12,7 +12,8 @@ on:
     branches: [main]
     paths:
       # The platform-specific surfaces: shell that meets BSD userland, scripts
-      # that branch on process.platform, and every plugin's tests/. The last one
+      # that branch on process.platform (including a plugin's root-level .ts
+      # entry point, such as the connector's server.ts), and every plugin's tests/. The last one
       # is load-bearing: the first run of this job failed on test fixtures, not on
       # product code (unresolved os.tmpdir() compared against resolved
       # process.cwd()), so a test-only push has to be able to retrigger it.

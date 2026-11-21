@@ -45,7 +45,7 @@ The `@hermitd` suffix disambiguates when both a user-scoped and a project-scoped
 
 ## Testing
 
-Run all seven plugin suites and the shared root tests with Bun 1.4 or newer:
+Run all eight plugin suites and the shared root tests with Bun 1.4 or newer:
 
 ```bash
 bun run test

@@ -347,6 +347,7 @@ describe('messages', () => {
   test('the socket answers at a path longer than the platform socket address limit', async () => {
     // Real stores sit deep under the config dir, past sun_path (104 bytes on macOS, 108 on Linux).
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'connector-gw-'));
+    cleanups.push(() => fs.rmSync(root, { recursive: true, force: true }));
     const store = path.join(root, 'x'.repeat(120));
     writeConfig(store, { port: 0, public_url: PUBLIC, wait_seconds: 2, rate_per_hour: 60 });
     const gw = startGateway(store, { port: 0 });
@@ -354,7 +355,7 @@ describe('messages', () => {
       expect(socketPath(store).length).toBeGreaterThan(108);
       const res = await fetch('http://connector/status', { unix: socketPath(store) });
       expect(res.status).toBe(200);
-    } finally { gw.stop(); fs.rmSync(root, { recursive: true, force: true }); }
+    } finally { gw.stop(); }
   });
 
   test('the public listener serves none of the socket routes', async () => {
