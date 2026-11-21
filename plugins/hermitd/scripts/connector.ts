@@ -3,7 +3,7 @@
  * Host-only connector commands, run by `hermitd connector` from the installed plugin
  * (never a project wrapper) and by the host lifecycle.
  *
- *   connector.ts enable <project> --port <n> --public-url <https url> [--wait-seconds n] [--rate-per-hour n]
+ *   connector.ts enable <project> --public-url <https url> [--port n] [--wait-seconds n] [--rate-per-hour n]
  *   connector.ts disable <project>
  *   connector.ts status <project>
  *   connector.ts pair <project> <code> [--name <label>]
@@ -20,6 +20,7 @@ import { isContainer } from './lib/container';
 import { failJson, flagValue, printJson } from './lib/cli';
 import { assertOutside } from './lib/credproxy';
 import { readSettledConfig } from './lib/config-read';
+import { acquireLockWithWait, releaseLock } from './lib/lockfile';
 import {
   DEFAULT_RATE_PER_HOUR, DEFAULT_WAIT_SECONDS, MAX_WAIT_SECONDS, adminRequest, disable, isEnabled, readConfig,
   render, serverStatus, storeDir, writeConfig,
@@ -27,6 +28,9 @@ import {
 
 const APPLY = 'hermitd restart';
 const GATEWAY = path.join(import.meta.dir, 'connector-gateway.ts');
+const STORE_LOCK_WAIT_MS = 1000;
+const FIRST_AUTO_PORT = 8790;
+const MAX_PORT = 65535;
 
 function intFlag(args: string[], flag: string, min: number, max: number, fallback?: number): number {
   const raw = flagValue(args, flag);
@@ -37,10 +41,47 @@ function intFlag(args: string[], flag: string, min: number, max: number, fallbac
 }
 
 function publicUrl(raw: string | undefined): string {
-  let url: URL;
-  try { url = new URL(raw ?? ''); } catch { throw new Error('invalid_public_url'); }
-  if (url.protocol !== 'https:' || url.search || url.hash || url.username || url.password) throw new Error('invalid_public_url');
-  return url.toString().replace(/\/+$/, '');
+  const url = URL.parse(raw ?? '');
+  if (!url || url.protocol !== 'https:' || url.port || url.pathname !== '/' || url.search || url.hash || url.username || url.password) {
+    throw new Error('invalid_public_url');
+  }
+  return url.origin;
+}
+
+function portFree(port: number): boolean {
+  try {
+    const listener = Bun.listen({ hostname: '127.0.0.1', port, socket: { data() {} } });
+    listener.stop(true);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE') throw error;
+    return false;
+  }
+}
+
+function withStoreLock(root: string, update: () => object): object {
+  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  const lock = root + '.lock';
+  if (!acquireLockWithWait(lock, STORE_LOCK_WAIT_MS)) throw new Error('connector_store_busy');
+  try { return update(); }
+  finally { releaseLock(lock); }
+}
+
+function siblingClaims(root: string, store: string) {
+  const ports = new Set<number>();
+  const origins = new Set<string>();
+  for (const name of fs.readdirSync(root)) {
+    const sibling = path.join(root, name);
+    if (sibling === store) continue;
+    let config;
+    try { config = readConfig(sibling); }
+    catch { continue; }
+    if (!config) continue;
+    ports.add(config.port);
+    const url = URL.parse(config.public_url);
+    if (url) origins.add(url.origin);
+  }
+  return { ports, origins };
 }
 
 function hostNetwork(project: string): boolean {
@@ -48,32 +89,64 @@ function hostNetwork(project: string): boolean {
     && readSettledConfig(path.join(project, '.hermit')).docker?.network_mode === 'host';
 }
 
-export async function run(argv: string[], container = isContainer, configRoot?: string): Promise<object> {
+export async function run(argv: string[], container = isContainer, configRoot?: string, probe = portFree): Promise<object> {
   const [sub, projectArg, ...args] = argv;
   if (container()) throw new Error('host_only');
   if (!projectArg) throw new Error('usage');
   const project = fs.realpathSync(projectArg);
   const store = storeDir(project, configRoot);
+  const root = path.dirname(store);
 
   if (sub === 'enable') {
-    const previous = readConfig(store);
-    const port = intFlag(args, '--port', 1, 65535, previous?.port);
-    const url = publicUrl(flagValue(args, '--public-url') ?? previous?.public_url);
-    const wait = intFlag(args, '--wait-seconds', 1, MAX_WAIT_SECONDS, previous?.wait_seconds ?? DEFAULT_WAIT_SECONDS);
-    const rate = intFlag(args, '--rate-per-hour', 1, 10000, previous?.rate_per_hour ?? DEFAULT_RATE_PER_HOUR);
     if (hostNetwork(project)) throw new Error('host_network');
     assertOutside(store, project);
-    writeConfig(store, { port, public_url: url, wait_seconds: wait, rate_per_hour: rate });
-    render(store, GATEWAY);
-    return { status: previous ? 'updated' : 'enabled', port, public_url: url, wait_seconds: wait, rate_per_hour: rate, apply: APPLY };
+    const server = await serverStatus(store);
+    return withStoreLock(root, () => {
+      const previous = readConfig(store);
+      const url = publicUrl(flagValue(args, '--public-url') ?? previous?.public_url);
+      const wait = intFlag(args, '--wait-seconds', 1, MAX_WAIT_SECONDS, previous?.wait_seconds ?? DEFAULT_WAIT_SECONDS);
+      const rate = intFlag(args, '--rate-per-hour', 1, 10000, previous?.rate_per_hour ?? DEFAULT_RATE_PER_HOUR);
+      const { ports, origins } = siblingClaims(root, store);
+      // This store's own running server holds its port; one that predates `port` in status holds the saved one.
+      const ownPort = server ? server.port ?? previous?.port : undefined;
+      let port = args.includes('--port') ? intFlag(args, '--port', 1, MAX_PORT) : previous?.port;
+      if (port !== undefined) {
+        if (ports.has(port)) return { status: 'refused', reason: 'port_used_by_other_agent' };
+        if (ownPort !== port && !probe(port)) return { status: 'refused', reason: 'port_in_use' };
+      }
+      if (origins.has(url)) return { status: 'refused', reason: 'public_url_used_by_other_agent' };
+      if (port === undefined && ownPort !== undefined && !ports.has(ownPort)) port = ownPort;
+      if (port === undefined) {
+        for (let candidate = FIRST_AUTO_PORT; candidate <= MAX_PORT; candidate++) {
+          if (ports.has(candidate) || !probe(candidate)) continue;
+          port = candidate;
+          break;
+        }
+        if (port === undefined) throw new Error('no_free_port');
+      }
+      const config = { port, public_url: url, wait_seconds: wait, rate_per_hour: rate };
+      writeConfig(store, config);
+      render(store, GATEWAY);
+      return { status: previous ? 'updated' : 'enabled', ...config, apply: APPLY };
+    });
   }
-  if (sub === 'disable') return disable(store) ? { status: 'disabled', apply: APPLY } : { status: 'skipped', reason: 'not_enabled' };
+  if (sub === 'disable') {
+    assertOutside(store, project);
+    return withStoreLock(root, () => disable(store)
+      ? { status: 'disabled', apply: APPLY }
+      : { status: 'skipped', reason: 'not_enabled' });
+  }
   if (sub === 'render') return render(store, GATEWAY);
   if (sub === 'status') {
     const config = readConfig(store);
     if (!config) return { enabled: false };
     const server = await serverStatus(store);
-    return { enabled: true, ...config, server: server ? 'running' : 'not_running', ...(server ? { channel_connected: server.channel_connected, grants: server.grants } : {}) };
+    if (!server) return { enabled: true, ...config, server: 'not_running' };
+    return {
+      enabled: true, ...config, server: 'running', port: server.port ?? config.port,
+      channel: server.channel, unanswered: server.unanswered, oldest_unanswered_at: server.oldest_unanswered_at,
+      grants: server.grants,
+    };
   }
   if (!isEnabled(store)) return { status: 'refused', reason: 'not_enabled' };
   if (sub === 'pair') {

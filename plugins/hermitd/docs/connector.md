@@ -20,15 +20,13 @@ person in their AI app ──> your public HTTPS address (your tunnel)
 
 ## Enable it
 
-1. On the host, enable the server with the loopback port your tunnel will point at and the public HTTPS address people will use:
+Follow the [connector setup runbook](../../hermitd-connector/README.md#set-up) from the host. It covers checking the current setup, configuring the tunnel, channel approval, restart, and verification.
 
-   ```bash
-   hermitd connector <name> enable --port 8790 --public-url https://agent.example.com
-   ```
+1. Run `hermitd connector <name> enable --public-url https://agent.example.com` with a root HTTPS URL on port 443. Use the returned loopback port for the tunnel and restart the agent to start the server. A saved port is reused. Use `--port` to select another free port when needed. Each agent needs its own public host name and local port.
+2. Install `hermitd-connector` in the target folder on tmux, or let Docker install it at boot. Use one approved `channel-register connector` write for the `plugin`, registered `marketplace`, `members_only: true`, and, on Docker, `docker_source: "gtapps/hermitd"`.
+3. Follow the runbook's channel approval and restart steps. `hermitd connector <name> status` reports the server state, `channel` (`polling` or `absent`), `unanswered` and `oldest_unanswered_at`. Check the public discovery JSON, pairing and replies separately.
 
-   Optional: `--wait-seconds` (how long a call waits for the agent, default 25, at most 200) and `--rate-per-hour` (per person, default 60).
-2. Install the channel plugin and enrol it as a channel with `members_only: true`, the same way as any [third-party channel](channel-plugins.md): plugin `hermitd-connector`, channel key `connector`. Set `channels.connector.members_only` to `true` before running channel setup (ask the agent; it is a protected setting), so the channel never runs without it; registration keeps it. `/hermitd:hermit-settings channels` changes it later. On Docker the approval prompt names the new channel plugin.
-3. Point your tunnel at `127.0.0.1:<port>` and restart the agent: `hermitd restart`, or `hermitd restart --build` on Docker, where the image must allow the new channel plugin. The local port is your choice, but the public address must be HTTPS on the standard port 443, which every supported app can reach: Claude does not connect to a connector URL with another port ([Anthropic help](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)). If another service already holds 443 on that host name, use another host name. `hermitd connector <name> status` shows the server running and the channel connected.
+`enable` also takes `--wait-seconds` (default 25, maximum 200) and `--rate-per-hour` (per person, default 60).
 
 `hermitd connector <name> disable` stops it at the next restart and keeps every pairing, so enabling it again needs no new pairing. `list` shows who is paired and `revoke <id>` removes one person.
 

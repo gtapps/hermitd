@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `hermitd connector enable` picks a free port when `--port` is omitted on first enable and refuses a port or public address another agent has claimed.
+
+### Changed
+
+- `hermitd connector enable` requires a root HTTPS URL on port 443.
+- `hermitd connector status` reports `channel`, `unanswered` and `oldest_unanswered_at` in place of `channel_connected`.
+- Doctor warns about unanswered connector messages.
+
 ## [1.4.39] - 2026-11-21
 
 ### Added

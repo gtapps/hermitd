@@ -2083,13 +2083,21 @@ function connectorSocket(p: DoctorPaths): string | undefined {
 }
 
 /** Is the connector's trusted server answering this agent? Asks only its socket for status. */
-async function checkConnector(p: DoctorPaths = PATHS, socket = connectorSocket(p)) {
+async function checkConnector(p: DoctorPaths = PATHS, socket = connectorSocket(p), now = Date.now) {
   const id = 'connector';
   if (!socket) return { id, status: 'ok', detail: 'not enabled' };
   const body = await socketStatus(socket, 3000);
   if (!body) return { id, status: 'warn', detail: 'the connector server does not answer; run `hermitd restart` on the host, then `hermitd connector status`' };
-  if (!body.channel_connected) return { id, status: 'warn', detail: 'the connector server runs but no channel is connected; check that the connector channel is enrolled and the agent was restarted' };
-  return { id, status: 'ok', detail: `server running, channel connected, ${body.grants ?? 0} paired` };
+  if (body.channel !== 'polling') {
+    return { id, status: 'warn', detail: 'server running, channel absent. Check that the connector channel entry has `plugin` and `marketplace` and that the agent was restarted.' };
+  }
+  if (body.oldest_unanswered_at && now() - Date.parse(body.oldest_unanswered_at) > 600_000) {
+    return {
+      id, status: 'warn',
+      detail: `server running, channel polling, ${body.unanswered} unanswered since ${body.oldest_unanswered_at}. Check the agent's startup notice for channel approval. Possible causes include the Claude Code channel allowlist (\`allowedChannelPlugins\` with \`channelsEnabled\`), organization policy, or a stuck agent.`,
+    };
+  }
+  return { id, status: 'ok', detail: `server running, channel polling, ${body.grants ?? 0} paired` };
 }
 
 /**

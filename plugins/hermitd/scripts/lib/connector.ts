@@ -122,7 +122,13 @@ export function stopConnector(resident: string, spawn = spawnSync, sessionAlive:
   if (sessionAlive(session)) spawn('tmux', ['kill-session', '-t', `=${session}`], { stdio: 'ignore' });
 }
 
-export type ServerStatus = { channel_connected?: boolean; grants?: number };
+export type ServerStatus = {
+  port?: number;
+  channel?: 'polling' | 'absent';
+  unanswered?: number;
+  oldest_unanswered_at?: string | null;
+  grants?: number;
+};
 
 /** The trusted server's status from a socket path, or null when nothing answers. */
 export async function socketStatus(socket: string, timeoutMs = ADMIN_WAIT_MS): Promise<ServerStatus | null> {

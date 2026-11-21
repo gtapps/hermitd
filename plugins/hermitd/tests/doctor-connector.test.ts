@@ -32,11 +32,29 @@ test('set but nothing answers: warn', async () => {
   expect(r.detail).toContain('does not answer');
 });
 
-test('server answers without a connected channel: warn; with one: ok', async () => {
-  const off = standIn('off', { ok: true, channel_connected: false, grants: 1 });
-  const on = standIn('on', { ok: true, channel_connected: true, grants: 2 });
+test('server answers with an absent channel: warn about registration and restart', async () => {
+  const off = standIn('off', { ok: true, channel: 'absent', grants: 1 });
   try {
-    expect(await checkConnector(undefined, off.sock)).toMatchObject({ status: 'warn', detail: expect.stringContaining('no channel is connected') });
-    expect(await checkConnector(undefined, on.sock)).toEqual({ id: 'connector', status: 'ok', detail: 'server running, channel connected, 2 paired' });
-  } finally { off.stop(); on.stop(); }
+    const result = await checkConnector(undefined, off.sock);
+    expect(result.status).toBe('warn');
+    for (const text of ['channel absent', 'plugin', 'marketplace', 'restarted']) expect(result.detail).toContain(text);
+  } finally { off.stop(); }
+});
+
+test('polling stays healthy through 10 minutes, then warns about unanswered messages', async () => {
+  const sentAt = Date.parse('2026-11-21T12:00:00Z');
+  const oldest_unanswered_at = new Date(sentAt).toISOString();
+  const on = standIn('on', { ok: true, channel: 'polling', grants: 2, unanswered: 1, oldest_unanswered_at });
+  try {
+    for (const seconds of [599, 600]) {
+      expect(await checkConnector(undefined, on.sock, () => sentAt + seconds * 1000)).toEqual({
+        id: 'connector', status: 'ok', detail: 'server running, channel polling, 2 paired',
+      });
+    }
+    const result = await checkConnector(undefined, on.sock, () => sentAt + 601_000);
+    expect(result.status).toBe('warn');
+    for (const text of ['1 unanswered', oldest_unanswered_at, 'allowedChannelPlugins', 'channelsEnabled', 'organization policy', 'stuck agent', 'startup notice']) {
+      expect(result.detail).toContain(text);
+    }
+  } finally { on.stop(); }
 });
