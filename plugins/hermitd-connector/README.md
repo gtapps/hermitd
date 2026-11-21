@@ -66,6 +66,22 @@ Use `status` to see whether the server is running, the channel is polling, and a
 
 Limits and the security model: [connector guide](../hermitd/docs/connector.md). On Docker the server runs as its own service: [Docker security](../hermitd/docs/docker-security.md#connector).
 
+## Troubleshooting
+
+**Claude Team or Enterprise: the channel never registers.** `status` shows `channel: absent`, and the agent's startup notice says the plugin is not on the organization's approved list, or that an admin must enable channels. Claude Code blocks channels on these plans until an admin sets `channelsEnabled: true`, and an `allowedChannelPlugins` list replaces Anthropic's default list, so the connector, and any official channel you also use, must be named in it. In the claude.ai organization managed settings (admin console), set:
+
+```json
+{
+  "channelsEnabled": true,
+  "allowedChannelPlugins": [
+    { "marketplace": "claude-plugins-official", "plugin": "discord" },
+    { "marketplace": "hermitd", "plugin": "hermitd-connector" }
+  ]
+}
+```
+
+Drop the `discord` line if you use no official channel, and add one line per official channel you do use. Then restart the agent. [Claude Code channel controls](https://code.claude.com/docs/en/channels#enterprise-controls)
+
 ## How it works
 
 ```
