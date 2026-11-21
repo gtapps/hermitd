@@ -8,27 +8,19 @@ For your own typed steering from the Claude app, use [Remote Control](https://co
 
 ```
 person in their AI app ──> your public HTTPS address (your tunnel)
-  ──> trusted server (one per agent, outside the agent's reach)
+  ──> trusted server (one per agent)
         sign-in, pairing, a per-person hourly cap, the message record
   ──> agent socket ──> hermitd-connector channel ──> the agent, as a member
   <── the agent's reply ──< shown or spoken in the app
 ```
 
-- The trusted server keeps sign-in state and the record in a host-only store, `~/.claude/hermitd/connector/<project>/`, which the agent can neither read nor change. On Docker it runs as its own service in its own network namespace; the agent reaches it only through a read-only socket mount.
+- The trusted server keeps sign-in state and the message record in `~/.claude/hermitd/connector/<project>/`. On Docker the server runs in its own network namespace and keeps that store outside the agent's reach. The agent connects through a read-only socket mount.
 - Each paired person gets their own chat. The agent sees one channel event per message with that person's label.
 - `members_only: true` on the channel entry turns off every elevated path for it, the operator included: control commands, primary-operator and sign-in authority, unscoped recall, home pinning and notice routing. See the [config reference](config-reference.md).
 
 ## Enable it
 
-Follow the [connector setup runbook](../../hermitd-connector/README.md#set-up) from the host. It covers checking the current setup, configuring the tunnel, channel approval, restart, and verification.
-
-1. Run `hermitd connector <name> enable --public-url https://agent.example.com` with a root HTTPS URL on port 443. Use the returned loopback port for the tunnel and restart the agent to start the server. A saved port is reused. Use `--port` to select another free port when needed. Each agent needs its own public host name and local port.
-2. Install `hermitd-connector` in the target folder on tmux, or let Docker install it at boot. Use one approved `channel-register connector` write for the `plugin`, registered `marketplace`, `members_only: true`, and, on Docker, `docker_source: "gtapps/hermitd"`.
-3. Follow the runbook's channel approval and restart steps. `hermitd connector <name> status` reports the server state, `channel` (`polling` or `absent`), `unanswered` and `oldest_unanswered_at`. Check the public discovery JSON, pairing and replies separately.
-
-`enable` also takes `--wait-seconds` (default 25, maximum 200) and `--rate-per-hour` (per person, default 60).
-
-`hermitd connector <name> disable` stops it at the next restart and keeps every pairing, so enabling it again needs no new pairing. `list` shows who is paired and `revoke <id>` removes one person.
+Follow the [connector setup guide](../../hermitd-connector/docs/setup.md) from the host.
 
 ## How people connect
 
@@ -61,3 +53,7 @@ Another app can connect only once its sign-in callback address is added to the t
 - `shared_chats` shares a chat with every chat on every channel. Use it with the connector only when every chat on the agent is your own.
 
 To let other tools observe or wake the agent rather than talk to it, see the [external control surface](external-control-surface.md).
+
+## What the agent sees
+
+One `<channel source="connector">` event per message, with `chat_id` (one per paired person), `message_id`, `user_id`, `user` (the pairing name), `ts` and `via`. The agent answers with the `reply` tool, which returns `sent` when the person is waiting and `queued` otherwise. Admission is the pairing on the host; there is no credential to set up in the agent.

@@ -75,7 +75,7 @@ A configured channel without a send script returns `no_send_path`. For an author
 
 ## Approval and installation
 
-For the connector, register `plugin`, the registered `marketplace` and `members_only: true` together with one approved `channel-register connector` write. On Docker include `docker_source: "gtapps/hermitd"` in that write. [Connector setup runbook](../../hermitd-connector/README.md#set-up)
+For the connector, register `plugin`, the registered `marketplace` and `members_only: true` together with one approved `channel-register connector` write. On Docker include `docker_source: "gtapps/hermitd"` in that write. [Connector setup runbook](../../hermitd-connector/docs/setup.md)
 
 A channel needs the optional `claude/channel/permission` capability to relay native permission prompts to chat. Without it, a prompt waits at the terminal until the watchdog notice; chat replies cannot answer that prompt. See [permission relay](https://code.claude.com/docs/en/channels-reference#relay-permission-prompts).
 
