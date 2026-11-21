@@ -107,12 +107,15 @@ export async function run(argv: string[], container = isContainer, configRoot?: 
       const wait = intFlag(args, '--wait-seconds', 1, MAX_WAIT_SECONDS, previous?.wait_seconds ?? DEFAULT_WAIT_SECONDS);
       const rate = intFlag(args, '--rate-per-hour', 1, 10000, previous?.rate_per_hour ?? DEFAULT_RATE_PER_HOUR);
       const { ports, origins } = siblingClaims(root, store);
+      // This store's own running server holds its port; one that predates `port` in status holds the saved one.
+      const ownPort = server ? server.port ?? previous?.port : undefined;
       let port = args.includes('--port') ? intFlag(args, '--port', 1, MAX_PORT) : previous?.port;
       if (port !== undefined) {
         if (ports.has(port)) return { status: 'refused', reason: 'port_used_by_other_agent' };
-        if (server?.port !== port && !probe(port)) return { status: 'refused', reason: 'port_in_use' };
+        if (ownPort !== port && !probe(port)) return { status: 'refused', reason: 'port_in_use' };
       }
       if (origins.has(url)) return { status: 'refused', reason: 'public_url_used_by_other_agent' };
+      if (port === undefined && ownPort !== undefined && !ports.has(ownPort)) port = ownPort;
       if (port === undefined) {
         for (let candidate = FIRST_AUTO_PORT; candidate <= MAX_PORT; candidate++) {
           if (ports.has(candidate) || !probe(candidate)) continue;

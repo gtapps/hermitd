@@ -84,6 +84,18 @@ describe('enable', () => {
     } finally { server.stop(true); }
   });
 
+  test("this store's running server keeps its port: saved when status omits it, reported when re-enabled without one", async () => {
+    const f = fixture(undefined, () => false);
+    fs.mkdirSync(path.dirname(socketPath(f.store)), { recursive: true });
+    let body: object = { port: 8795 };
+    const server = Bun.serve({ unix: socketPath(f.store), fetch: () => Response.json(body) });
+    try {
+      expect(await f.cmd('enable', '--public-url', 'https://agent.example.com')).toMatchObject({ status: 'enabled', port: 8795 });
+      body = {};
+      expect(await f.cmd('enable', '--rate-per-hour', '5')).toMatchObject({ status: 'updated', port: 8795, rate_per_hour: 5 });
+    } finally { server.stop(true); }
+  });
+
   test('reports exhaustion if no port can bind', async () => {
     const f = fixture(undefined, () => false);
     await expect(f.cmd('enable', '--public-url', 'https://agent.example.com')).rejects.toThrow('no_free_port');
