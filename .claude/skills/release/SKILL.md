@@ -247,11 +247,7 @@ Then create the GitHub release pointing to the new double-dash tag. Source the r
 VERSION=$(jq -r '.version' plugins/<slug>/.claude-plugin/plugin.json)
 TAG="<slug>--v$VERSION"
 NOTES_FILE=$(mktemp)
-awk -v ver="$VERSION" '
-  $0 ~ "^## \\[" ver "\\]" {flag=1; next}
-  /^## \[/ && flag {exit}
-  flag {print}
-' plugins/<slug>/CHANGELOG.md > "$NOTES_FILE"
+sed -n "/^## \\[$VERSION\\]/,/^## \\[/{/^## \\[/!p}" plugins/<slug>/CHANGELOG.md > "$NOTES_FILE"
 [ ! -s "$NOTES_FILE" ] && { echo "CHANGELOG section for $VERSION not found in plugins/<slug>/CHANGELOG.md — fix and retry"; rm "$NOTES_FILE"; exit 1; }
 gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"
 rm "$NOTES_FILE"

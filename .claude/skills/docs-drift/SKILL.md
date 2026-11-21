@@ -102,11 +102,7 @@ the matching changelog section from the tagged snapshot:
 
 ```bash
 version=${latest##*--v}
-git show "$latest:plugins/$slug/CHANGELOG.md" | awk -v ver="$version" '
-  index($0, "## [" ver "]") == 1 {f=1; next}
-  /^## \[/ && f {exit}
-  f
-'
+git show "$latest:plugins/$slug/CHANGELOG.md" | sed -n "/^## \\[$version\\]/,/^## \\[/{/^## \\[/!p}"
 ```
 
 Also inspect the plugin-scoped release diff to catch doc-checkable

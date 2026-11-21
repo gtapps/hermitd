@@ -54,7 +54,7 @@ Generates the weekly review for the current ISO week.
    Channel-send the combined weekly summary:
    - Refresh the dashboard per `${CLAUDE_PLUGIN_ROOT}/docs/artifacts.md`; if it returns a URL, note it for the message below.
    - Publish the weekly-review artifact when `config.artifacts.weekly_review` is on: render it with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/artifact.ts render weekly .hermit` (the page id is `weekly`, not the config key), then follow the hash-gate/publish/state-write steps in `${CLAUDE_PLUGIN_ROOT}/docs/artifacts.md` under state key `weekly_review`; if it returns a URL, note it for the message below too.
-   - Compose the message in these sections. Show a line only when it has something to report — except Dream and Spend, which always show (spend visibility matters even at $0):
+   - Compose the message in these sections. Show a line only when it has something to report — except Dream and Spend, which always show (spend visibility matters even at zero):
      ```
      Delivered: <delivered_count> thing(s) — <up to 5 of the delivered names, comma-joined and plain; add "and N more" for the rest> [omit this whole line when delivered_count is 0]
      Decisions: <proposals_accepted> approved, <proposals_resolved> resolved this week [omit this whole line when both are 0]
