@@ -157,7 +157,7 @@
       "name": "hermitd-connector",
       "source": "./plugins/hermitd-connector",
       "description": "The in-agent channel for the hermitd connector: messages people send from their own Claude app reach the agent as a member, and its replies go back to them.",
-      "version": "0.0.2",
+      "version": "0.0.3",
       "category": "productivity",
       "author": {
         "name": "gtapps",

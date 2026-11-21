@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.3] - 2026-11-21
+
+### Changed
+- Improved setup: the README is a runbook an agent can follow end to end, with a new `docs/setup.md` guide for pairing and for several agents on one host
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Confirm the connector is at 0.0.3** — no files to migrate.
+
+No `config.json` changes required.
+
 ## [0.0.2] - 2026-11-20
 
 ### Changed

@@ -8,7 +8,7 @@ For your own typed work, [Remote Control](https://code.claude.com/docs/en/remote
 
 ## Requirements
 
-- Core `hermitd` 1.4.36 or newer, set up and running.
+- Core `hermitd` 1.4.39 or newer, set up and running.
 - A **public HTTPS address on port 443**, for example `https://agent.example.com`. Every supported app reaches it there, and Claude does not connect to a connector URL with any other port ([Anthropic help](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)). If another service already holds 443 on that host name, use another host name.
 - A **tunnel** (or reverse proxy) from that address to a local port on the agent's machine, such as Tailscale Funnel or Cloudflare Tunnel (see [manual setup](docs/setup.md)). The connector server listens on `127.0.0.1` only.
 - On Docker, an agent that does not use host networking.

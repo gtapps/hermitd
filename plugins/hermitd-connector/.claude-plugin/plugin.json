@@ -1,10 +1,10 @@
 {
   "name": "hermitd-connector",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.36"
+      "version": "^1.4.39"
     }
   ],
   "description": "The in-agent channel for the hermitd connector: messages people send from their own Claude app reach the agent as a member, and its replies go back to them.",
