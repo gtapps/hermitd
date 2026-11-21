@@ -1478,7 +1478,7 @@ describe('channel setup ownership', () => {
     const commandLines = (skill: string) => skill.split('## Commands\n')[1]?.split('\n## ')[0].split('\n') ?? [];
     const channelCommands = commandLines(channelSetup);
     const dockerCommands = commandLines(dockerSetup);
-    const sharedNames = ['pair', 'policy', 'ensure-defaults', 'bot-id', 'config-merge', 'env-check'];
+    const sharedNames = ['pair', 'policy', 'ensure-defaults', 'bot-id', 'config-merge'];
     for (const name of sharedNames) {
       const prefix = '- `channel-' + name + '`: ';
       const channelCommand = channelCommands.find(line => line.startsWith(prefix));

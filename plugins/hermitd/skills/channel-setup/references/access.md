@@ -8,7 +8,7 @@ Use the absolute project `.hermit` directory as `<hermit_state_dir>`, distinct f
 
 Only people who may approve tool use should be DM-paired, because every `allowFrom` DM receives and can answer native permission prompts. Everyone else joins through a group whose admission is independent of `allowFrom`. The agent's `allowed_users` controls who can wake it. Native approval authority follows the plugin's DM admission.
 
-Tell the operator a DM to the running bot yields a 6-character pairing code. Ask:
+Tell the operator a DM to the running bot yields a 6-character pairing code. If they accepted the walk-through in this run, check again that Claude in Chrome is reachable. When both conditions hold, put **Pair in your Chrome (recommended)** first with the description "Send the bot a DM from your signed-in account and use its reply to pair." Show these three options in their existing order either way:
 
 ```
 questions: [
@@ -23,6 +23,8 @@ questions: [
   }
 ]
 ```
+
+- **Pair in your Chrome (recommended):** identify and name the account signed in to the channel's web client. Explain that this account becomes an approver and get one explicit yes before sending a message. The account name informs the operator. Pairing grants approval authority to whoever sent the DM that produced the code, as in manual pairing. After consent, open the running bot's chat, send it a DM, and take the 6-character code only from the bot's reply in that chat. If the account or reply is unclear, Chrome disconnects, or the operator declines, offer the manual options below.
 
 - **Already paired:** go to Verify access.
 - **Ready to pair:** ask for the 6-character code via Other with header "Pairing code" and option **Skip**.

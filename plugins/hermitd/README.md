@@ -49,7 +49,7 @@ With Claude Code 2.1.327+ and Bun 1.4.2+ installed:
 
 ```bash
 claude plugin install hermitd --marketplace gtapps/hermitd --scope local
-claude "/hermitd:hatch"
+claude --chrome "/hermitd:hatch"
 ```
 
 </details>

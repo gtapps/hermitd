@@ -17,7 +17,6 @@ Activate a channel, adding the `config.json` entry first when there isn't one. T
 - `channel-ensure-defaults`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-access.ts "<hermit_state_dir>" ensure-defaults <channel>`
 - `channel-bot-id`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/channel-bot-id.ts "<hermit_state_dir>" <channel> --write`
 - `channel-config-merge`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-config.ts "$(pwd)" --reinit`
-- `channel-env-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/apply-settings.ts .claude/settings.local.json channel-env <CHANNEL_UPPERCASE> "<absolute_state_dir>"`
 - `channel-session-check`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/request-restart.ts "<hermit_state_dir>" --check --session-id "${CLAUDE_SESSION_ID}"`
 - `channel-restart`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/request-restart.ts "<hermit_state_dir>" --session-id "${CLAUDE_SESSION_ID}"`
 

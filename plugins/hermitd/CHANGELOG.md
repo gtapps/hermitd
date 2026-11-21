@@ -4,13 +4,24 @@
 
 ### Added
 
+- `hermitd run channel-token` saves a bot token from a hidden terminal prompt.
+
 - `hermitd connector enable` picks a free port when `--port` is omitted on first enable and refuses a port or public address another agent has claimed.
 
 ### Changed
 
+- Quick hatch applies settings without a confirmation prompt and reports the defaults it applied.
+- Setup launches with Claude in Chrome and offers the walk-through first when Chrome is reachable. The walk-through continues when sign-in succeeds.
+- Chrome-assisted pairing is available after an accepted walk-through.
+
 - `hermitd connector enable` requires a root HTTPS URL on port 443.
 - `hermitd connector status` reports `channel`, `unanswered` and `oldest_unanswered_at` in place of `channel_connected`.
 - Doctor warns about unanswered connector messages.
+
+### Fixed
+
+- Bootstrap installer installs `unzip` before Bun on Linux.
+- Missing display executables on Linux hosts appear as a pending setup step.
 
 ## [1.4.39] - 2026-11-21
 

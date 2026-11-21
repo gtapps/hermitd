@@ -1859,7 +1859,12 @@ async function main(): Promise<void> {
   }
 
   const display = await ensureDisplay();
-  if ('blocker' in display && display.blocker !== 'unsupported') console.log(`[hermit] Browser display: ${display.blocker}`);
+  if ('blocker' in display && display.blocker !== 'unsupported') {
+    const message = display.blocker === 'display_setup_pending'
+      ? 'setup pending; run hermitd run browser-host in the host terminal'
+      : display.blocker;
+    console.log(`[hermit] Browser display: ${message}`);
+  }
   maybeInstallWatchdogScheduler(
     runtimeMode,
     config.watchdog?.scheduler_enabled,
