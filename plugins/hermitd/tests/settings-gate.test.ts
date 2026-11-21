@@ -1209,6 +1209,9 @@ describe('settings commands in heredocs', () => {
   for (const [title, command, label] of [
     ['unquoted heredoc substitution', `${report} <<EOF\n${channelBody}\nEOF`, 'channel-access'],
     ['heredoc fed to bash', `bash <<'EOF'\n${channelBody}\nEOF`, 'channel-access'],
+    ['heredoc fed to xargs', `xargs bun <<'EOF'\n${channelWrite.slice(4)}\nEOF`, 'listen in discord chat 123: mention=? allow=? shared=? passive=?'],
+    ['call after a body with an apostrophe', `${report} <<'EOF'\nThe agent's note\nEOF\n${channelWrite} --mention 'on'`, 'listen in discord chat 123: mention=on allow=? shared=? passive=?'],
+    ['settings write after a body ending in a mention', `${report} <<'EOF'\nsee settings-edit.ts\nEOF\n${settingsWrite}`, 'permission_mode=auto'],
     ['direct channel access write', channelWrite, 'listen in discord chat 123: mention=? allow=? shared=? passive=?'],
     ['direct settings write', settingsWrite, 'permission_mode=auto'],
   ]) {

@@ -626,7 +626,7 @@ const CONFIG_FILE_WRITE = new RegExp(
 const COMMAND_SUBSTITUTION = /\$\(|`/;
 const SETTINGS_SCRIPT_MENTION = /\b(?:channel-access|settings-edit|proposal)\b/;
 /** Text that re-runs quoted or heredoc text as code: a shell, an interpreter, or a command runner. */
-const RUNS_SHELL_TEXT = /\b(?:(?:ba|z|da|k|c|tc|a|mk|ya|pw)?sh|fish|eval|source|[gnm]?awk|perl|python[\d.]*|ruby|php|node|deno|tmux|screen|watch|ssh|su|script|parallel)\b|\bbun\s+(?:-\S+\s+)*(?:-e|--eval|-p|--print)\b|(?:^|[;&|]\s*)\.\s/m;
+const RUNS_SHELL_TEXT = /\b(?:(?:ba|z|da|k|c|tc|a|mk|ya|pw)?sh|fish|eval|source|[gnm]?awk|perl|python[\d.]*|ruby|php|node|deno|tmux|screen|watch|ssh|su|script|parallel|xargs)\b|\bbun\s+(?:-\S+\s+)*(?:(?:-e|--eval|-p|--print)\b|run\s+-(?!\S))|(?:^|[;&|]\s*)\.\s/m;
 
 /**
  * The command with literal text blanked so CONFIG_FILE_WRITE sees only real
@@ -756,9 +756,10 @@ const CHANNEL_ACCESS_WRITES = new Set(['pair', 'policy', 'unpair', 'group-remove
 function channelAccessAsks(command: string, settingsText: string): string[] {
   if (!/channel-access(?:\.ts)?\b/.test(command)) return [];
   const labels: string[] = [];
-  for (const { 0: raw, index } of command.matchAll(SHELL_COMMAND_PARTS)) {
+  // Split the blanked text so an apostrophe in a heredoc body cannot join a real call to the body.
+  for (const { 0: text, index } of settingsText.matchAll(SHELL_COMMAND_PARTS)) {
     // A backslash-newline continues the command. Keep offsets when normalizing it.
-    const part = raw.replace(/\\\n/g, '  ');
+    const part = command.slice(index, index + text.length).replace(/\\\n/g, '  ');
     const call = /(channel-access(?:\.ts)?)['"]?\s+(?:'[^']*'|"[^"]*"|\S+)\s+(\S+)(?:\s+(.*))?/.exec(part);
     if (!call || !settingsText.startsWith(call[1], index + call.index)) continue;
     const verb = call[2].replace(/['"\\]/g, '');
@@ -922,13 +923,18 @@ export function protectedMutation(
     if (asked && !shown.includes(asked)) shown.push(asked);
   }
 
-  const matches = [...command.matchAll(
-    /(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('(?:[^']|'\\'')*'|"[^"]*"|\S+))?/g
-  )];
+  // Calls are found in the blanked text, so a heredoc mention cannot swallow the call after it;
+  // the arguments are read from the raw command at the same offset.
+  const settingsEdit = String.raw`(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('(?:[^']|'\\'')*'|"[^"]*"|\S+))?`;
+  const rawCall = new RegExp(settingsEdit, 'y');
+  const matches = [...settingsText.matchAll(new RegExp(settingsEdit, 'g'))].flatMap(found => {
+    rawCall.lastIndex = found.index;
+    const m = rawCall.exec(command);
+    return m ? [m] : [];
+  });
   if (matches.length === 0) return shown.length ? shown : null;
 
   for (const m of matches) {
-    if (!settingsText.startsWith('settings-edit', m.index)) continue;
     const verb = m[2];
     if (!WRITE_VERBS.has(verb)) continue;
     const t = stripQuotes(m[3] ?? '');
