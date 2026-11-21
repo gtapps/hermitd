@@ -144,6 +144,34 @@ ensure_claude() {
 
 # -------------------------------------------------------------------- bun ----
 
+ensure_unzip() {
+  command -v unzip >/dev/null 2>&1 && return
+  if [ "$(uname -s)" = "Linux" ]; then
+    local sudo=""
+    if [ "$(id -u)" != "0" ]; then
+      if command -v sudo >/dev/null 2>&1; then
+        sudo="sudo"
+      else
+        warn "unzip" "not installed and no sudo; install it yourself"
+        return
+      fi
+    fi
+
+    work "unzip" "installing..."
+    if command -v apt-get >/dev/null 2>&1; then
+      $sudo apt-get update -qq >/dev/null 2>&1 || true
+      $sudo apt-get install -y unzip >/dev/null 2>&1 || true
+    elif command -v dnf >/dev/null 2>&1; then
+      $sudo dnf install -y unzip >/dev/null 2>&1 || true
+    elif command -v apk >/dev/null 2>&1; then
+      $sudo apk add unzip >/dev/null 2>&1 || true
+    elif command -v pacman >/dev/null 2>&1; then
+      $sudo pacman -S --noconfirm unzip >/dev/null 2>&1 || true
+    fi
+  fi
+  command -v unzip >/dev/null 2>&1 || warn "unzip" "not installed; install it yourself"
+}
+
 ensure_bun() {
   local v=""
   # `|| true`: the assignment follows the final `&&`, so `set -e` applies to it.
@@ -264,7 +292,7 @@ closing_block() {
   if ! has_credentials; then
     say "    claude          # not logged in on this machine? /login first"
   fi
-  say "    claude \"/hermitd:hatch\""
+  say "    claude --chrome \"/hermitd:hatch\""
   printf '\n'
   if [ "$CLAUDE_WAS_INSTALLED" = "1" ]; then
     say "The first reloads your shell so \`claude\` is on PATH."
@@ -300,7 +328,7 @@ hatch_countdown() {
   sleep 1; printf '1…   (Ctrl+C to do it later)\n'
   sleep 1
   trap - INT
-  exec claude "/hermitd:hatch" </dev/tty
+  exec claude --chrome "/hermitd:hatch" </dev/tty
 }
 
 # ------------------------------------------------------------------- main ----
@@ -313,6 +341,7 @@ main() {
 
   load_floors
   ensure_claude
+  ensure_unzip
   ensure_bun
   ensure_tmux
   install_plugin

@@ -54,7 +54,7 @@ claude plugin install hermitd --marketplace gtapps/hermitd --scope local
 /hermitd:hatch
 ```
 
-Quick asks for deployment, chat and who the agent serves, then confirmation, with five core questions including the setup mode. It leaves the name unset and stores the machine's timezone. Advanced offers identity, [autonomy level](config-reference.md#escalation-levels) and other operational preferences. The wizard scans your folder and generates `OPERATOR.md`, your rulebook. On a fresh always-on install, the first plain operator message receives a one-time introduction, time check and invitation to name ongoing work; the agent handles your request first. Language stays unset until chosen or learned in that conversation.
+Quick asks four core questions covering setup mode, deployment, chat and who the agent serves, then applies the settings and reports the defaults. It leaves the name unset and stores the machine's timezone. Advanced offers identity, [autonomy level](config-reference.md#escalation-levels) and other operational preferences. The wizard scans your folder and generates `OPERATOR.md`, your rulebook. On a fresh always-on install, the first plain operator message receives a one-time introduction, time check and invitation to name ongoing work; the agent handles your request first. Language stays unset until chosen or learned in that conversation.
 
 ### OPERATOR.md
 

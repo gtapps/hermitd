@@ -1,4 +1,4 @@
-// hatch-report.ts: the data behind hatch's two operator-facing summaries.
+// hatch-report.ts: the data behind hatch's final report.
 //
 // The load-bearing tests are the "declined step" ones: a report written by the
 // model from its own memory of the run could claim a file was created that the
@@ -9,8 +9,9 @@ import { describe, test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { observe as observeDisk, finalData, confirmData } from '../scripts/hatch-report';
+import { observe as observeDisk, finalData } from '../scripts/hatch-report';
 import { runScript as runScriptDisk } from './helpers/run';
+import { readSeedPatterns } from '../scripts/lib/settings/seed-patterns';
 import { freshDirFactory } from './helpers/workdir';
 
 const observe = (root: string) => observeDisk(root, () => false);
@@ -160,28 +161,37 @@ describe('final next-steps keys off deployment', () => {
 
   test('tmux with a channel starts and admits through channel-setup', () => {
     const out = finalData(observe(hatched(discord)), 'tmux');
-    expect(runs(out)).toEqual(['/reload-plugins', '/hermitd:channel-setup start']);
+    expect(runs(out)).toEqual(['/reload-plugins', '/hermitd:channel-setup start', 'hermitd run browser-host']);
     expect(out.next_steps[1].purpose).toBe('set_credential_start_and_admit');
     expect(out.running_after_step).toBe(2);
   });
 
   test('tmux without a channel points straight at the boot script', () => {
     const out = finalData(observe(hatched()), 'tmux');
-    expect(runs(out)).toEqual(['/reload-plugins', '!hermitd start']);
+    expect(runs(out)).toEqual(['/reload-plugins', '!hermitd start', 'hermitd run browser-host']);
     expect(out.running_after_step).toBe(2);
   });
 
   test('interactive points at resident-start', () => {
     const out = finalData(observe(hatched()), 'interactive');
-    expect(runs(out)).toEqual(['/reload-plugins', '/hermitd:resident-start']);
+    expect(runs(out)).toEqual(['/reload-plugins', '/hermitd:resident-start', 'hermitd run browser-host']);
     expect(out.running_after_step).toBe(2);
   });
 
   test('channel-setup appears only when a channel is configured', () => {
     expect(runs(finalData(observe(hatched()), 'interactive'))).not.toContain('/hermitd:channel-setup');
     const withChan = finalData(observe(hatched(discord)), 'interactive');
-    expect(runs(withChan)).toEqual(['/reload-plugins', '/hermitd:channel-setup', '/hermitd:resident-start']);
+    expect(runs(withChan)).toEqual(['/reload-plugins', '/hermitd:channel-setup', '/hermitd:resident-start', 'hermitd run browser-host']);
     expect(withChan.running_after_step).toBe(3);
+  });
+
+  test('host browser setup is optional, and omitted when ready or using Docker', () => {
+    const root = hatched();
+    expect(finalData(observe(root), 'tmux').next_steps.at(-1)).toEqual({
+      run: 'hermitd run browser-host', purpose: 'install_browser_prerequisites', optional: true, from: 'terminal',
+    });
+    expect(runs(finalData(observeDisk(root, () => true), 'tmux'))).not.toContain('hermitd run browser-host');
+    expect(runs(finalData(observe(root), 'docker'))).not.toContain('hermitd run browser-host');
   });
 
   test('CLI rejects a deployment outside the enum', async () => {
@@ -199,98 +209,35 @@ describe('final next-steps keys off deployment', () => {
   });
 });
 
-describe('confirm previews intent, before anything is written', () => {
-  test('carries the operator choices verbatim', () => {
-    const { will_apply } = confirmData({
-      agent_name: 'Atlas', language: 'pt', timezone: 'Europe/Lisbon',
-      deployment: 'docker', channel: 'discord', hatch_target: 'local',
-    });
-    expect(will_apply).toMatchObject({
-      agent_name: 'Atlas', language: 'pt', timezone: 'Europe/Lisbon',
-      deployment: 'docker', channel: 'discord', hatch_target: 'local', safety_rules: 'standard',
-    });
-  });
-
-  test('consequential defaults come from the shipped template, tagged as defaults', () => {
-    const out = confirmData({ deployment: 'tmux' });
-    // "auto" is the template's permission_mode; a template change should change
-    // this test's fixture expectation only via the template itself.
-    expect(out.will_apply.permission_mode).toBe('auto');
-    expect(out.defaults).toEqual(expect.arrayContaining(['permission_mode', 'escalation', 'remote', 'budget']));
-    // Every will_apply key not taken from the answers is a default, and only those.
-    expect(out.defaults).not.toContain('deployment');
-    expect(out.defaults.every((k: string) => k in out.will_apply)).toBe(true);
-    expect(out.will_apply.budget.action).toBeDefined();
-  });
-
-  test('a non-default permission mode is not tagged as a default', () => {
-    const out = confirmData({ deployment: 'tmux', permission_mode: 'acceptEdits' });
-    expect(out.will_apply.permission_mode).toBe('acceptEdits');
-    expect(out.defaults).not.toContain('permission_mode');
-  });
-
-  test('heartbeat folds into routines, and hermitd:heartbeat-restart stays out', () => {
-    const { routines } = confirmData({ deployment: 'tmux' }).will_apply;
-    expect(routines.heartbeat).toEqual({ enabled: true, every: '30m', active_hours: { start: '08:00', end: '23:00' } });
-    expect(routines.briefs).toEqual({ morning: '08:30', evening: '22:30' });
-    expect(routines.others).not.toContain('hermitd:heartbeat-restart');
-  });
-
-  test('cosmetic defaults are left out of the preview', () => {
-    const { will_apply } = confirmData({ deployment: 'tmux' });
-    for (const k of ['model', 'effort', 'push_notifications', 'artifacts']) expect(will_apply).not.toHaveProperty(k);
-  });
-
-  test('a skipped agent name carries no agent_name and never "undefined"', () => {
-    const out = confirmData({ language: 'en', deployment: 'tmux' });
-    expect(out.will_apply).not.toHaveProperty('agent_name');
-    expect(JSON.stringify(out)).not.toContain('undefined');
-  });
-
-  test('CLI confirm reads the payload from stdin', async () => {
-    const r = await runScript('hatch-report.ts', {
-      args: ['confirm', '/tmp'],
-      stdin: JSON.stringify({ agent_name: 'Scout', deployment: 'interactive' }),
-    });
-    expect(r.exitCode).toBe(0);
-    expect(JSON.parse(r.stdout).will_apply.agent_name).toBe('Scout');
-  });
-
-  test('CLI confirm rejects a non-JSON payload rather than rendering nonsense', async () => {
-    const r = await runScript('hatch-report.ts', { args: ['confirm', '/tmp'], stdin: 'not json' });
-    expect(r.exitCode).toBe(1);
-    expect(JSON.parse(r.stdout)).toEqual({ error: 'invalid_answers' });
-  });
-});
-
-test('browser preview carries the default and host report names the prerequisite command', () => {
-  expect(confirmData({}).will_apply.browser).toMatchObject({ enabled: true, default: 'agent-browser' });
-  const root = hatched();
-  expect(finalData(observe(root), 'tmux').browser.host_command).toBe('hermitd run browser-host');
-  expect(finalData(observe(root), 'docker').browser.host_command).toBeUndefined();
-});
-
-test('transcription preview and summary carry defaults and explicit opt-out', async () => {
-  const preview = async (answers: object) => JSON.parse((await runScript('hatch-report.ts', {
-    args: ['confirm', freshDir()], stdin: JSON.stringify(answers),
-    env: { CLAUDE_PLUGIN_ROOT: path.resolve(import.meta.dir, '..') },
-  })).stdout);
-  expect((await preview({})).will_apply.transcription).toEqual({ enabled: true, echo: true });
-  const declined = await preview({ transcription: false });
-  expect(declined.will_apply.transcription.enabled).toBe(false);
-  expect(declined.defaults).not.toContain('transcription');
+test('final reports transcription defaults and explicit opt-out', () => {
   expect(finalData(observe(hatched()), 'tmux').transcription).toEqual({ enabled: true, echo: true });
   expect(finalData(observe(hatched({ config: { transcription: { enabled: false } } })), 'docker').transcription.enabled).toBe(false);
 });
 
-test('confirm lists the machine timezone as a default', () => {
-  const result = confirmData({});
-  expect(result.defaults).toContain('timezone');
-  expect(result.will_apply.timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
-});
+test('CLI final --quick reports settings observed in the written files', async () => {
+  const root = hatched({
+    settings: 'committed',
+    config: {
+      permission_mode: 'acceptEdits',
+      routines: [{ id: 'active', enabled: true }, { id: 'off', enabled: false }],
+      heartbeat: { enabled: true, every: '45m' },
+    },
+  });
+  const args = ['final', root, '--deployment', 'tmux'];
+  const quick = await runScript('hatch-report.ts', { args: [...args, '--quick'] });
+  expect(quick.exitCode).toBe(0);
+  expect(JSON.parse(quick.stdout).defaults_applied).toEqual({
+    permission_mode: 'acceptEdits', enabled_routines: ['active'],
+    heartbeat_every: '45m', standard_deny_rules: false,
+  });
 
-test('confirm shows team approvals chosen in Quick', () => {
-  const result = confirmData({ approvals: 'team' });
-  expect(result.will_apply.approvals).toBe('team');
-  expect(result.defaults).not.toContain('approvals');
+  const { deny } = readSeedPatterns(path.resolve(import.meta.dir, '..'));
+  fs.writeFileSync(path.join(root, '.claude/settings.json'), JSON.stringify({ permissions: { deny } }));
+  const withDeny = await runScript('hatch-report.ts', { args: [...args, '--quick'] });
+  expect(withDeny.exitCode).toBe(0);
+  expect(JSON.parse(withDeny.stdout).defaults_applied.standard_deny_rules).toBe(true);
+
+  const advanced = await runScript('hatch-report.ts', { args });
+  expect(advanced.exitCode).toBe(0);
+  expect(JSON.parse(advanced.stdout)).not.toHaveProperty('defaults_applied');
 });

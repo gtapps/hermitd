@@ -174,7 +174,7 @@ Only the top-level project memory is seeded — not agent-scoped memories at `<p
 
 Skip if no enabled channels in `config.json`. Read `.hermit/config.json` from the project root (same root verified in Step 1 — do not rely on cwd). A channel counts as present when `config.channels[<name>].enabled !== false` (missing `enabled` is treated as enabled). Empty `channels: {}` skips.
 
-For each enabled channel, follow the [channel credential stage](../channel-setup/references/credential.md) on the host and keep its outcome for Step 8. Skip iMessage after noting it is macOS-only.
+For each enabled channel, follow the [channel credential stage](../channel-setup/references/credential.md) on the host, passing `--docker` to the Private file command, and keep its outcome for Step 8. Skip iMessage after noting it is macOS-only.
 
 Record `channels.<channel>.state_dir` for Step 7b.6 as `.claude.local/channels/<channel>`. The directory uses the channel key. The renderer and launch environment supply the state folder to the channel.
 

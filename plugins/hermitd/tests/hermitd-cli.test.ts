@@ -490,6 +490,26 @@ test('credproxy runs the installed script from outside the project and never a p
   expect(f.calls()).toContain(`credproxy|/|map ${f.p} api.example.com --header X\n`);
   expect(f.calls()).not.toContain('run|');
 });
+test.each(['host', 'docker'])('channel-token uses isolated host dispatch for a %s project', async deployment => {
+  const f = fixture();
+  const flags = deployment === 'docker' ? ['--docker'] : [];
+  if (deployment === 'docker') write(path.join(f.p, 'docker-compose.hermit.yml'), 'services: {}');
+  write(path.join(f.core, 'scripts/channel-token.ts'),
+    `console.log(JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2), bun: process.env.BUN_OPTIONS }));`);
+  const args = ['run', 'channel-token', 'telegram', 'TELEGRAM_BOT_TOKEN', ...flags];
+  const result = await f.run(args, f.p);
+  expect(result.exitCode).toBe(0);
+  expect(JSON.parse(result.stdout)).toEqual({
+    cwd: '/', args: ['telegram', f.p, 'TELEGRAM_BOT_TOKEN', ...flags], bun: '--config=/dev/null --no-env-file',
+  });
+  expect(f.calls()).toBe('');
+
+  const container = await f.run(args, f.p, { container: 'docker' });
+  expect(container.exitCode).toBe(0);
+  expect(JSON.parse(container.stdout)).toEqual({ error: 'host_only' });
+  expect(f.calls()).toBe('');
+});
+
 test('help flags print usage and dispatch nothing', async () => {
   const f = fixture();
   for (const flag of ['--help', '-h']) {

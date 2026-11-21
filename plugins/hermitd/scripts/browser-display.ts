@@ -19,19 +19,22 @@ function spawnDisplaySession(dir: string, session: string, spawn: typeof spawnSy
   return spawn('tmux', ['new-session', '-d', '-s', session, '-c', path.dirname(dir),
     'env', `AGENT_DIR=${dir}`, ...inherited, process.execPath, path.join(import.meta.dir, 'browser-display.ts'), 'run'], { stdio: 'ignore' });
 }
+function hostDisplayAvailable(which = Bun.which): boolean {
+  return !!(which('Xvnc') && which('openbox'));
+}
 export function maybeStartBrowserDisplay(runtimeMode: string, dir = hermitDir(), spawn = spawnSync, available?: boolean, sessionAlive = tmuxSessionAlive): void {
-  if (runtimeMode !== 'tmux' || browserHostPlatform() !== 'linux' || !(available ?? Bun.which('Xvnc')) || !browserEnabled(dir)) return;
+  if (runtimeMode !== 'tmux' || browserHostPlatform() !== 'linux' || !(available ?? hostDisplayAvailable()) || !browserEnabled(dir)) return;
   try {
     const session = browserDisplaySession(getSessionName(readSettledConfig(dir)));
     if (sessionAlive(session)) return;
     spawnDisplaySession(dir, session, spawn);
   } catch (error) { console.error(`[hermit] Browser display: ${error instanceof Error ? error.message : error}`); }
 }
-export type DisplayResult = { display: string; vncSocket: string } | { blocker: 'image_rebuild_pending' | 'image_missing' | 'display_start_failed' | 'unsupported' };
+export type DisplayResult = { display: string; vncSocket: string } | { blocker: 'image_rebuild_pending' | 'image_missing' | 'display_setup_pending' | 'display_start_failed' | 'unsupported' };
 interface DisplayOptions {
   deployment?: BrowserDeployment; marker?: string; platform?: NodeJS.Platform;
   spawn?: typeof spawnSync; sessionAlive?: typeof tmuxSessionAlive; available?: boolean;
-  waitMs?: number;
+  which?: typeof Bun.which; waitMs?: number;
 }
 function displayRecord(dir: string) {
   const record = readJson(path.join(dir, 'state/browser-display.json'));
@@ -57,7 +60,9 @@ export async function ensureDisplay(dir = hermitDir(), options: DisplayOptions =
     catch { return { blocker: 'image_missing' }; }
     if (!marker.split('\n').includes('display=plugin')) return { blocker: 'image_rebuild_pending' };
   }
-  if (!(options.available ?? !!Bun.which('Xvnc'))) return { blocker: 'display_start_failed' };
+  const which = options.which ?? Bun.which;
+  if (deployment === 'host' && !(options.available ?? hostDisplayAvailable(which))) return { blocker: 'display_setup_pending' };
+  if (deployment === 'container' && !(options.available ?? !!which('Xvnc'))) return { blocker: 'display_start_failed' };
   fs.mkdirSync(path.join(dir, 'state'), { recursive: true });
   const lock = path.join(dir, 'state/browser-display-start.lock');
   const deadline = Date.now() + (options.waitMs ?? 12_000);

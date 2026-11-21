@@ -48,9 +48,9 @@ Otherwise, ask:
 questions: [
   {
     header: "Setup mode",
-    question: "How would you like to configure hermit?",
+    question: "How would you like to configure your agent?",
     options: [
-      { label: "Quick", description: "Sensible defaults, 5 questions including this choice and confirmation, ~3 min. Tweak via /hermit-settings later." },
+      { label: "Quick", description: "Sensible defaults, four core questions including this choice, ~3 min. Tweak via /hermit-settings later." },
       { label: "Advanced", description: "Full wizard — every option exposed (~15 questions, ~15 min)." }
     ]
   }
@@ -61,7 +61,7 @@ Branch on choice:
 - **Advanced** → continue to Step 2 file writes, then Step 3 hermit activation prompt, then Step 4 setup wizard.
 - **Quick** → continue to Step 2 file writes, then jump to Section "Quick Branch" (after Step 9).
 
-Both branches share Steps 2 (file writes) and 5-9 (config write, CLAUDE.md/.gitignore/settings, deny patterns, report). Quick replaces Steps 3-4 with the Quick Branch turns described later.
+Both branches share Step 2 and Steps 5-9. Quick replaces Steps 3-4 with the Quick Branch turns below.
 
 ### 2. Create state directory structure
 
@@ -463,7 +463,7 @@ The file contains a managed block bounded by marker comments (`# >>> hermitd ...
 If `git_init_eligible`:
 
 - **Advanced branch:** ask with `AskUserQuestion` (header: "Git init") — "Initialize a local git repo here? The hermit's build output will be tracked; its internal churn (sessions, proposals, state) stays gitignored." — options: **Yes** (default) / **No**. Run `git init` only on Yes.
-- **Quick branch:** announced in the Quick Turn 4 confirm bundle and run as part of the shared steps only after the operator confirms (see "Quick — silent defaults applied to shared steps" table — Step 7.5 row). Never auto-runs before confirmation.
+- **Quick branch:** run `git init` without asking.
 
 When run, `git init` creates the repo at the project root. The `.gitignore` written in Step 7 is immediately in effect.
 
@@ -576,7 +576,7 @@ Note to the operator: "Artifact publishing is on — added `Artifact` to `permis
 
 ## Quick Branch
 
-Quick asks five core questions: setup mode, deployment, chat, who the agent serves, and confirmation. Conditional hermit activation and extension questions can add to that count. Collect answers before writing config; after approval write config once, draft OPERATOR.md from the scan and Mission answer, then apply voice.
+Quick asks four core questions covering setup mode, deployment, chat and who the agent serves. Conditional activation and extension questions can add to that count. Collect answers, write config once, draft OPERATOR.md from the scan and Mission answer, then apply voice.
 
 **Entry condition:** Step 1.6 returned `Quick` AND `is_reinit` is `false` (re-init forces Advanced).
 
@@ -615,11 +615,11 @@ questions: [
 ]
 ```
 
-Record `deployment` (one of `docker` / `tmux` / `interactive`), `channel` (one of `none` / `discord` / `telegram`). Map the labels to those values — **"Claude app (for now)" is `none`**, not the label text; downstream code (the confirm bundle, Step 5's `channels` overlay) compares against the sentinel.
+Record `deployment` (one of `docker` / `tmux` / `interactive`), `channel` (one of `none` / `discord` / `telegram`). Map **"Claude app (for now)" to `none`** for Step 5's `channels` overlay.
 
 `push_notifications` is left at the template default (`true`) — no follow-up question. Push is dormant whenever a channel is reachable (the runtime guard in prompts/resident.md sends channel-first) and fires only as fallback when a channel is unreachable or absent.
 
-**Derived values from this turn (used in the confirm bundle and Step 5 overlay):**
+**Derived values from this turn (used in shared Steps 5 and 9):**
 - `permission_mode`: `auto` (same default for both Docker and non-Docker deployments). Generally available to all users across subscription plans and API usage; supported models and provider configuration can vary. If Claude reports it unavailable for the current selection, choose a supported model or run `/hermit-settings permissions` to select another mode.
 - Deny pattern profile: Standard (`deny standard`). Applied at Step 9 silently.
 
@@ -627,41 +627,9 @@ Record `deployment` (one of `docker` / `tmux` / `interactive`), `channel` (one o
 
 Run the scan from 5a Phase 1 silently without writing OPERATOR.md. Ask only the Mission question from 5a Phase 3, plus any activated hermit's `OPERATOR-QUESTIONS.md` questions. Collect answers without calling `hatch-config --reinit` or writing config. For "My team" or "My clients", include `"approvals":"team"` in the fresh Step 5 payload and, after config is written, tell the operator what 5a Phase 3 says about team approvals.
 
-### Quick Turn 4 — Confirm bundle
+Run shared Step 5 once with the collected payload, including `approvals` when selected. Draft and write OPERATOR.md using 5a Phases 2 and 4 from the scan and Mission answer. Skip Advanced's Focus, Red lines, Ask first and Comms style questions and its approvals re-init call. Apply the default voice in 5a Phase 4b (`apply-known voice default`, then `voice-render`), or adopt an existing `hermit-voice.md` as described there. Continue shared Steps 5b-9 without repeating Step 5 or 5a.
 
-Get the preview data from the script, so what the operator approves is derived from the answers rather than re-typed:
-
-```bash
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts confirm <PROJECT_ROOT> <<'HERMIT_ANSWERS'
-{ ...the same answers payload Step 5 will send to hatch-config.ts, plus "deployment", "channel", "plugins", "hatch_target", "git_init" }
-HERMIT_ANSWERS
-```
-
-**Compose the preview as message text before calling `AskUserQuestion`.** The operator cannot see Bash output (the transcript collapses it), so your message is the only preview; asking first means they approve a configuration they never saw. Show every `will_apply` fact as a short table in plain words (`channel: "none"` is the Claude app for now; a chat channel pairs after setup), mark each key in `defaults` as a default, and close with: nothing is written yet, and every default is tunable later with `/hermit-settings`.
-
-Before asking, when the conditions in "Create the project's CLAUDE file" hold, state which CLAUDE file will be created after the report: `CLAUDE.md` for `committed`, `CLAUDE.local.md` for `local`. This is information, not another question; include the AGENTS.md import case only when set-aside lines exist.
-
-Then ask:
-
-```
-questions: [
-  {
-    header: "Confirm",
-    question: "Apply this configuration?",
-    options: [
-      { label: "Yes", description: "Apply and continue" },
-      { label: "Customize", description: "Restart in Advanced (your Quick answers will not carry over)" }
-    ]
-  }
-]
-```
-
-- **Customize**: jump to Step 3 of the Advanced branch (no prefill — Advanced restarts from scratch). Discard all Quick answers.
-- **Yes**: run shared Step 5 once with the collected payload, including `approvals` when selected. Then draft and write OPERATOR.md using 5a Phases 2 and 4 from the scan and Mission answer. Skip Advanced's Focus, Red lines, Ask first and Comms style questions and its approvals re-init call. Apply 5a Phase 4b with Default (`apply-known voice default`, then `voice-render`), or adopt an existing `hermit-voice.md` as described there. Continue shared Steps 5b-9 without repeating Step 5 or 5a.
-
-The confirm bundle includes one line for `will_apply.browser` (enabled and default browser); Quick asks no browser question.
-
-### Quick — silent defaults applied to shared steps
+### Quick defaults for shared steps
 
 Quick replaces Step 4 entirely and applies these defaults silently at the shared Steps 5-9c (no prompts):
 
@@ -691,15 +659,19 @@ On the host, install the operator command after setup, from the project root:
 ```
 
 ```bash
-bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts final <PROJECT_ROOT> --deployment <docker|tmux|interactive>
+bun ${CLAUDE_PLUGIN_ROOT}/scripts/hatch-report.ts final <PROJECT_ROOT> --deployment <docker|tmux|interactive> [--quick]
 ```
+
+Pass `--quick` for Quick and omit it for Advanced. Run with no stdin.
 
 Compose the report from its JSON as message text (the operator cannot see Bash output), stating only what the JSON carries, because it is what the script observed on disk rather than a file list from this session:
 
 - `status: "incomplete"`: hatch did not complete (`.hermit/config.json` is not present); tell them to re-run `/hermitd:hatch` and report nothing else.
-- Otherwise: show one browser line from `browser.enabled` and `browser.default`; when `browser.host_command` is present, print it as a terminal prerequisite. say "`agent_name` is hatched" when set, or "Your agent is ready" when unset; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they edit OPERATOR.md themselves, or tell you the change and you make it behind the approval prompt.
+- Otherwise: show one browser line from `browser.enabled` and `browser.default`; say "`agent_name` is hatched" when set, or "Your agent is ready" when unset; each absence in `observed` (null `permissions_file`, false `gitignore` or `worktreeinclude`, any `missing_bin_scripts`) as a warning you offer to fix; `next_steps` as a numbered list in order, labeling `optional: true` steps as optional and `from: "terminal"` commands as host terminal commands, saying nothing runs until step `running_after_step` finishes; then the `anytime` commands, and that they edit OPERATOR.md themselves, or tell you the change and you make it behind the approval prompt.
 
-`--deployment` is the one thing it cannot read: Quick Turn 2 and Advanced Phase 5 ask for it and nothing persists it. Pass the recorded `deployment`.
+For Quick, render `defaults_applied` on one line starting "Applied defaults:" and ending "Change any with /hermit-settings." Include the observed permission mode, enabled routine IDs, heartbeat cadence and whether Standard deny rules are present. Add "initialized a git repo" only if Step 7.5 ran `git init` and it exited 0.
+
+Pass the `deployment` recorded in Quick Turn 2 or Advanced Phase 5.
 
 ---
 

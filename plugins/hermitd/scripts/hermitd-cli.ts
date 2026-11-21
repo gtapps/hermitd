@@ -320,8 +320,10 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     return execute(process.execPath, [approve, project], '/', { BUN_OPTIONS: bunIsolation });
   }
   const project = target(args, verb, cwd, root);
-  const useDocker = isDockerProject(project, root);
-  const hostStore = verb === 'credproxy' || verb === 'connector';
+  const runScript = verb === 'run' ? args[0]?.replace(/\.ts$/, '') : undefined;
+  const channelToken = runScript === 'channel-token';
+  const useDocker = !channelToken && isDockerProject(project, root);
+  const hostStore = verb === 'credproxy' || verb === 'connector' || channelToken;
   if (useDocker && !hostStore) warnProjectContainsHostConfig(project, root);
   if (!hostStore && verb !== 'docker' && !useDocker) {
     restoreTmuxEnvironment(project);
@@ -335,10 +337,9 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     && !fs.existsSync(path.join(project, 'docker-compose.hermit.yml'))) {
     throw new Error(`No docker-compose.hermit.yml found in ${project}`);
   }
-  if (verb === 'run') {
-    const script = args[0]?.replace(/\.ts$/, '');
-    if (script === 'hermitd-cli') throw new Error('hermitd run refuses recursive hermitd-cli dispatch');
-    if (useDocker && script === 'browser-host') {
+  if (verb === 'run' && !hostStore) {
+    if (runScript === 'hermitd-cli') throw new Error('hermitd run refuses recursive hermitd-cli dispatch');
+    if (useDocker && runScript === 'browser-host') {
       const install = hostInstall(project).installPath;
       return execute(process.execPath, [path.join(install, 'scripts/browser-host.ts'), ...args.slice(1)], project);
     }
@@ -350,13 +351,14 @@ export function main(argv = process.argv.slice(2), cwd = process.cwd(), root = c
     return wrapper(project, `hermitd-${verb}`, args);
   }
   if (hostStore) {
-    if (isContainer()) { printJson({ error: 'host_only' }); return 1; }
+    if (isContainer()) { printJson({ error: 'host_only' }); return channelToken ? 0 : 1; }
     // Runs only the installed plugin's script, from outside the project (bun reads bunfig.toml
     // from its cwd), so no file the agent can write executes.
     const install = fs.realpathSync(hostInstall(project).installPath);
     if (inside(install, project)) { printJson({ error: 'untrusted_install' }); return 1; }
-    const [sub, ...rest] = args;
-    return execute(process.execPath, [path.join(install, `scripts/${verb}.ts`), sub ?? '', project, ...rest], '/', { BUN_OPTIONS: bunIsolation });
+    const [sub, ...rest] = channelToken ? args.slice(1) : args;
+    const script = channelToken ? 'channel-token' : verb;
+    return execute(process.execPath, [path.join(install, `scripts/${script}.ts`), sub ?? '', project, ...rest], '/', { BUN_OPTIONS: bunIsolation });
   }
   if (verb === 'docker') return args[0] === 'update' ? updateProject(project, args.slice(1), true) : dockerScript(project, args, hostInstall(project).installPath);
   const docker = dockerTransport(project, useDocker);

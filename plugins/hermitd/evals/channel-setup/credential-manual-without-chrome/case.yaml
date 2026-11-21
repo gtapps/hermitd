@@ -25,5 +25,5 @@ graders:
   - name: private-manual-steps
     type: llm
     focus: trace
-    criteria: 'PASS only if the wizard explains how to create and copy the token and put it in the private file under the right variable, then waits for confirmation. FAIL on a browser offer, a browser setup hint, or a pointer to request the credential from the running agent. Judge content and flow.'
+    criteria: 'PASS only if the wizard explains how to create and copy the token, gives one hermitd run channel-token command with the selected channel and its token variable for hidden entry in the host terminal, and waits for confirmation. Allow at most one line pointing to /chrome to enable Claude in Chrome. FAIL on an offer to interact with the browser in this session, a pointer to the running agent, or separate commands for editing the private file. Judge the mechanism regardless of channel or wording.'
     weight: 3

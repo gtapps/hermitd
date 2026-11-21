@@ -1,36 +1,18 @@
-// hatch-report.ts: the data behind hatch's two operator-facing summaries, as one
-// JSON object each; the hatch skill composes the summary from it.
-//
-//   confirm  (stdin: the answers payload): the Quick-branch preview shown
-//            BEFORE anything is written. It is explicitly a statement of intent,
-//            so it carries what the operator chose, as "will apply" facts.
-//
-//   final    (no stdin): the end-of-hatch report data. It carries what is actually
-//            on disk, by looking. It takes no file list from its caller: a report
-//            composed from the model's memory of the run could claim a file was
-//            written that the operator had declined. Everything below is a
-//            filesystem observation, so it can only be wrong if the filesystem is.
-//
-// Usage:
-//   bun hatch-report.ts confirm <project-root> < answers.json
-//   bun hatch-report.ts final <project-root> --deployment <docker|tmux|interactive>
-//
-// `--deployment` is passed explicitly because it is wizard-only state: the Quick
-// branch asks for it, nothing persists it (neither config.json nor
-// hatch-options.json carry it), and the next-steps list keys off it.
-// Anything else the report needs, it reads.
+// End-of-hatch report data, observed from disk and printed as one JSON object.
+// Usage: bun hatch-report.ts final <project-root> --deployment <docker|tmux|interactive> [--quick]
+// Deployment is a wizard choice. Quick also reports the defaults in the written files.
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { readStdin, readJson, flagValue, exitError, printJson } from './lib/cli';
+import { readJson, flagValue, exitError, printJson } from './lib/cli';
 import { browserHostPrerequisite } from './lib/browser-runtime';
 import { readConfigRaw } from './lib/config-read';
-import { machineTimeZone } from './lib/time';
+import { settingsFile as settingsFileForTarget } from './lib/domain-hatch/target';
+import { readSeedPatterns } from './lib/settings/seed-patterns';
 
 type Json = any;
 
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(import.meta.dir, '..');
-const TEMPLATE_PATH = path.join(PLUGIN_ROOT, 'state-templates', 'config.json.template');
 const CONFIG_REFERENCE_URL =
   'https://github.com/gtapps/hermitd/blob/main/plugins/hermitd/docs/config-reference.md';
 
@@ -57,6 +39,7 @@ export interface Observed {
   binScripts: string[];
   dockerSetUp: boolean;
   browserSetupNeeded?: boolean;
+  standardDenyRules: boolean;
 }
 
 export function observe(root: string, browserReady = () => browserHostPrerequisite() === null): Observed {
@@ -68,12 +51,19 @@ export function observe(root: string, browserReady = () => browserHostPrerequisi
   try { binScripts = fs.readdirSync(path.join(hermit, 'bin')).sort(); } catch { /* not scaffolded */ }
   // Raw, not settled: a null config here IS the "hatch did not complete" signal.
   const config = readConfigRaw(hermit);
+  const hatchOptions = readJson(path.join(hermit, 'state', 'hatch-options.json'));
+  const target = hatchOptions?.target;
+  const deny = target === 'local' || target === 'committed'
+    ? readJson(path.join(root, '.claude', settingsFileForTarget(target)))?.permissions?.deny
+    : undefined;
+  const { deny: standardDeny } = readSeedPatterns(PLUGIN_ROOT);
   const dockerSetUp = exists(path.join(root, 'docker-compose.hermit.yml'));
 
   return {
     stateDir: exists(hermit),
     config,
-    hatchOptions: readJson(path.join(hermit, 'state', 'hatch-options.json')),
+    hatchOptions,
+    standardDenyRules: Array.isArray(deny) && standardDeny.length > 0 && standardDeny.every(rule => deny.includes(rule)),
     gitignore: has(path.join(root, '.gitignore'), '.hermit'),
     worktreeinclude: has(path.join(root, '.worktreeinclude'), WORKTREE_MARKER),
     settingsFile,
@@ -89,73 +79,7 @@ function channels(config: Json): Array<{ name: string; enabled: boolean }> {
   return Object.keys(all).filter(k => k !== 'primary').map(name => ({ name, enabled: !!all[name]?.enabled }));
 }
 
-// Permissive: an unreadable template degrades the preview to chosen facts
-// only, it never blocks the confirm turn.
-function readTemplate(): Json {
-  return readJson(TEMPLATE_PATH) ?? {};
-}
-
-export function confirmData(answers: Json): Json {
-  const t = readTemplate();
-  const will: Json = {};
-  // Keys whose value came from the answers payload; every other will_apply key
-  // is a default and is listed as one.
-  const chosen = new Set<string>();
-  const choose = (k: string, v: Json) => { will[k] = v; chosen.add(k); };
-
-  // Chosen facts: each echoes a wizard answer verbatim, only when it was given.
-  for (const k of ['agent_name', 'language', 'timezone', 'deployment', 'channel']) {
-    if (answers[k]) choose(k, answers[k]);
-  }
-  if (!Object.hasOwn(answers, 'timezone')) will.timezone = machineTimeZone();
-  else if (answers.timezone === null) choose('timezone', null);
-  if (answers.activated_hermit?.slug) choose('hermit_extension', answers.activated_hermit.slug);
-  if (answers.plugins?.length) choose('plugins', answers.plugins);
-
-  // Defaults: read live from the same template hatch-config.ts overlays, so they
-  // track the shipped defaults instead of prose that drifts. Kept to the
-  // consequential ones (autonomy/permission/spend posture); cosmetic defaults
-  // (model, notifications, artifact pages) are left out.
-  if (answers.approvals) choose('approvals', answers.approvals);
-  if (answers.permission_mode) choose('permission_mode', answers.permission_mode);
-  else if (t.permission_mode) will.permission_mode = t.permission_mode;
-  if (t.escalation) {
-    will.escalation = t.escalation;
-    will.remote = !!t.remote;
-  }
-  will.browser = { ...(t.browser ?? {}), ...(answers.browser ?? {}) };
-  if (answers.browser) chosen.add('browser');
-  will.transcription = { ...(t.transcription ?? {}), ...(Object.hasOwn(answers, 'transcription') ? { enabled: answers.transcription } : {}) };
-  if (Object.hasOwn(answers, 'transcription')) chosen.add('transcription');
-  // hermitd:heartbeat-restart is plumbing, not something the operator would recognize as
-  // "a routine that wakes the agent".
-  will.routines = {
-    briefs: answers.routines?.enabled === false ? null
-      : { morning: answers.routines?.morning_time ?? '08:30', evening: answers.routines?.evening_time ?? '22:30' },
-    others: (t.routines ?? [])
-      .filter((r: Json) => r.enabled !== false && r.id !== 'hermitd:heartbeat-restart')
-      .map((r: Json) => r.id),
-    heartbeat: t.heartbeat
-      ? { enabled: !!t.heartbeat.enabled, every: t.heartbeat.every ?? null, active_hours: t.heartbeat.active_hours ?? null }
-      : null,
-  };
-  if (answers.routines) chosen.add('routines');
-  if (t.budget) {
-    will.budget = {
-      daily_usd: t.budget.daily_usd ?? null, weekly_usd: t.budget.weekly_usd ?? null,
-      monthly_usd: t.budget.monthly_usd ?? null, action: t.budget.action ?? 'alert',
-    };
-  }
-  if (answers.deployment) choose('safety_rules', 'standard');
-  will.hatch_target = answers.hatch_target === 'committed' ? 'committed' : 'local';
-  if (answers.hatch_target) chosen.add('hatch_target');
-  will.git_init = !!answers.git_init;
-  if (answers.git_init !== undefined) chosen.add('git_init');
-
-  return { will_apply: will, defaults: Object.keys(will).filter(k => !chosen.has(k)) };
-}
-
-export function finalData(o: Observed, deployment: string): Json {
+export function finalData(o: Observed, deployment: string, quick = false): Json {
   // Never claim success the filesystem doesn't support.
   if (!o.stateDir || !o.config) return { status: 'incomplete', reason: 'config_missing' };
   const c = o.config;
@@ -170,7 +94,7 @@ export function finalData(o: Observed, deployment: string): Json {
   // Hatch installs the recommended plugins mid-run, and Claude Code only exposes
   // them to the *current* session after a reload, so this step goes first, ahead
   // of anything that would use them.
-  const steps: Array<{ run: string; purpose: string }> = [{ run: '/reload-plugins', purpose: 'load_new_plugins' }];
+  const steps: Array<{ run: string; purpose: string; optional?: true; from?: 'terminal' }> = [{ run: '/reload-plugins', purpose: 'load_new_plugins' }];
   const pair = { run: '/hermitd:channel-setup', purpose: 'set_bot_token_and_pair' };
   // running_after_step names the step that starts the agent.
   let runningAfter: number;
@@ -194,8 +118,20 @@ export function finalData(o: Observed, deployment: string): Json {
     runningAfter = steps.length;
   }
 
+  if (deployment !== 'docker' && o.browserSetupNeeded) {
+    steps.push({ run: 'hermitd run browser-host', purpose: 'install_browser_prerequisites', optional: true, from: 'terminal' });
+  }
+
   return {
     agent_name: c.agent_name ?? null,
+    ...(quick ? { defaults_applied: {
+      permission_mode: c.permission_mode ?? null,
+      enabled_routines: (Array.isArray(c.routines) ? c.routines : [])
+        .filter((routine: Json) => typeof routine?.id === 'string' && routine.enabled !== false)
+        .map((routine: Json) => routine.id),
+      heartbeat_every: c.heartbeat?.enabled ? c.heartbeat.every ?? null : null,
+      standard_deny_rules: o.standardDenyRules,
+    } } : {}),
     // A missing git repo is not reported: existing projects legitimately vary.
     observed: {
       gitignore: o.gitignore,
@@ -205,8 +141,7 @@ export function finalData(o: Observed, deployment: string): Json {
     },
     // Nothing chains from here: the operator runs each step in order, and nothing
     // is running before step running_after_step finishes.
-    browser: { enabled: c.browser?.enabled !== false, default: c.browser?.default ?? 'agent-browser',
-      ...(deployment !== 'docker' && c.browser?.enabled !== false && o.browserSetupNeeded ? { host_command: 'hermitd run browser-host' } : {}) },
+    browser: { enabled: c.browser?.enabled !== false, default: c.browser?.default ?? 'agent-browser' },
     next_steps: steps,
     transcription: { enabled: c.transcription?.enabled !== false, echo: c.transcription?.echo !== false },
     running_after_step: runningAfter,
@@ -220,24 +155,14 @@ export function finalData(o: Observed, deployment: string): Json {
   };
 }
 
-async function main(): Promise<void> {
-  const verb = process.argv[2];
-  const root = process.argv[3];
-
+function main(): void {
+  const [verb, root, ...flags] = process.argv.slice(2);
   if (!verb || !root) exitError();
 
-  if (verb === 'confirm') {
-    const raw = await readStdin();
-    let answers: Json = {};
-    try { answers = JSON.parse(raw); } catch { exitError('invalid_answers'); }
-    printJson(confirmData(answers));
-    return;
-  }
-
   if (verb === 'final') {
-    const deployment = flagValue(process.argv.slice(4), '--deployment') ?? 'interactive';
+    const deployment = flagValue(flags, '--deployment') ?? 'interactive';
     if (!DEPLOYMENTS.includes(deployment)) exitError('invalid_deployment');
-    printJson(finalData(observe(root), deployment));
+    printJson(finalData(observe(root), deployment, flags.includes('--quick')));
     return;
   }
 

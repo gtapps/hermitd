@@ -1,7 +1,7 @@
 import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { browserDisplaySession, reserveDisplay, maybeStartBrowserDisplay, stopBrowserDisplay, idleCloseStep } from '../scripts/browser-display';
+import { browserDisplaySession, ensureDisplay, reserveDisplay, maybeStartBrowserDisplay, stopBrowserDisplay, idleCloseStep } from '../scripts/browser-display';
 import { browserLease } from '../scripts/lib/browser-lease';
 import { browserSocketDir } from '../scripts/lib/browser-runtime';
 import { freshDirFactory } from './helpers/workdir';
@@ -119,6 +119,32 @@ test('tmux display startup is idempotent with an injected tmux runner', () => {
   expect(calls).toBe(browserHostPlatform() === 'linux' ? 1 : 0);
 });
 
+test.each(['Xvnc', 'openbox'])('host display setup is pending when %s is missing', async missing => {
+  const dir = freshDir();
+  fs.mkdirSync(path.join(dir, 'state'));
+  fs.writeFileSync(path.join(dir, 'state/runtime.json'), '{"runtime_mode":"tmux"}');
+  expect(await ensureDisplay(dir, {
+    deployment: 'host', platform: 'linux',
+    which: command => command === missing ? null : command,
+  })).toEqual({ blocker: 'display_setup_pending' });
+});
+
+test('host display starts without unzip when Xvnc and openbox are available', async () => {
+  const dir = freshDir(), socket = path.join(dir, 'vnc.sock');
+  fs.mkdirSync(path.join(dir, 'state'));
+  fs.writeFileSync(path.join(dir, 'state/runtime.json'), '{"runtime_mode":"tmux"}');
+  expect(await ensureDisplay(dir, {
+    deployment: 'host', platform: 'linux',
+    which: command => ['Xvnc', 'openbox'].includes(command) ? command : null,
+    sessionAlive: () => false,
+    spawn: (() => {
+      fs.writeFileSync(socket, '');
+      fs.writeFileSync(path.join(dir, 'state/browser-display.json'), JSON.stringify({ pid: process.pid, display: ':13', vncSocket: socket }));
+      return { status: 0 };
+    }) as any,
+  })).toEqual({ display: ':13', vncSocket: socket });
+});
+
 test('container display requires a plugin-owned marker and leaves legacy displays alone', async () => {
   const { ensureDisplay } = await import('../scripts/browser-display');
   const dir = freshDir(), marker = path.join(dir, 'marker');
@@ -129,6 +155,8 @@ test('container display requires a plugin-owned marker and leaves legacy display
   expect(await ensureDisplay(dir, options)).toEqual({ blocker: 'image_rebuild_pending' });
   expect(calls).toBe(0);
   fs.writeFileSync(marker, 'display=plugin\n');
+  expect(await ensureDisplay(dir, { ...options, available: undefined, which: () => null })).toEqual({ blocker: 'display_start_failed' });
+  expect(calls).toBe(0);
   expect(await ensureDisplay(dir, { ...options, sessionAlive: () => false })).toEqual({ blocker: 'display_start_failed' });
   expect(calls).toBe(1);
 });
