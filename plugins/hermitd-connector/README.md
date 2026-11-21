@@ -1,6 +1,6 @@
 # hermitd-connector
 
-Talk to your agent from **Claude, ChatGPT, Grok or Gemini**, typed or by voice where your app supports it. It supports multiple users. Each user adds the agent as a custom connector in their own AI app. The app passes on what they say, then shows or speaks the agent's answer.
+Talk to your agent from **Claude, ChatGPT, Grok or Gemini**, by voice or text. It supports multiple users. Each user adds the agent as a custom connector in their own AI app. The app passes on what they say, then shows or speaks the agent's answer.
 
 The agent works in its usual session, with its memory and tools. Everyone who comes in through the connector is a **plain member**, you included: they can ask for work, but they can't pause, steer or reconfigure the agent.
 
@@ -41,14 +41,15 @@ On Team and Enterprise plans, an Owner adds the custom connector once under **Or
 
 ## Use it
 
-In a chat, turn the connector on (the **+** button, then **Connectors**) and ask Claude to pass something to the agent by name:
+Turn on the connector in your app and say “Have Atlas pull last month’s invoices, match them against the expense sheet, and flag what’s missing.” You can type the same instruction in chat.
 
-- **Typed:** "Ask Atlas whether last night's backup finished."
-- **Voice mode:** say the same thing. Claude sends it, waits for the answer and reads it out.
+Add one custom connector per agent to delegate different kinds of work. For example, say “Brainstorm with Scout about how to make it easier for new contributors to get started. Bring back three ideas we could try.” See [how to set up several agents on one host](docs/setup.md#several-agents-on-one-host).
 
-If the agent needs longer, Claude says nothing has arrived yet; ask "anything from Atlas?" and it checks again. If the agent is offline, the message is held until it's back. Voice mode may shorten a long answer.
+To work with the same agent throughout a voice chat, say “For the rest of this chat, pass any work I give you directly to Atlas and read back its replies.”
 
-Each person has their own chat with the agent, but it is still one agent: everyone talks to the same session, with the same tools and accounts. People who must not see each other's work need separate agents.
+If the agent needs longer, say “Check whether Atlas has an update.” Messages wait while the agent is offline. Voice mode may shorten a long reply.
+
+Each person has their own chat with the agent. Everyone paired with that agent shares its session, tools, and accounts. Use separate agents when people need to keep their work private.
 
 ## Manage it
 
@@ -68,7 +69,7 @@ Limits and the security model: [connector guide](../hermitd/docs/connector.md). 
 ## How it works
 
 ```
-AI app, typed or voice
+AI app, voice or text
   -> your public HTTPS address (your tunnel)
   -> connector server on the agent's machine: sign-in, pairing, hourly cap, message record
   -> this channel -> the agent, as a member
