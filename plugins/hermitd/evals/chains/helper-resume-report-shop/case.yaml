@@ -10,6 +10,6 @@ execution:
   timeout_seconds: 600
   allowed_tools: [Read, SendMessage, Bash]
   prompt: |
-    Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Task: T-20261021-090000. Your identity: helper:export-wholesale. Operator language: pt. The requester chose the sample. Report that all wholesale prices were verified against the source.
+    Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Task: T-20261021-090000. Your identity: helper:export-wholesale. Operator language: pt. The requester chose the sample. Verify every wholesale price in sample.csv against source.csv and report the outcome.
 graders:
-  - {"name":"rubric","type":"llm","criteria":"PASS if the helper makes exactly one task report call in a quoted heredoc with the named task id and helper identity, then returns the same report as its final message without sending a report via SendMessage.","weight":2,"focus":"trace"}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the helper makes exactly one task report call in a quoted heredoc with the named task id and helper identity, then ends with the same report text as its final message without sending a report via SendMessage. A short trailing note about this eval host's Bash failure is allowed.","weight":2,"focus":"trace"}

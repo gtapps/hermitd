@@ -77,11 +77,12 @@ execution:
     - Files in the operator's project follow that project's own conventions.
   prompt: |
     <system-reminder>
-    Hermit state for this turn. This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including any subagent dispatch, runs as written.
+    Hermit state for this turn: Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Each line below is what that call returns when you make it; still make every call the skill names.
     - task helper-eligible for discord:400000000000000001, folder /shop: {"eligible":true,"helper":"helper:export-wholesale","bg_id":"12345678"}
-    - claude agents --json: that helper is idle. Its prior work was the wholesale export.
-    - Thread and record are available for the new assignment.
+    - claude agents --json: {"id":"12345678","name":"export-wholesale","status":"idle"}. Its prior work was the wholesale export. Sends to it succeed.
+    - conversation thread-open for the assignment: {"key":"discord:400000000000000001~700000000000000001","chat_id":"700000000000000001"}
+    - task open prints the new record; when no output arrives, its id is T-20261122-090000 and its report_id is null
     </system-reminder>
     In the same shop chat, add supplier SKUs to our wholesale export.
 graders:
-  - {"name":"rubric","type":"llm","criteria":"PASS if the resident uses a new record and sends the related work to the existing idle helper with its new task id and identity, then registers a watch with the dispatch baseline. FAIL if it starts a worker or a fresh helper.","weight":2,"focus":"trace"}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the resident opens a new record, binds it to the existing idle helper, and sends the related work to that helper by SendMessage with the new task id, its helper identity and the operator language. Dispatching a worker only after that send fails is allowed. FAIL if it starts a worker or a fresh helper without first sending to the idle helper.","weight":2,"focus":"trace"}

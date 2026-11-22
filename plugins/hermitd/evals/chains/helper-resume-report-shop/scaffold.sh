@@ -39,4 +39,16 @@ HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'
 HERMIT_FIXTURE
+mkdir -p "."
+cat > 'sample.csv' <<'HERMIT_FIXTURE'
+sku,name,price,wholesale
+T-01,Sencha,12.00,8.40
+T-02,Earl Grey,10.00,7.00
+HERMIT_FIXTURE
+mkdir -p "."
+cat > 'source.csv' <<'HERMIT_FIXTURE'
+sku,wholesale
+T-01,8.40
+T-02,7.00
+HERMIT_FIXTURE
 chmod +x .hermit/bin/hermitd-run

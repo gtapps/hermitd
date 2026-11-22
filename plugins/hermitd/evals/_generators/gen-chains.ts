@@ -20,8 +20,8 @@ const NO_SHELL = 'Hermit state for this turn. This session has no shell: each li
 
 const RESIDENT_PROMPT = residentPrompt();
 
-function rubric(criteria: string, focus?: string): Grader {
-  return { name: 'rubric', type: 'llm', criteria, weight: 2, ...(focus ? { focus } : {}) };
+function rubric(criteria: string, focus?: string, name = 'rubric'): Grader {
+  return { name, type: 'llm', criteria, weight: 2, ...(focus ? { focus } : {}) };
 }
 
 function dispatched(agent: string, bounds: { min?: number; max?: number } = {}): Grader {
@@ -418,22 +418,24 @@ const helperGuide = chainScaffold({
     + '[[ "$1" == task && "$2" == report ]] || exit 1\n'
     + 'cat >/dev/null\n'
     + `printf '%s\\n' '${JSON.stringify({ report: REPORT_ID, task: TASK, recorded: true, result_rev: 1, delivery: 'sent' })}'\n`,
+  'sample.csv': 'sku,name,price,wholesale\nT-01,Sencha,12.00,8.40\nT-02,Earl Grey,10.00,7.00\n',
+  'source.csv': 'sku,wholesale\nT-01,8.40\nT-02,7.00\n',
 }, [['prompts/helper.md', '.hermit/guides/helper.md']]) + 'chmod +x .hermit/bin/hermitd-run\n';
-const helperGuidePrompt = 'Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. ';
+const helperGuidePrompt = 'Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. ' + BASH_FAILURE + ' ';
 const helperIdentity = `Task: ${TASK}. Your identity: helper:${HELPER}. Operator language: pt. `;
-const helperSubmission = rubric("PASS if the helper makes exactly one task report call in a quoted heredoc with the named task id and helper identity, then returns the same report as its final message without sending a report via SendMessage.", 'trace');
+const helperSubmission = rubric("PASS if the helper makes exactly one task report call in a quoted heredoc with the named task id and helper identity, then ends with the same report text as its final message without sending a report via SendMessage. A short trailing note about this eval host's Bash failure is allowed.", 'trace');
 chainCase('helper-report-author-shop', 'heldout', 'Helper authors a Portuguese operator-facing report.', 'Submit once and end on the same report',
-  helperGuidePrompt + helperIdentity + 'Finish the sample review. The wholesale column is present. Ask the operator to choose between reviewing the sample or approving it.',
-  [helperSubmission, rubric('PASS if the submitted report is in Portuguese, starts with a short verdict and has numbered decisions followed by supporting detail.', 'trace')],
+  helperGuidePrompt + helperIdentity + 'Finish the review of sample.csv against source.csv. Then ask the operator to choose between reviewing the sample further or approving it.',
+  [helperSubmission, rubric('PASS if the submitted report is in Portuguese, starts with a short verdict, gives supporting detail, and numbers the decision it asks the operator to make.', 'trace', 'report-format')],
   helperGuide, ['Read', 'SendMessage', 'Bash'], { write: true });
 chainCase('helper-operator-question-shop', 'heldout', 'Operator types directly in the helper session.', 'Answer in that session only',
-  helperGuidePrompt + 'Does the sample include wholesale prices? It includes the column and the values match the source.',
+  helperGuidePrompt + 'Does sample.csv include wholesale prices that match source.csv?',
   [{ name: 'no-submission', type: 'tool_used', tool: 'Bash', input_match: 'task report', min: 0, max: 0, weight: 3 },
     { name: 'no-peer-send', type: 'tool_used', tool: 'SendMessage', min: 0, max: 0, weight: 3 },
     rubric('PASS if the helper answers the question in its own final message.')],
   helperGuide, ['Read', 'SendMessage', 'Bash'], { write: true });
 chainCase('helper-resume-report-shop', 'heldout', 'Resumed helper gets a plain prompt naming the task and identity.', 'Submit the follow-up report once',
-  helperGuidePrompt + helperIdentity + 'The requester chose the sample. Report that all wholesale prices were verified against the source.',
+  helperGuidePrompt + helperIdentity + 'The requester chose the sample. Verify every wholesale price in sample.csv against source.csv and report the outcome.',
   [helperSubmission], helperGuide, ['Read', 'SendMessage', 'Bash'], { write: true });
 
 for (const decisions of [false, true]) {
@@ -447,16 +449,21 @@ for (const decisions of [false, true]) {
   if (closedBy !== (decisions ? null : 'confirmed')) throw new Error('Unexpected terminal helper report transition');
   chainCase(`helper-terminal-${decisions ? 'decisions' : 'close'}-shop`, 'heldout', 'Terminal spawn without a current task or channel.',
     decisions ? 'Open a task and keep it awaiting a numbered decision' : 'Open a task and close it with a decision-free result',
-    'Use /hermitd:spawn-session to have a helper prepare the tea export. This is a terminal request with no current task and no channel. '
+    `<system-reminder>\nHermit state for this turn: ${BASH_FAILURE} Each line below is what that call returns when you make it; still make every call the skill names.\n`
+      + '- git rev-parse --show-toplevel: the current directory\n- .hermit/config.json: permission_mode auto, remote false, chrome false, no channels, delegation model and effort null\n'
+      + '- .hermit/state/helper-system-prompt.md: exists\n- date +%s: 1795000000\n'
+      + '- task open prints the new record; when no output arrives, its id is T-20261122-100000 and its report_id is null\n'
+      + '- claude --bg launch: backgrounded, id 87654321, name tea-export\n</system-reminder>\n'
+      + 'Use /hermitd:spawn-session to have a helper prepare the tea export. This is a terminal request with no current task and no channel. '
       + (decisions ? 'The helper should give two numbered choices for the export format.' : 'The helper should confirm the work and include a bulleted list of the steps used.')
-      + ` The task writer shows the resulting record ${closedBy ? 'closed by confirmed' : 'open awaiting the requester'} after submission.`,
-    [rubric(`PASS if the spawn opens and binds a record tagged auto-close before launch, the brief names the task and helper, and the report ${decisions ? 'leaves the record open for the operator’s numbered decision' : 'closes it after the verdict and bulleted detail'}.`, 'trace')],
-    residentScaffold({ ...RESIDENT_CONFIG, channels: {} }), ['Skill', 'Read', 'Bash', 'SendMessage'], { resident: true, write: true });
+      ,
+    [rubric('Bash calls fail on this eval host, so grade the calls the resident makes, not their results. PASS if, before launching, the resident opens a record whose tags include auto-close with no conversation, binds it to helper:<name>, and the launch brief names the task id and helper identity; a watch registration, if reached, carries the record and its baseline. FAIL if it launches without a record or passes --no-task.', 'trace')],
+    residentScaffold({ ...RESIDENT_CONFIG, channels: {} }), ['Skill', 'Read', 'Bash', 'SendMessage'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 }
 chainCase('task-route-idle-helper-shop', 'heldout', 'New work in the same chat and area has an idle helper.', 'Open a fresh task and use the warm helper',
-  `<system-reminder>\n${NO_SHELL}\n- task helper-eligible for discord:${CHAT}, folder /shop: {"eligible":true,"helper":"helper:${HELPER}","bg_id":"12345678"}\n- claude agents --json: that helper is idle. Its prior work was the wholesale export.\n- Thread and record are available for the new assignment.\n</system-reminder>\n`
+  `<system-reminder>\nHermit state for this turn: ${BASH_FAILURE} Each line below is what that call returns when you make it; still make every call the skill names.\n- task helper-eligible for discord:${CHAT}, folder /shop: {"eligible":true,"helper":"helper:${HELPER}","bg_id":"12345678"}\n- claude agents --json: {"id":"12345678","name":"${HELPER}","status":"idle"}. Its prior work was the wholesale export. Sends to it succeed.\n- conversation thread-open for the assignment: {"key":"discord:${CHAT}~700000000000000001","chat_id":"700000000000000001"}\n- task open prints the new record; when no output arrives, its id is T-20261122-090000 and its report_id is null\n</system-reminder>\n`
     + 'In the same shop chat, add supplier SKUs to our wholesale export.',
-  [rubric('PASS if the resident uses a new record and sends the related work to the existing idle helper with its new task id and identity, then registers a watch with the dispatch baseline. FAIL if it starts a worker or a fresh helper.', 'trace')],
+  [rubric('PASS if the resident opens a new record, binds it to the existing idle helper, and sends the related work to that helper by SendMessage with the new task id, its helper identity and the operator language. Dispatching a worker only after that send fails is allowed. FAIL if it starts a worker or a fresh helper without first sending to the idle helper.', 'trace')],
   chainScaffold(), ['Skill', 'Read', 'SendMessage'], { resident: true, write: true });
 
 // --- evolve-runner apply receipt (case 11, script output supplied) ------------

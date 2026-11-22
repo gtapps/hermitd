@@ -10,7 +10,7 @@ execution:
   timeout_seconds: 600
   allowed_tools: [Read, SendMessage, Bash]
   prompt: |
-    Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Task: T-20261021-090000. Your identity: helper:export-wholesale. Operator language: pt. Finish the sample review. The wholesale column is present. Ask the operator to choose between reviewing the sample or approving it.
+    Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Task: T-20261021-090000. Your identity: helper:export-wholesale. Operator language: pt. Finish the review of sample.csv against source.csv. Then ask the operator to choose between reviewing the sample further or approving it.
 graders:
-  - {"name":"rubric","type":"llm","criteria":"PASS if the helper makes exactly one task report call in a quoted heredoc with the named task id and helper identity, then returns the same report as its final message without sending a report via SendMessage.","weight":2,"focus":"trace"}
-  - {"name":"rubric","type":"llm","criteria":"PASS if the submitted report is in Portuguese, starts with a short verdict and has numbered decisions followed by supporting detail.","weight":2,"focus":"trace"}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the helper makes exactly one task report call in a quoted heredoc with the named task id and helper identity, then ends with the same report text as its final message without sending a report via SendMessage. A short trailing note about this eval host's Bash failure is allowed.","weight":2,"focus":"trace"}
+  - {"name":"report-format","type":"llm","criteria":"PASS if the submitted report is in Portuguese, starts with a short verdict, gives supporting detail, and numbers the decision it asks the operator to make.","weight":2,"focus":"trace"}
