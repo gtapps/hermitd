@@ -393,6 +393,41 @@ describe('subagent-cost: same requestId billed once', () => {
   });
 });
 
+// A background agent resumed with SendMessage stops again with its transcript grown;
+// each stop must log only the usage added since the agent's previous row.
+describe('subagent-cost: repeat stops of one agent log only the increment', () => {
+  let layout: Layout;
+  let afterFirst: any[], afterSecond: any[], afterRepeat: any[];
+
+  beforeAll(async () => {
+    layout = buildLayout();
+    fs.writeFileSync(layout.parentTranscriptPath, [
+      triggerPrompt('HEARTBEAT_EVALUATE'),
+      asyncLaunchEntry(layout.agentId, 'claude-haiku-4-5-20251001'),
+    ].join('\n') + '\n');
+    fs.writeFileSync(layout.subagentTranscriptPath, assistantEntry('claude-haiku-4-5-20251001', 1000, 400) + '\n');
+    afterFirst = await runHookAndReadLog(layout);
+    fs.appendFileSync(layout.subagentTranscriptPath, assistantEntry('claude-haiku-4-5-20251001', 300, 100) + '\n');
+    afterSecond = await runHookAndReadLog(layout);
+    afterRepeat = await runHookAndReadLog(layout);
+  });
+
+  afterAll(() => fs.rmSync(layout.root, { recursive: true }));
+
+  test('first stop logs the full total', () => {
+    expect(afterFirst).toHaveLength(1);
+    expect(afterFirst[0].input_tokens).toBe(1000);
+    expect(afterFirst[0].output_tokens).toBe(400);
+  });
+  test('second stop logs only the added usage', () => {
+    expect(afterSecond).toHaveLength(2);
+    expect(afterSecond[1].input_tokens).toBe(300);
+    expect(afterSecond[1].output_tokens).toBe(100);
+    expect(afterSecond[1].total_tokens).toBe(400);
+  });
+  test('a stop with nothing new logs no row', () => expect(afterRepeat).toHaveLength(2));
+});
+
 import { freshDirFactory } from './helpers/workdir';
 const dreamDirs = freshDirFactory('dream-stops-');
 afterAll(dreamDirs.cleanup);

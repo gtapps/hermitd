@@ -21,6 +21,7 @@
 ### Fixed
 
 - Bootstrap installer installs `unzip` before Bun on Linux.
+- Background subagents that stop more than once no longer count their earlier usage again in recorded spend.
 - Missing display executables on Linux hosts appear as a pending setup step.
 
 ## [1.4.39] - 2026-11-21

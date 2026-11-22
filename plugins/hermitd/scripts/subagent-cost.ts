@@ -33,9 +33,18 @@ import { calculateCost } from './lib/pricing';
 import { resolveTurnSource } from './cost-tracker';
 import { buildSubagentCostRow, appendCostRows, costIndexPath, updateCostIndex } from './lib/cost-log';
 import { readSettledConfig } from './lib/config-read';
+import { acquireLockWithWait, releaseLock } from './lib/lockfile';
+import { writeFileAtomic } from './lib/md-write';
 
 const HERMIT_DIR = hermitDir();
 const COST_LOG = costLogPath(HERMIT_DIR);
+// Per-agent totals already logged, so a repeat SubagentStop logs only the increment.
+const SEEN_PATH = path.join(HERMIT_DIR, 'state', 'subagent-cost-seen.json');
+const SEEN_LOCK = path.join(HERMIT_DIR, 'state', 'subagent-cost.lock');
+const SEEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const TOKEN_KEYS = ['inputTokens', 'cacheWriteTokens', 'cacheWrite1hTokens', 'cacheReadTokens', 'outputTokens'] as const;
+type SeenTotals = Record<typeof TOKEN_KEYS[number], number> & { at: number };
+
 function sumSubagentTranscript(transcriptPath: string): {
   model: string; inputTokens: number; cacheWriteTokens: number;
   cacheWrite1hTokens: number; cacheReadTokens: number; outputTokens: number;
@@ -125,59 +134,18 @@ process.stdin.on('end', () => {
     const usage = sumSubagentTranscript(subPath);
     if (!usage) { process.exit(0); return; }
 
-    const { model: rawModel, inputTokens, cacheWriteTokens, cacheWrite1hTokens, cacheReadTokens, outputTokens, fast } = usage;
-    const totalTokens = inputTokens + cacheWriteTokens + cacheReadTokens + outputTokens;
-    if (totalTokens === 0) { process.exit(0); return; }
-
-    // Source attribution from the launch entry's turn (best-effort, falls back to 'other').
-    // findAsyncLaunch reads the whole parent transcript (no tail window), so a missed
-    // boundary here just means the launch is in the genuine first turn — no truncation
-    // guard needed like cost-tracker.ts's tail-windowed scan.
-    let source = 'other';
-    try { source = resolveTurnSource(launch.lines, launch.index).source; } catch {}
-
-    const model = rawModel || '';
-    // Clamped: the 1h split and the cache-write total are folded per request as
-    // independent maxima, so a disagreeing pair could otherwise yield a negative 5m
-    // component and a cost below the real figure.
-    const cacheWrite1h = Math.min(cacheWrite1hTokens, cacheWriteTokens);
-    const priced = calculateCost(model, {
-      input: inputTokens,
-      cacheWrite5m: cacheWriteTokens - cacheWrite1h,
-      cacheWrite1h,
-      cacheRead: cacheReadTokens,
-      output: outputTokens,
-      fast,
-    });
-    const round4 = (n: number) => Math.round(n * 10000) / 10000;
-    const estimatedCost = round4(priced.total);
-    const costByType = {
-      input: round4(priced.byType.input),
-      cache_write: round4(priced.byType.cacheWrite),
-      cache_read: round4(priced.byType.cacheRead),
-      output: round4(priced.byType.output),
-    };
-
-    const boundary = turnPromptText(launch.lines, launch.index);
-    let boundaryAt = '';
-    try { boundaryAt = JSON.parse(launch.lines[boundary.index]).timestamp ?? ''; } catch {}
-    const taskAttribution = dispatchTaskAttribution(HERMIT_DIR, readTaskCostRows(HERMIT_DIR), payloadSessionId(payload) ?? '', boundaryAt);
-    const entry = buildSubagentCostRow({
-      taskAttribution,
-      source,
-      model,
-      inputTokens,
-      cacheWriteTokens,
-      cacheReadTokens,
-      outputTokens,
-      totalTokens,
-      agentType: payload.agent_type || '',
-      modelResolved: !!rawModel,   // subagent transcript always carries a model → effectively always true
-      estimatedCostUsd: estimatedCost,
-      costByType,
-    });
-
-    try { appendCostRows(COST_LOG, [entry]); } catch { process.exit(0); return; }
+    // A background agent can stop more than once (SendMessage resumes, waits on its own
+    // shells), and its transcript is append-only, so every stop re-sums everything. Log
+    // only the change since this agent's last row. The lock keeps two same-second fires
+    // from both reading the same baseline; without it we proceed (hooks fail open).
+    const lockHeld = acquireLockWithWait(SEEN_LOCK, 2000);
+    let logged: boolean;
+    try {
+      logged = logDelta(payload, aid, launch, usage);
+    } finally {
+      if (lockHeld) releaseLock(SEEN_LOCK);
+    }
+    if (!logged) { process.exit(0); return; }
 
     // Fold the row into cost-index.json here rather than leaving it for the next
     // Stop hook. readCostIndex validates only the schema version, so a present-but-
@@ -195,3 +163,77 @@ process.stdin.on('end', () => {
   } catch {}
   process.exit(0);
 });
+
+function logDelta(
+  payload: any, aid: string, launch: { lines: string[]; index: number },
+  usage: NonNullable<ReturnType<typeof sumSubagentTranscript>>,
+): boolean {
+  let seen: Record<string, SeenTotals> = {};
+  try { seen = JSON.parse(fs.readFileSync(SEEN_PATH, 'utf-8')) ?? {}; } catch {}
+  const prev = seen[aid];
+  const d = Object.fromEntries(TOKEN_KEYS.map((k) => [k, Math.max(0, usage[k] - (prev?.[k] ?? 0))])) as Record<typeof TOKEN_KEYS[number], number>;
+  const { inputTokens, cacheWriteTokens, cacheWrite1hTokens, cacheReadTokens, outputTokens } = d;
+  const { model: rawModel, fast } = usage;
+  const totalTokens = inputTokens + cacheWriteTokens + cacheReadTokens + outputTokens;
+  if (totalTokens === 0) return false;
+
+  // Source attribution from the launch entry's turn (best-effort, falls back to 'other').
+  // findAsyncLaunch reads the whole parent transcript (no tail window), so a missed
+  // boundary here just means the launch is in the genuine first turn — no truncation
+  // guard needed like cost-tracker.ts's tail-windowed scan.
+  let source = 'other';
+  try { source = resolveTurnSource(launch.lines, launch.index).source; } catch {}
+
+  const model = rawModel || '';
+  // Clamped: the 1h split and the cache-write total are folded per request as
+  // independent maxima, so a disagreeing pair could otherwise yield a negative 5m
+  // component and a cost below the real figure.
+  const cacheWrite1h = Math.min(cacheWrite1hTokens, cacheWriteTokens);
+  const priced = calculateCost(model, {
+    input: inputTokens,
+    cacheWrite5m: cacheWriteTokens - cacheWrite1h,
+    cacheWrite1h,
+    cacheRead: cacheReadTokens,
+    output: outputTokens,
+    fast,
+  });
+  const round4 = (n: number) => Math.round(n * 10000) / 10000;
+  const estimatedCost = round4(priced.total);
+  const costByType = {
+    input: round4(priced.byType.input),
+    cache_write: round4(priced.byType.cacheWrite),
+    cache_read: round4(priced.byType.cacheRead),
+    output: round4(priced.byType.output),
+  };
+
+  const boundary = turnPromptText(launch.lines, launch.index);
+  let boundaryAt = '';
+  try { boundaryAt = JSON.parse(launch.lines[boundary.index]).timestamp ?? ''; } catch {}
+  const taskAttribution = dispatchTaskAttribution(HERMIT_DIR, readTaskCostRows(HERMIT_DIR), payloadSessionId(payload) ?? '', boundaryAt);
+  const entry = buildSubagentCostRow({
+    taskAttribution,
+    source,
+    model,
+    inputTokens,
+    cacheWriteTokens,
+    cacheReadTokens,
+    outputTokens,
+    totalTokens,
+    agentType: payload.agent_type || '',
+    modelResolved: !!rawModel,   // subagent transcript always carries a model → effectively always true
+    estimatedCostUsd: estimatedCost,
+    costByType,
+  });
+
+  appendCostRows(COST_LOG, [entry]);
+
+  // Record the baseline only after the row is durable. Entries age out after a
+  // week, far past any agent's resume window, so the file stays small.
+  const now = Date.now();
+  for (const [id, s] of Object.entries(seen)) {
+    if (!(s?.at > now - SEEN_TTL_MS)) delete seen[id];
+  }
+  seen[aid] = { ...Object.fromEntries(TOKEN_KEYS.map((k) => [k, usage[k]])), at: now } as SeenTotals;
+  try { writeFileAtomic(SEEN_PATH, JSON.stringify(seen)); } catch {}
+  return true;
+}
