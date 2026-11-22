@@ -14,7 +14,7 @@ Before sending a steer or answer, run `task-list` (Commands) with `--id <T> --js
 
 ## Take a worker's result
 
-Check that the sender owns the named record, then run `task-note` (Commands) with `<task-id> --owner resident`. With `task-list` (Commands), look up the receipt using `--all --id <task-id> --json --with-decisions`. Match the returned report id to the completion and follow [watch/notices.md](../watch/notices.md) § Report receipts. Never read or record a sent result again. For `Unreachable:`, give the maintainer-only notice and wait on `maintainer`. Follow the task skill's Closure rules for checks and confirmations.
+Check that the sender owns the named record, then run `task-note` (Commands) with `<task-id> --owner resident`. If the completion carries `Delivery: blocked <reason>` with report id `none`, send one plain line in the operator's language that the report was not stored and why, leave the task open, and skip the receipt lookup and closure. Otherwise, with `task-list` (Commands), look up the receipt using `--all --id <task-id> --json --with-decisions`. Match the returned report id to the completion and follow [watch/notices.md](../watch/notices.md) § Report receipts. Never read or record a sent result again. For `Unreachable:`, give the maintainer-only notice and wait on `maintainer`. Follow the task skill's Closure rules for checks and confirmations.
 
 ## Conversation command
 

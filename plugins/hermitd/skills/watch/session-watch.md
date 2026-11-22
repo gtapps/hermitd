@@ -27,7 +27,7 @@ section; after a caller has already armed a subscription, use
    ```
 
    If no row is printed, answer `No session named <name> is reachable from here.`
-   and stop. If its state is `done` and status is not busy and `waitingFor` is null, decline as in step 2 unless this is a fresh launch.
+   and stop. If its state is `done` and status is not busy and `waitingFor` is null, decline as in step 2 unless this is a fresh launch. When declining a registration that carries `--record`, run `task-list` (Commands) with `--all --id <T-id> --json --with-decisions`; if its `report_id` differs from `--prior-report`, handle it per [notices.md](notices.md) § Report receipts.
 
    Resolve `<name>` with `ListAgents`. The row must be a Claude Code
    session on this machine — `notify_when_idle` covers nothing else, so a
