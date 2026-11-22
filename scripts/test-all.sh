@@ -34,10 +34,11 @@ run_suite() {
   return "$rc"
 }
 
+# Plugins run in parallel here, as in CI, so take CI's contention headroom (--timeout=45000).
 run_bun() {
   local slug="$1"
   shift
-  ( cd "$ROOT/plugins/$slug" && CLAUDE_PLUGIN_ROOT="$ROOT/plugins/$slug" bun test "$@" )
+  ( cd "$ROOT/plugins/$slug" && CLAUDE_PLUGIN_ROOT="$ROOT/plugins/$slug" bun test --timeout=45000 "$@" )
 }
 
 run_root() {

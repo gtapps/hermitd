@@ -485,7 +485,7 @@ test('resident instructions and operator overlay are protected for every write t
   }
   const viaStateVar = await runGate(payload({ dir, tool: 'Bash', input: { command: 'echo x > "$STATE_DIR/helper-system-prompt.md"' } }), dir);
   expectAsk(viaStateVar.stdout, 'Hermit setting: helper-system-prompt.md');
-}, 30_000);
+});
 
 describe('static settings policy', () => {
   test('new protected paths ask for both directions and unset', () => {
@@ -783,7 +783,7 @@ test('channel state writes ask on chat and unknown turns and are silent on typed
     const base = JSON.parse(payload({ dir, tool: 'Bash', input: { command } }));
     expectSilent(await runGate(JSON.stringify({ ...base, transcript_path: channelTranscript }), dir));
   }
-}, 30_000);
+}, 60_000);
 
 describe('routine chat binding', () => {
   const ROUTINES = [
@@ -1165,7 +1165,7 @@ test('operator decisions run silently on a typed terminal turn, steer on chat, a
   }
   expect(fs.existsSync(path.join(dir, 'pwned'))).toBe(false);
   expectSilent(await gate("bun plugins/hermitd/scripts/task.ts note .hermit T-20261101-120000 --decision <<'EOF'\nclosed with task dismiss\nEOF", others[0], 'bypassPermissions'));
-}, 30_000);
+});
 
 test('quoted heredoc bodies that only mention a decision call are data', async () => {
   const dir = fixture();
