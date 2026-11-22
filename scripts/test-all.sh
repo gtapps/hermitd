@@ -34,11 +34,10 @@ run_suite() {
   return "$rc"
 }
 
-# Plugins run in parallel here, as in CI, so take CI's contention headroom (--timeout=45000).
 run_bun() {
   local slug="$1"
   shift
-  ( cd "$ROOT/plugins/$slug" && CLAUDE_PLUGIN_ROOT="$ROOT/plugins/$slug" bun test --timeout=45000 "$@" )
+  ( cd "$ROOT/plugins/$slug" && CLAUDE_PLUGIN_ROOT="$ROOT/plugins/$slug" bun test "$@" )
 }
 
 run_root() {
@@ -46,12 +45,15 @@ run_root() {
 }
 
 printf "%-32s %-6s %6s\n" "PLUGIN" "RESULT" "SECS"
+# Plugins run in parallel here, as in CI, so the suites CI runs with
+# --timeout=45000 (core, HA) take the same contention headroom; the rest keep
+# CI's 5s default.
 for slug in "${BUN_TEST_SLUGS[@]}"; do
-  if [ "$slug" = hermitd ]; then
-    run_suite "$slug" run_bun "$slug" --parallel="$CORE_WORKERS" &
-  else
-    run_suite "$slug" run_bun "$slug" &
-  fi
+  case "$slug" in
+    hermitd) run_suite "$slug" run_bun "$slug" --parallel="$CORE_WORKERS" --timeout=45000 & ;;
+    hermitd-homeassistant) run_suite "$slug" run_bun "$slug" --timeout=45000 & ;;
+    *) run_suite "$slug" run_bun "$slug" & ;;
+  esac
   PIDS[$slug]=$!
 done
 
