@@ -2484,6 +2484,8 @@ describe('resident prompt launch requirement', () => {
     const file = fs.readFileSync('.hermit/state/helper-system-prompt.md', 'utf8');
     expect(file).toContain(path.resolve('.'));
     expect(file).toContain(peerName({}));
+    expect(file).toContain('exactly the same report text');
+    expect(file).toContain('--- procedure ---');
     expect(file).not.toContain('{{');
     expect(cmd).not.toContain(path.resolve('.hermit/state/helper-system-prompt.md'));
   });

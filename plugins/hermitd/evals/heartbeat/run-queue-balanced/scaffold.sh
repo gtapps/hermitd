@@ -93,6 +93,9 @@ approved_rev: null
 approved_by: null
 source: null
 category: null
+report_id: null
+report_kind: null
+delivery: null
 muted: false
 delegated: false
 tags: ["task","discord:100000000000000001"]

@@ -372,7 +372,7 @@ describe('channel-status-responder', () => {
       await run(wd, '!status', stub.url);
       const text = stub.requests[0].body.text as string;
       const block = text.slice(text.indexOf('Waiting on you:'));
-      expect(block).toContain('• Draft report: confirm the result (');
+      expect(block).toContain('• Draft report: ready for review (');
       expect(block).toContain('• Book venue: answer the question (');
       expect(block).not.toContain('Someone else');
       expect(block).not.toContain('Cleared wait');
@@ -397,7 +397,7 @@ describe('channel-status-responder', () => {
 
       await run(wd, '!status', stub.url);
       const text = stub.requests[0].body.text as string;
-      expect(text).toContain('Older result: confirm the result (3 hours ago)');
+      expect(text).toContain('Older result: ready for review (3 hours ago)');
       expect(text.indexOf('Older result')).toBeLessThan(text.indexOf('Newer question'));
     } finally {
       stub.stop();
@@ -420,7 +420,7 @@ describe('channel-status-responder', () => {
       await run(wd, '!status', stub.url);
       const text = stub.requests[0].body.text as string;
       expect(text).toContain('• Draft report: answer the question (');
-      expect(text).not.toContain('confirm the result');
+      expect(text).not.toContain('ready for review');
       expect(text).not.toContain('hours ago');
     } finally {
       stub.stop();
@@ -591,7 +591,7 @@ describe('channel-status-responder', () => {
         await taskCommand(wd, 'block', id, ['--result-stdin'], 'Pronto');
         await run(wd, '!status', stub.url);
         const text = stub.requests[0].body.text as string;
-        expect(text).toContain('À sua espera:\n• Relatório: confirme o resultado (');
+        expect(text).toContain('À sua espera:\n• Relatório: pronto para revisão (');
         expect(text).toMatch(/há \d+ segundos?\)/);
       } finally {
         stub.stop();

@@ -14,7 +14,7 @@ function collect(script: string, hermitDir: string, out: string) {
   return { code: run.exitCode, out: run.stdout.toString().trim(), err: run.stderr.toString().trim() };
 }
 
-const nulls = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'last_worker', 'kind', 'decision', 'approved_rev', 'approved_by', 'source', 'category'];
+const nulls = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'last_worker', 'kind', 'decision', 'approved_rev', 'approved_by', 'source', 'category', 'report_id', 'report_kind', 'delivery'];
 function proposalTask(overrides: Partial<Task>): string {
   const record = {
     ...Object.fromEntries(nulls.map(key => [key, null])),

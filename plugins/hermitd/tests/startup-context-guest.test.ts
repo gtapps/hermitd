@@ -114,7 +114,8 @@ describe('startup-context.ts — resident vs guest', () => {
       expect(res.stdout).toContain('---Guest Session---');
       expect(res.stdout).toContain('A managed hermit session is already running here');
       expect(res.stdout).toContain('@hermit-peer');
-      expect(res.stdout).toContain('GUEST_REPORT:');
+      expect(res.stdout).toContain('end on the same report');
+      expect(res.stdout).toContain('--as helper:<name> and --kind result|needs-input|note');
       expect(res.stdout).not.toContain('---Open tasks---');
       expect(res.stdout.trim().split('\n').length).toBeLessThanOrEqual(8);
     } finally {
@@ -123,16 +124,15 @@ describe('startup-context.ts — resident vs guest', () => {
   });
 
   // A resident that booted before the --name stamp existed has no peer_name, and
-  // `Resident: @.` is an instruction the guest cannot act on. Drop the two
-  // handoff lines rather than name a session nobody answers to.
-  it('drops the handoff lines when the resident has no resolvable peer name', async () => {
+  // `Resident: @.` is an instruction the guest cannot act on. Omit the resident name when it is unavailable.
+  it('omits the resident name when the resident has no resolvable peer name', async () => {
     const wd = setupWorkdir();
     try {
       const env = fixture(wd.dir, { tmuxSession: SESSION, tmuxExit: 0 });
       const res = await run(wd.dir, { ...env, HERMIT_MANAGED: '' });
       expect(res.stdout).toContain('---Guest Session---');
       expect(res.stdout).not.toContain('Resident: @');
-      expect(res.stdout).not.toContain('GUEST_REPORT:');
+      expect(res.stdout).toContain('Without a task id, answer only in your own session.');
     } finally {
       wd.cleanup();
     }

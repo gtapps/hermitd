@@ -99,7 +99,7 @@ Skills are namespaced `/hermitd:*`; the full set is listed in the plugin's `CLAU
 
 ### Task report delivery
 
-Helpers and workers submit operator-facing text through `task report`, with the report inline for auto-mode review in the author’s session. The task writer lock covers owner validation, immutable storage and the existing result or wait transition. Delivery starts after the lock is released and uses the task’s conversation and thread. The author returns a small receipt; the resident updates cards, runs checks and handles closure without ingesting a delivered body. Reply-only channels use the stored-body relay fallback. Core sends apply the Hermes channel converter and fence-safe splitter; model replies follow the session hint without hook rewrites.
+Helpers and workers submit operator-facing text through `task report`, inline for auto-mode review in the author’s session. The task writer lock covers owner validation, immutable storage, the receipt and the result or wait transition. Delivery uses the task conversation and thread after the lock is released. A helper ends on the same report, and its native idle notice wakes the resident to read the task receipt. Workers return their compact completion line. The resident updates cards and runs checks from the receipt, or gives a short report-back in reply-only channels and terminal sessions. On “full report”, it reads the stored body and returns it to the task conversation or terminal. Core sends apply the channel converter and fence-safe splitter.
 
 ### Hooks
 

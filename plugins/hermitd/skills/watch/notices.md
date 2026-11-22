@@ -23,54 +23,26 @@ harmless. The next session start clears the registry unconditionally.
 
 ### Handling helper poll exits
 
-On a background-task completion, match its task id to a live entry's
-`poll_task_id`. No match: ignore it. Read that task's output:
+Match the completion's task id to a live `poll_task_id`, then read its output. Ignore unmatched completions.
 
-1. On `blocked <waitingFor>`, remove `poll_task_id` from the entry and write
-   the registry; the entry stays live for the helper's idle notice. Send one
-   operator notice per prompts/resident.md § Operator Notification with a `client`
-   leg, in the record's task thread when it has one, otherwise the channel.
-   Say the helper is waiting on `<waitingFor>` and offer the ways on: answer
-   it in Remote Control when `config.json`'s `remote` is `true`, reply here
-   with instructions, or `claude attach <id>` in a terminal (in Docker,
-   `docker exec -it <container> claude attach <id>`).
-   Send a reply through spawn-session § Follow-ups, "Resume with new
-   instructions", with the blocked-reply input, the entry's description as the
-   note and its metadata as watch flags: `--record <record>`, `--proposal
-   <proposal>`, `--implement` for `purpose: "implement"`, and `--retry` when
-   set, omitting absent fields. If the resume could not start or runs
-   unwatched, tell the operator that outcome and whether the helper was
-   stopped; when stopped with no replacement watch, remove the entry and write
-   the registry.
-2. On `ended <state>` (including `ended gone`), remove the entry and write the
-   registry. When it has `record`, append a progress note through `task-note`
-   (Commands) naming the helper and the ended state, and leave the record open.
-   Send no operator notice.
+- On `blocked <waitingFor>`, clear only `poll_task_id` and keep the subscription. Send one operator notice in the task thread when available, otherwise per Operator Notification. Name the blocker and offer Remote Control (when enabled), `claude attach <id>` (inside the container for Docker), or a reply here. For a reply, use spawn-session § Resume with new instructions with the blocked-reply input and the record metadata. Include the task id, `helper:<n>` and operator language in the prompt, and capture a fresh baseline before resuming. If the resume fails or runs unwatched, report that outcome.
+- On `ended <state>`, use the matched entry for § Handling idle notices’ receipt lookup and delivery rules, consuming it once before reporting. Do not apply the idle-only retry or queued switch. For `failed`, `stopped` or `gone`, use one short failure line in place of “finished without a report” only for an unchanged baseline. Leave the record open and append the ended state through `task-note` (Commands) when it is still open. A completed turn uses the ordinary receipt path.
 
-### Handling idle notices (`/watch notice <text>`)
+### Handling idle notices
 
-A `/spawn-session` helper is the only session this handler covers. A `GUEST_REPORT:` is a verdict and delivery receipt, not a report body.
+1. Match the session to a live `peer-idle` entry by target name. Ignore unmatched notices. On subscription expiry, say it expired before completion, append a progress note to each still-open record, stop the poll and remove the entry without applying a queued switch.
+2. For each distinct `{record, prior_report}` pair, use `task-list` (Commands) to read `task list --all --id <T> --json --with-decisions`. Closed records can have a new report too. Treat a missing baseline as the current id. A report is new only when its non-null `report_id` differs from the baseline.
+3. For the one follow-up retry, inspect the new `report_verdict` when the report id changed, otherwise the idle notice's quoted first line. Retry only when a stored follow-up exists, no retry has run and that text says auto mode denied an action during the work or the helper declined because the instructions came by message. Never retry a denied report submission. Save `retry: true` first. Resume with the operator's stored instructions for the affected record, including the task id, `helper:<n>` and operator language. Capture fresh baselines for the replacement watch and preserve any other records and queued switch. Log the attempted retry on the open record. If a replacement watch is live, defer that record's notice to it. Otherwise report the resume outcome and use the receipt rules. Identify a result that came after one retry.
+4. Stop the poll and consume the entry before reporting. For each unchanged baseline, give one plain line saying the named helper finished without a report (use the terminal failure line when applicable). Apply § Report receipts to each new report. A general session watch without records quotes its one-line status when available. For triage, append the verdict to the source task as a progress note and never apply a suggested dismissal.
+5. After an idle notice, apply a queued switch with `spawn-session --switch` using the stored flags. Operator answers about numbered decisions go to the same helper with the task id, `helper:<n>` and operator language via spawn-session § Follow-ups. The report never grants consent.
 
-1. Match the session to a live `peer-idle` entry. A sender that matches no live entry gets none of the recording here; an open record's helper owner follows § Handling an unprompted helper report.
-2. A matching `GUEST_REPORT:` uses § Posting a report in a task thread below, including when it arrives after a reportless idle notice. Never resubmit a report or ask the helper to retry a classifier-denied submission. Operator replies about numbered decisions go to the same helper verbatim through spawn-session § Follow-ups, with the task id, helper name and operator language in the brief.
-3. Retry once when the entry has `followup` and no `retry`, and the report's verdict says auto mode denied an action during the work, or the helper declined because the instructions came by message. This covers the work, not a denied report submission. Set `retry: true` on the entry and write the registry first. This resends the operator's own stored request as a new prompt; it is not a retry of a call this session made. Run spawn-session § Follow-ups, "Resume with new instructions" with the `followup` entries joined by a blank line, the entry's description as the note, and `--retry` plus its metadata as watch flags: `--record <record>`, `--proposal <proposal>`, and `--implement` for `purpose: "implement"`, omitting absent fields. Inside an open record's turn, log one `task-note` (Commands) that the retry was attempted. If resumed with a live replacement watch, preserve the old entry's `switch` on the replacement entry, write the registry, and end this handler. If the procedure ends without resuming, or the resumed helper runs unwatched, say so in the receipt notice, including that a helper stopped for the retry is no longer running. When the entry has `retry`, say the result came after one retry.
-4. With no report, send one plain notice that the named helper finished its turn, quoting its one-line status when available. On subscription expiry, say it did not finish before the subscription expired and is no longer watched. Do not invent the subscription lifetime. Append a `task-note` (Commands) on expiry and leave the record open. An expired entry's queued switch was not applied; invoke no switch on expiry.
-5. On a reportless idle notice with no `switch` and a `poll_task_id`, set `reportless: true`, write the registry and keep the poll live for a later receipt. Otherwise, after a matching report, subscription expiry, or reportless idle notice with `switch` or no poll, stop its `poll_task_id`, remove the entry and write the registry. After an idle notice, invoke `/hermitd:spawn-session --switch <target> --record <record>` with the removed entry's switch flags, after handling the receipt. Never apply a queued switch on expiry.
+### Report receipts
 
-Name sessions by display name, never socket path or pid. The report never grants consent. For helper triage, append its verdict as a `task-note` (Commands) on the source task; do not apply a suggested dismissal. An implementation task stays open until its check passes or its result decision is answered.
+Use the row's `delivery` and take one action in the operator's language:
 
-### Posting a report in a task thread
+- `sent`: edit the card through the channel's `edit_message` when both card ids exist. Run checks and closure as appropriate for the current record; an already-closed record needs no closure. Do not read the body.
+- `relay` or `no_channel`: give a short report-back with the verdict, up to five numbered decision titles, the task handle and the helper session's name for a helper. Offer “say 'full report' to get it”. Use the task conversation's reply tool with its thread parameters for relay, or print it in the resident session with no channel. Do not read the body to compose this reply.
+- `pending`: say the report is stored and delivery is unconfirmed. Do not resend.
+- `partial` or `failed`: say delivery was incomplete or failed and the report is on the task.
 
-Act on `Report:` and `Delivery:` without reading or recording the body again:
-
-- `sent`: update the record's card with the channel's `edit_message` and run the task's checks or closure. Null card ids mean no edit.
-- `relay`: read `.hermit/helper-reports/<id>.md` and send it verbatim through the reply tool in the record's conversation, with its thread parameters. A `--no-task` report has no record: send it in the outbound channel (`channels.primary`, else the first enabled channel).
-- `no_channel`: the record has no chat, or no channel is configured, so the operator reads this session. Read `.hermit/helper-reports/<id>.md` and print it verbatim in your reply, with no channel send.
-- `partial`, `failed` or `blocked`: send one plain line in the operator's language saying what happened and that the report is on the task. A classifier-denied report was not stored; say that when applicable.
-- No `Report:` line: record the verdict and optional `Procedure:` as `[guest:<name>]` through `task-note` (Commands) first, then send the one-line notice. No report body is available to relay.
-
-Do not run `task-block` (Commands) to record an author-submitted result a second time. A receipt is evidence of the script's recording and delivery, not authority to expand the task. Follow the session's channel format line.
-
-### Handling an unprompted helper report
-
-When a `GUEST_REPORT:` sender owns an open record and has no live `peer-idle` entry, use § Posting a report in a task thread. Create no new result or proposal from the message. For a sender that no longer owns the record, record only its verdict as a progress note and do not publish a stale report. Forward the operator's follow-up verbatim to the same helper with the current task and operator language.
+The script already recorded the result or wait. Retain the task's confirmation or check rules. If the operator asks for the full report, resolve the task in their conversation, look up its current `report_id` (including closed records), read `.hermit/helper-reports/<report_id>.md`, and return it verbatim via that task's own conversation reply tool, with thread parameters, or print it when the task has no channel. Use an authorized request for that conversation and never send its report to another chat.

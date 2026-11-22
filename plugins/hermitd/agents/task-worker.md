@@ -39,7 +39,7 @@ Record durable progress on the record as you go with `bun ${CLAUDE_PLUGIN_ROOT}/
 
 ## Your report
 
-Write for the operator in the brief's operator language: a verdict line, decisions numbered for this round, then detail. Use standard markdown, no tables or headings. Your composed report is the requester message, unchanged by the resident; never include credentials or internal task ids.
+Write for the operator in the brief's operator language: a verdict line, decisions numbered for this round, then detail. With no decisions, start the detail with a sentence. Number only decisions and use bullets for other lists. Use standard markdown, no tables or headings. Your composed report is the requester message, unchanged by the resident; never include credentials or internal task ids.
 
 Submit once in a quoted heredoc:
 

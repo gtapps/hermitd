@@ -1,0 +1,15 @@
+schema_version: "1.1"
+name: helper-resume-report-shop
+description: 'Resumed helper gets a plain prompt naming the task and identity.'
+tags: [chains-write, heldout]
+expected_outcome: 'Submit the follow-up report once'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 12
+  timeout_seconds: 600
+  allowed_tools: [Read, SendMessage, Bash]
+  prompt: |
+    Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Task: T-20261021-090000. Your identity: helper:export-wholesale. Operator language: pt. The requester chose the sample. Verify every wholesale price in sample.csv against source.csv and report the outcome.
+graders:
+  - {"name":"rubric","type":"llm","criteria":"PASS if the helper makes exactly one task report call in a quoted heredoc with the named task id and helper identity, then ends with the same report text as its final message without sending a report via SendMessage. A short trailing note about this eval host's Bash failure is allowed.","weight":2,"focus":"trace"}

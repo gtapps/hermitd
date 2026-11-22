@@ -1,0 +1,17 @@
+schema_version: "1.1"
+name: helper-operator-question-shop
+description: 'Operator types directly in the helper session.'
+tags: [chains-write, heldout]
+expected_outcome: 'Answer in that session only'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 12
+  timeout_seconds: 600
+  allowed_tools: [Read, SendMessage, Bash]
+  prompt: |
+    Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Does sample.csv include wholesale prices that match source.csv?
+graders:
+  - {"name":"no-submission","type":"tool_used","tool":"Bash","input_match":"task report","min":0,"max":0,"weight":3}
+  - {"name":"no-peer-send","type":"tool_used","tool":"SendMessage","min":0,"max":0,"weight":3}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the helper answers the question in its own final message.","weight":2}

@@ -21,7 +21,7 @@ const PT_TEXT: Record<MessageKey, string> = {
   status_next_routine: 'Próxima rotina: {hh}:{mm} ({id}).',
   status_all_quiet: 'Tudo calmo — nada em curso, nada à espera.',
   status_waiting_header: 'À sua espera:',
-  status_waiting_confirm: '{task}: confirme o resultado ({age})',
+  status_waiting_confirm: '{task}: pronto para revisão ({age})',
   status_waiting_answer: '{task}: responda à pergunta ({age})',
   status_waiting_more: '+{n} mais',
   scheduled_empty: 'Nada agendado nesta conversa.',

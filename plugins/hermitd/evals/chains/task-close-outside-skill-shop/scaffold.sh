@@ -70,6 +70,9 @@ approved_rev: null
 approved_by: null
 source: null
 category: null
+report_id: null
+report_kind: null
+delivery: null
 muted: false
 delegated: true
 tags: ["task","operator"]

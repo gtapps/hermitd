@@ -1,6 +1,20 @@
 # Task branches
 
-Rare-branch procedures for `task/SKILL.md`. Read only the section the skill names; each one is normative.
+Conditional procedures for `task/SKILL.md`. Read only the section the skill names; each one is normative.
+
+## Reuse an idle helper
+
+For new work, unless the requester asks for a fresh helper, run `helper-eligible` (Commands) with `--folder <absolute-work-folder> --conversation <key>`. Use the work's base chat and omit `--conversation` for terminal work. Only on `eligible: true`, check that the matching bg id in `claude agents --json` has `status == "idle"` and judge whether that helper already works on this area. If both hold, use the new record and its thread if it has one, download any attachments, bind the record with `task-note` (Commands) `<id> --owner <helper>` using the `helper` value `helper-eligible` returned (never the bg id), and follow [reuse-spawned-helper.md](../spawn-session/reuse-spawned-helper.md) with the candidate bg id. Otherwise continue ordinary intake.
+
+## Steer the bound session
+
+Confirmations and parking work as for `owner=resident`; `!` commands follow **Conversation command**.
+
+Before sending a steer or answer, run `task-list` (Commands) with `--id <T> --json` and capture its `report_id` as `prior_report`. Include the task id, `helper:<n>`, operator language and the operator's words verbatim in the SendMessage with `notify_when_idle: true`. Register it with the record and baseline even if the helper already has a live entry, using [watch/session-watch.md](../watch/session-watch.md) § Registering an existing idle subscription. Note the steer. If the helper is unlisted, take the **No row** branch of [spawn-session/reuse-spawned-helper.md](../spawn-session/reuse-spawned-helper.md). If it cannot resume, return ownership to the resident, say so and offer a worker. Approvals happen in the session (attach or Remote Control). A confirmation asking for the next phase closes the record and routes the new work at intake.
+
+## Take a worker's result
+
+Check that the sender owns the named record, then run `task-note` (Commands) with `<task-id> --owner resident`. If the completion carries `Delivery: blocked <reason>` with report id `none`, send one plain line in the operator's language that the report was not stored and why, leave the task open, and skip the receipt lookup and closure. Otherwise, with `task-list` (Commands), look up the receipt using `--all --id <task-id> --json --with-decisions`. Match the returned report id to the completion and follow [watch/notices.md](../watch/notices.md) § Report receipts. Never read or record a sent result again. For `Unreachable:`, give the maintainer-only notice and wait on `maintainer`. Follow the task skill's Closure rules for checks and confirmations.
 
 ## Conversation command
 

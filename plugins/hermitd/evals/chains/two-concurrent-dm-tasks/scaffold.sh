@@ -38,15 +38,23 @@ for a in "$@"; do case "$a" in T-*) id="$a";; esac; done
 [ "$1" = task ] || { echo OK; exit 0; }
 case "$verb${id:+ $id}" in
   'list') cat <<'OUT'
-{"rows":[{"id":"T-20261021-090000","handle":"renew-domain","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Renew domain","due":null,"result_rev":0,"owner":"worker:a1b2c3d4","last_worker":null,"delegated":true,"result":null,"result_len":0,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null},{"id":"T-20261021-090000-0","handle":"review-invoice","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Review invoice","due":null,"result_rev":0,"owner":"worker:b1b2c3d4","last_worker":null,"delegated":true,"result":null,"result_len":0,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null}],"total":2,"omitted":0}
+{"rows":[{"id":"T-20261021-090000","handle":"renew-domain","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Renew domain","due":null,"result_rev":0,"report_id":null,"report_kind":null,"delivery":null,"owner":"worker:a1b2c3d4","last_worker":null,"delegated":true,"result":null,"result_len":0,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null},{"id":"T-20261021-090000-0","handle":"review-invoice","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["open"],"requester":"discord:100000000000000001","title":"Review invoice","due":null,"result_rev":0,"report_id":null,"report_kind":null,"delivery":null,"owner":"worker:b1b2c3d4","last_worker":null,"delegated":true,"result":null,"result_len":0,"waiting_on":null,"closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null}],"total":2,"omitted":0}
 OUT
   ;;
   'note T-20261021-090000-0') cat <<'OUT'
 {"id":"T-20261021-090000-0","result_rev":1}
 OUT
   ;;
+  'list T-20261021-090000-0') cat <<'OUT'
+{"rows":[{"id":"T-20261021-090000-0","handle":"review-invoice","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["unconfirmed"],"requester":"discord:100000000000000001","title":"Review invoice","due":null,"result_rev":1,"report_id":"1a701ce012","report_kind":"result","delivery":"sent","report_verdict":"The invoice discrepancy review is ready for approval.","report_decisions":[],"owner":"resident","last_worker":"b1b2c3d4","delegated":true,"result":"The invoice discrepancy review is ready for approval.","result_len":54,"waiting_on":"discord:100000000000000001","closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null}]}
+OUT
+  ;;
   'note T-20261021-090000') cat <<'OUT'
 {"id":"T-20261021-090000","result_rev":1}
+OUT
+  ;;
+  'list T-20261021-090000') cat <<'OUT'
+{"rows":[{"id":"T-20261021-090000","handle":"renew-domain","kind":null,"decision":null,"approved_rev":null,"approved_by":null,"source":null,"category":null,"tags":["task","discord:100000000000000001"],"listing":["unconfirmed"],"requester":"discord:100000000000000001","title":"Renew domain","due":null,"result_rev":1,"report_id":"d0aa1a0012","report_kind":"result","delivery":"sent","report_verdict":"The domain renewal comparison is ready for approval.","report_decisions":[],"owner":"resident","last_worker":"a1b2c3d4","delegated":true,"result":"The domain renewal comparison is ready for approval.","result_len":53,"waiting_on":"discord:100000000000000001","closed_by":null,"check":null,"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null}]}
 OUT
   ;;
   'answer T-20261021-090000') cat <<'OUT'
@@ -73,12 +81,12 @@ OUT
 esac
 HERMIT_FIXTURE
 mkdir -p ".hermit/helper-reports"
-cat > '.hermit/helper-reports/domain12.md' <<'HERMIT_FIXTURE'
-The domain renewal comparison is ready for approval.
+cat > '.hermit/helper-reports/1a701ce012.md' <<'HERMIT_FIXTURE'
+The invoice discrepancy review is ready for approval.
 HERMIT_FIXTURE
 mkdir -p ".hermit/helper-reports"
-cat > '.hermit/helper-reports/invoice12.md' <<'HERMIT_FIXTURE'
-The invoice discrepancy review is ready for approval.
+cat > '.hermit/helper-reports/d0aa1a0012.md' <<'HERMIT_FIXTURE'
+The domain renewal comparison is ready for approval.
 HERMIT_FIXTURE
 mkdir -p ".hermit/state"
 cat > '.hermit/state/channel-chats.json' <<'HERMIT_FIXTURE'
@@ -125,6 +133,9 @@ approved_rev: null
 approved_by: null
 source: null
 category: null
+report_id: null
+report_kind: null
+delivery: null
 muted: false
 delegated: true
 tags: ["task","discord:100000000000000001"]
@@ -184,6 +195,9 @@ approved_rev: null
 approved_by: null
 source: null
 category: null
+report_id: null
+report_kind: null
+delivery: null
 muted: false
 delegated: true
 tags: ["task","discord:100000000000000001"]

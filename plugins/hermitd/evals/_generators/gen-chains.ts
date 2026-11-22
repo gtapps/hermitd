@@ -20,8 +20,8 @@ const NO_SHELL = 'Hermit state for this turn. This session has no shell: each li
 
 const RESIDENT_PROMPT = residentPrompt();
 
-function rubric(criteria: string, focus?: string): Grader {
-  return { name: 'rubric', type: 'llm', criteria, weight: 2, ...(focus ? { focus } : {}) };
+function rubric(criteria: string, focus?: string, name = 'rubric'): Grader {
+  return { name, type: 'llm', criteria, weight: 2, ...(focus ? { focus } : {}) };
 }
 
 function dispatched(agent: string, bounds: { min?: number; max?: number } = {}): Grader {
@@ -178,6 +178,7 @@ const WORKER_PROMPT = withInstall({ '.hermit/config.json': configJson(RESIDENT_C
     `- conversation.ts thread-open: ${JSON.stringify({ key: `discord:${WORKER_THREAD}`, chat_id: WORKER_THREAD })}`,
     `- task.ts open: ${run('task.ts', ['open', '.hermit', '--title', 'Reprice the best-selling teas', '--requester', `discord:${USER}`,
       '--conversation', `discord:${WORKER_THREAD}`, '--done', 'Which of the three best-selling teas to reprice'], { now: MESSAGE_AT })}`,
+    '- task.ts helper-eligible: {"status":"not_eligible","reason":"no_helper_in_chat"}',
     '- task.ts note, task.ts block: OK']));
 
 chainCase('task-worker-needs-input-shop', 'train', 'An assignment opens a thread and record and dispatches a background task-worker, which submits its report once.',
@@ -222,8 +223,8 @@ mock('task-answer-waiting-record-shop', CARD_MOCK);
 // chainScaffold writes the version-stamped config itself, so the fixtures leave it out.
 const DM_FIXTURES = {
   '.hermit/state/channel-chats.json': JSON.stringify({ discord: { chats: { [CHAT]: { type: 1 } } } }) + '\n',
-  '.hermit/helper-reports/domain12.md': 'The domain renewal comparison is ready for approval.\n',
-  '.hermit/helper-reports/invoice12.md': 'The invoice discrepancy review is ready for approval.\n',
+  '.hermit/helper-reports/d0aa1a0012.md': 'The domain renewal comparison is ready for approval.\n',
+  '.hermit/helper-reports/1a701ce012.md': 'The invoice discrepancy review is ready for approval.\n',
 };
 // Eval-host Bash may be sandboxed or report a spurious exit code, and Bash writes do not reach disk (README § Running).
 const DM_STATE = 'Hermit state for this turn: this is a Discord DM with two running tasks, not a real thread. Hermit scripts run through `.hermit/bin/hermitd-run <verb> ...` '
@@ -251,13 +252,18 @@ const [DM_PROMPT, DM_RECORDS, DM_IDS, DM_STUB, DM_LABELS] = withInstall({ '.herm
   const labels: [string, string, string][] = [];
   const events: string[] = [];
   // Reverse order: invoice was opened second and reports first.
-  for (const [index, reportId, worker] of [[1, 'invoice12', 'b1b2c3d4'], [0, 'domain12', 'a1b2c3d4']] as const) {
+  for (const [index, reportId, worker] of [[1, '1a701ce012', 'b1b2c3d4'], [0, 'd0aa1a0012', 'a1b2c3d4']] as const) {
     const id = ids[index];
     const result = run('task.ts', ['block', '.hermit', id, '--result-stdin'], { stdin: read(`.hermit/helper-reports/${reportId}.md`) });
     const receipt = { report: reportId, task: id, recorded: true, result_rev: JSON.parse(result).result_rev, delivery: 'sent' };
     events.push(`Worker ${worker}: Report: ${reportId}\nDelivery: sent\nReceipt: ${JSON.stringify(receipt)}\nWORKER ${id} done ${reportId}`);
     canned.push([`note ${id}`, run('task.ts', ['note', '.hermit', id, '--owner', 'resident'])]);
-    labels.push([id, reportId, read(`.hermit/helper-reports/${reportId}.md`)]);
+    const { rows } = JSON.parse(run('task.ts', ['list', '.hermit', '--all', '--id', id, '--json', '--with-decisions']));
+    const body = read(`.hermit/helper-reports/${reportId}.md`);
+    // Simulate delivery so regeneration needs neither bot credentials nor random report ids.
+    Object.assign(rows[0], { report_id: reportId, report_kind: 'result', delivery: 'sent', report_verdict: body.trim() });
+    canned.push([`list ${id}`, JSON.stringify({ rows })]);
+    labels.push([id, reportId, body]);
     records[`.hermit/tasks/${id}.md`] = read(`.hermit/tasks/${id}.md`);
   }
   for (const id of ids) canned.push([`answer ${id}`, run('task.ts', ['answer', '.hermit', id, '--chat', `discord:${CHAT}`, '--user', USER, '--reply', 'yes', '--result-rev', '1'])]);
@@ -340,49 +346,132 @@ chainCase('proposal-create-duplicate-shop', 'train', 'proposal-create gates thro
     rubric('PASS if the final message says the idea already exists as an open proposal and that no new proposal was created. FAIL if it reports creating one.')],
   triageScaffold(SHOP), ['Skill', 'Agent', 'Read', 'Glob', 'Grep'], { maxTurns: 16, timeout: 600 });
 
-// --- watch relay of a helper report (cases 9-10) --------------------------
+// --- helper idle receipts and worker report-backs ------------------------
 
 const REPORT_BODY = 'A exportação inclui a coluna de atacado.\n\n1. Rever a amostra.\n\nA amostra corresponde aos dados.\n';
-function registry(target: string): string {
-  return JSON.stringify({ monitors: [{ id: `session-${target}-1793030000-a1b2`, description: 'wholesale stock export', target,
-    record: 'T-20261021-090000', started_at: '2026-10-21T08:30:00Z', source: 'adhoc', class: 'peer-idle' }],
-  last_cleared: '2026-10-21T08:00:00Z' }, null, 2) + '\n';
+const REPORT_ID = 'abcdef1234';
+const TASK = 'T-20261021-090000';
+const HELPER = 'export-wholesale';
+const REPORT_FILE = `.hermit/helper-reports/${REPORT_ID}.md`;
+const reportFixture = { [REPORT_FILE]: REPORT_BODY };
+
+function registry(priorReport: string | null = null): string {
+  return JSON.stringify({ monitors: [{
+    id: `session-${HELPER}-1793030000-a1b2`, description: 'wholesale stock export', target: HELPER,
+    records: [{ record: TASK, prior_report: priorReport }], source: 'adhoc', class: 'peer-idle',
+  }], last_cleared: null }, null, 2) + '\n';
 }
-function reportPrompt(sender: string, delivery: string, reportId = 'abcdef1234'): string {
-  const receipt = delivery === 'legacy' ? 'GUEST_REPORT: A análise terminou.' : delivery === 'stale'
-    ? 'GUEST_REPORT: A análise terminou.\nDelivery: blocked not_owner'
-    : `GUEST_REPORT: A análise terminou.\n${delivery === 'blocked' ? '' : `Report: ${reportId}\n`}Delivery: ${delivery === 'blocked' ? 'blocked classifier denied submission' : delivery}`;
-  return '<system-reminder>\n' + NO_SHELL + '\nOperator language: pt.\n'
-    + '- task.ts list --open --owner helper:export-wholesale: one open record T-20261021-090000, conversation discord:' + CHAT + ', owner helper:export-wholesale.\n'
-    + '- task.ts note: OK. A legacy verdict may be noted once; an author-submitted report must never be recorded again.\n'
-    + '- channel-send --notice: use the reply tool in this eval for the one-line notice.\n</system-reminder>\n'
-    + `Another Claude session sent a message:\n<cross-session-message from="${sender}">${receipt}</cross-session-message>\n\n`
-    + `[Cross-session idle notice] ${sender} finished its turn and is idle.`;
+function receiptRow(delivery: string, owner = `helper:${HELPER}`) {
+  return { id: TASK, handle: 'wholesale-export', owner, title: 'Wholesale stock export',
+    conversation: delivery === 'no_channel' ? null : `discord:${CHAT}`,
+    report_id: REPORT_ID, report_kind: 'result', report_verdict: REPORT_BODY.split('\n')[0],
+    report_decisions: ['Rever a amostra.'], delivery, result_rev: 1, listing: ['unconfirmed'] };
 }
-for (const [name, delivery] of [
-  ['watch-relay-live-entry-shop', 'relay'], ['helper-report-sent-shop', 'sent'], ['helper-report-stale-author-shop', 'stale'],
-  ['helper-report-blocked-shop', 'blocked'], ['helper-report-partial-shop', 'partial'], ['helper-report-failed-shop', 'failed'],
-  ['helper-report-legacy-note-shop', 'legacy'], ['helper-report-no-channel-shop', 'no_channel'],
+const receiptState = (row: ReturnType<typeof receiptRow>) =>
+  `<system-reminder>\n${NO_SHELL}\nOperator language: pt.\n`
+  + `- task list --all --id ${TASK} --json --with-decisions: ${JSON.stringify({ rows: [row] })}\n`
+  + '- Use the fixture reply tool to notify this task conversation when the receipt calls for a channel reply.\n</system-reminder>\n';
+const idle = (name = HELPER) => `[Cross-session idle notice] ${name} finished its turn and is idle.`;
+
+for (const [name, delivery, action] of [
+  ['helper-report-sent-shop', 'sent', 'uses only the receipt, performs card/closure bookkeeping as applicable, and does not post again'],
+  ['watch-relay-live-entry-shop', 'relay', 'replies with a short verdict, decision title, helper name, task handle and full-report offer'],
+  ['helper-report-no-channel-shop', 'no_channel', 'prints a short verdict, decision title, helper name, task handle and full-report offer in this session'],
+  ['helper-report-partial-shop', 'partial', 'says delivery was incomplete and the stored report is on the task'],
+  ['helper-report-failed-shop', 'failed', 'says delivery failed and the stored report is on the task'],
+  ['helper-report-pending-shop', 'pending', 'says the report is stored and delivery is unconfirmed, with no resend'],
+  ['watch-unchanged-baseline-shop', 'sent', 'says once that the helper finished without a report, despite the existing report id'],
 ] as const) {
-  chainCase(name, 'train', `Helper report receipt: ${delivery}.`, 'Act on the receipt without a second recording',
-    reportPrompt('export-wholesale', delivery),
-    [rubric(`PASS if the resident handles ${delivery} in Portuguese: sent means no report body read or repost; relay reads the stored report and sends it verbatim; partial, failed or blocked means one plain line explaining delivery and where the report is (blocked has no stored body); legacy means task note first then one notice; no_channel means it reads the stored report and prints it verbatim in its reply, with no attempted channel send. A stale author refusal must never publish a result. Never record an author-submitted result again.`, 'trace')],
+  chainCase(name, 'train', `Native idle notice for ${name}.`, 'Compare the stored receipt with the dispatch baseline',
+    receiptState(receiptRow(delivery)) + idle(),
+    [rubric(`PASS if the resident matches the watch, uses the receipt row and ${action}. FAIL if it reads the body, records a second result, or treats the report as consent.`, 'trace')],
     residentScaffold({ ...RESIDENT_CONFIG, language: 'pt', ...(delivery === 'no_channel' ? { channels: {} } : {}) }, {
-      '.hermit/state/monitors.runtime.json': registry('export-wholesale'), '.hermit/helper-reports/abcdef1234.md': REPORT_BODY,
-    }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, maxTurns: 16, timeout: 600 });
+      '.hermit/state/monitors.runtime.json': registry(name === 'watch-unchanged-baseline-shop' ? REPORT_ID : null), ...reportFixture,
+    }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, maxTurns: 16 });
+  if (delivery !== 'no_channel') mock(name, CARD_MOCK);
 }
-chainCase('watch-relay-unknown-sender-shop', 'heldout', 'Unknown sender gets no notice or record.', 'No operator notice',
-  reportPrompt('stranger-session', 'sent'),
+
+chainCase('watch-relay-unknown-sender-shop', 'heldout', 'Unknown idle sender gets no notice or record.', 'Ignore the unmatched notice',
+  idle('stranger-session'),
   [{ name: 'no-notice', type: 'tool_used', tool: 'mcp__plugin_discord_discord__reply', min: 0, max: 0, weight: 3 },
     rubric('PASS if no operator message or record is written for the unknown session.', 'trace')],
-  chainScaffold({ '.hermit/state/monitors.runtime.json': registry('export-wholesale') }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true });
+  chainScaffold({ '.hermit/state/monitors.runtime.json': registry() }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true });
+mock('watch-relay-unknown-sender-shop', CARD_MOCK);
 
-chainCase('helper-report-author-shop', 'heldout', 'Helper authors a Portuguese operator-facing report and submits it once.',
-  'Portuguese verdict first, numbered decisions, no tables, quoted task report heredoc and receipt-only handoff',
-  'Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Finish this review: the sample export includes the wholesale column. Operator language: pt. Task: T-20261021-090000. Helper name: export-wholesale. '
-    + 'Use the task report submission contract. The task report stand-in returns {"report":"abcdef1234","task":"T-20261021-090000","recorded":true,"result_rev":1,"delivery":"sent"}. Send the resident only the receipt and verdict.',
-  [rubric("PASS if the report is in Portuguese, starts with a verdict, numbers decisions, uses no tables or headings, and is submitted once using a quoted <<'REPORT' heredoc to task report with --as helper:export-wholesale --kind result. The resident SendMessage must have Report: and Delivery: lines with no report body. FAIL otherwise.", 'trace')],
-  chainScaffold({}, [['prompts/helper.md', '.hermit/guides/helper.md']]), ['Read', 'SendMessage', 'Bash'], { write: true });
+for (const delivery of ['relay', 'no_channel']) {
+  const name = `worker-report-${delivery.replace('_', '-')}-shop`;
+  chainCase(name, 'train', `Worker receipt with delivery ${delivery}.`, 'Use the receipt to give a short report-back',
+    receiptState(receiptRow(delivery, 'worker:a123456789')) + `<task-notification>\n<agent-id>a123456789</agent-id>\n<result>WORKER ${TASK} done ${REPORT_ID}</result>\n</task-notification>`,
+    [rubric('PASS if the resident takes the named worker result, uses the bounded receipt for the verdict and decision title, names the task handle and offers the full report without reading or repeating the report body.', 'trace')],
+    chainScaffold(reportFixture), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true });
+  if (delivery === 'relay') mock(name, CARD_MOCK);
+}
+chainCase('task-full-report-shop', 'heldout', 'Operator asks for the report after a relay receipt.', 'Read the current stored body and return it verbatim',
+  receiptState(receiptRow('relay')) + `Authorized Discord requester in discord:${CHAT}: “Full report for wholesale-export, please.”`,
+  [{ name: 'reads-report', type: 'tool_used', tool: 'Read', input_match: `${REPORT_ID}\\.md`, weight: 3 },
+    rubric('PASS if the resident replies verbatim with the stored body through the task conversation. FAIL if it summarizes or changes recipients.', 'trace')],
+  chainScaffold(reportFixture), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true });
+mock('task-full-report-shop', CARD_MOCK);
+
+const helperGuide = chainScaffold({
+  '.hermit/bin/hermitd-run': '#!/usr/bin/env bash\n'
+    + '[[ "$1" == task && "$2" == report ]] || exit 1\n'
+    + 'cat >/dev/null\n'
+    + `printf '%s\\n' '${JSON.stringify({ report: REPORT_ID, task: TASK, recorded: true, result_rev: 1, delivery: 'sent' })}'\n`,
+  'sample.csv': 'sku,name,price,wholesale\nT-01,Sencha,12.00,8.40\nT-02,Earl Grey,10.00,7.00\n',
+  'source.csv': 'sku,wholesale\nT-01,8.40\nT-02,7.00\n',
+}, [['prompts/helper.md', '.hermit/guides/helper.md']]) + 'chmod +x .hermit/bin/hermitd-run\n';
+const helperGuidePrompt = 'Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. ' + BASH_FAILURE + ' ';
+const helperIdentity = `Task: ${TASK}. Your identity: helper:${HELPER}. Operator language: pt. `;
+const helperSubmission = rubric("PASS if the helper makes exactly one task report call in a quoted heredoc with the named task id and helper identity, then ends with the same report text as its final message without sending a report via SendMessage. A short trailing note about this eval host's Bash failure is allowed.", 'trace');
+chainCase('helper-report-author-shop', 'heldout', 'Helper authors a Portuguese operator-facing report.', 'Submit once and end on the same report',
+  helperGuidePrompt + helperIdentity + 'Finish the review of sample.csv against source.csv. Then ask the operator to choose between reviewing the sample further or approving it.',
+  [helperSubmission, rubric('PASS if the submitted report is in Portuguese, starts with a short verdict, gives supporting detail, and numbers the decision it asks the operator to make.', 'trace', 'report-format')],
+  helperGuide, ['Read', 'SendMessage', 'Bash'], { write: true });
+chainCase('helper-operator-question-shop', 'heldout', 'Operator types directly in the helper session.', 'Answer in that session only',
+  helperGuidePrompt + 'Does sample.csv include wholesale prices that match source.csv?',
+  [{ name: 'no-submission', type: 'tool_used', tool: 'Bash', input_match: 'task report', min: 0, max: 0, weight: 3 },
+    { name: 'no-peer-send', type: 'tool_used', tool: 'SendMessage', min: 0, max: 0, weight: 3 },
+    rubric('PASS if the helper answers the question in its own final message.')],
+  helperGuide, ['Read', 'SendMessage', 'Bash'], { write: true });
+chainCase('helper-resume-report-shop', 'heldout', 'Resumed helper gets a plain prompt naming the task and identity.', 'Submit the follow-up report once',
+  helperGuidePrompt + helperIdentity + 'The requester chose the sample. Verify every wholesale price in sample.csv against source.csv and report the outcome.',
+  [helperSubmission], helperGuide, ['Read', 'SendMessage', 'Bash'], { write: true });
+
+for (const decisions of [false, true]) {
+  const closedBy = withInstall({ '.hermit/config.json': configJson({ channels: {} }) }, ({ run }) => {
+    const { id } = JSON.parse(run('task.ts', ['open', '.hermit', '--title', 'Prepare tea export', '--requester', 'operator',
+      '--done', 'Export ready', '--tags', '["task","operator","auto-close"]', '--owner', `helper:${HELPER}`]));
+    const text = decisions ? 'Export prepared.\n1. CSV\n2. JSON' : 'Export prepared.\nThe checks passed.\n- Converted rows\n- Verified headers';
+    run('task.ts', ['report', '.hermit', id, '--as', `helper:${HELPER}`, '--kind', 'result'], { stdin: text });
+    return JSON.parse(run('task.ts', ['list', '.hermit', '--all', '--id', id, '--json'])).rows[0].closed_by;
+  });
+  if (closedBy !== (decisions ? null : 'confirmed')) throw new Error('Unexpected terminal helper report transition');
+  chainCase(`helper-terminal-${decisions ? 'decisions' : 'close'}-shop`, 'heldout', 'Terminal spawn without a current task or channel.',
+    decisions ? 'Open a task and keep it awaiting a numbered decision' : 'Open a task and close it with a decision-free result',
+    `<system-reminder>\nHermit state for this turn: ${BASH_FAILURE} Each line below is what that call returns when you make it; still make every call the skill names.\n`
+      + '- git rev-parse --show-toplevel: the current directory\n- .hermit/config.json: permission_mode auto, remote false, chrome false, no channels, delegation model and effort null\n'
+      + '- .hermit/state/helper-system-prompt.md: exists\n- date +%s: 1795000000\n'
+      + '- task open prints the new record; when no output arrives, its id is T-20261122-100000 and its report_id is null\n'
+      + '- claude --bg launch: backgrounded, id 87654321, name tea-export\n</system-reminder>\n'
+      + 'Use /hermitd:spawn-session to have a helper prepare the tea export. This is a terminal request with no current task and no channel. '
+      + (decisions ? 'The helper should give two numbered choices for the export format.' : 'The helper should confirm the work and include a bulleted list of the steps used.')
+      ,
+    [{ name: 'opens-auto-close', type: 'tool_used', tool: 'Bash', input_match: String.raw`"command"\s*:\s*"(?:[^"\\]|\\.)*task(?:\.ts)? open(?:[^"\\]|\\.)*auto-close`, weight: 3 },
+      { name: 'binds-helper', type: 'tool_used', tool: 'Bash', input_match: String.raw`"command"\s*:\s*"(?:[^"\\]|\\.)*task(?:\.ts)? note(?:[^"\\]|\\.)*--owner helper:`, weight: 2 },
+      { name: 'brief-names-task-and-helper', type: 'tool_used', tool: 'Bash', input_match: String.raw`"command"\s*:\s*"(?:[^"\\]|\\.)*claude --bg(?=(?:[^"\\]|\\.)*T-\d{8}-\d{6})(?=(?:[^"\\]|\\.)*helper:)`, weight: 3 },
+      { name: 'opens-before-launch', type: 'tool_order', before: { tool: 'Bash', input_match: String.raw`task(?:\.ts)? open` }, after: { tool: 'Bash', input_match: 'claude --bg' } },
+      { name: 'no-no-task', type: 'tool_used', tool: 'Bash', input_match: '--no-task', min: 0, max: 0, weight: 2 }],
+    residentScaffold({ ...RESIDENT_CONFIG, channels: {} }), ['Skill', 'Read', 'Bash', 'SendMessage'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
+}
+chainCase('task-route-idle-helper-shop', 'heldout', 'New work in the same chat and area has an idle helper.', 'Open a fresh task and use the warm helper',
+  `<system-reminder>\nHermit state for this turn: ${BASH_FAILURE} Each line below is what that call returns when you make it; still make every call the skill names.\n- task helper-eligible for discord:${CHAT}, folder /shop: {"eligible":true,"helper":"helper:${HELPER}","bg_id":"12345678"}\n- claude agents --json: {"id":"12345678","name":"${HELPER}","status":"idle"}. Its prior work was the wholesale export. Sends to it succeed.\n- conversation thread-open for the assignment: {"key":"discord:${CHAT}~700000000000000001","chat_id":"700000000000000001"}\n- task open prints the new record; when no output arrives, its id is T-20261122-090000 and its report_id is null\n</system-reminder>\n`
+    + 'In the same shop chat, add supplier SKUs to our wholesale export.',
+  [{ name: 'binds-idle-helper', type: 'tool_used', tool: 'Bash', input_match: String.raw`"command"\s*:\s*"(?:[^"\\]|\\.)*--owner helper:${HELPER}`, weight: 3 },
+    { name: 'sends-to-idle-helper', type: 'tool_used', tool: 'SendMessage', input_match: String.raw`(?=[\s\S]*"to"\s*:\s*"(?:${HELPER}|12345678)")(?=[\s\S]*T-\d{8}-\d{6})(?=[\s\S]*${HELPER})`, weight: 3 },
+    { name: 'helper-before-worker', type: 'tool_order', before: { tool: 'SendMessage', input_match: HELPER }, after: { tool: 'Agent', input_match: 'task-worker' } },
+    { name: 'no-fresh-helper', type: 'tool_used', tool: 'Bash', input_match: 'claude --bg', min: 0, max: 0, weight: 2 }],
+  chainScaffold(), ['Skill', 'Read', 'SendMessage'], { resident: true, write: true });
 
 // --- evolve-runner apply receipt (case 11, script output supplied) ------------
 
