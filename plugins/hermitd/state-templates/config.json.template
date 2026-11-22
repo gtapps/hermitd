@@ -30,7 +30,9 @@
     "port": null,
     "host": null,
     "inactivity_timeout": 900,
-    "saved_logins": true
+    "saved_logins": true,
+    "software_webgl": true,
+    "chrome_args": []
   },
   "transcription": {
     "enabled": true,

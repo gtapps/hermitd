@@ -43,6 +43,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings routines        — manage scheduled routines (add/edit/remove/enable/disable)
 /hermitd:hermit-settings env              — view/edit environment variables
 /hermitd:hermit-settings docker           — add/remove Docker packages; edit recommended plugins
+/hermitd:hermit-settings browser-chrome-args — view/add/remove extra Chrome flags for the agent's browser
 /hermitd:hermit-settings scheduled-checks    — manage scheduled plugin skill checks
 /hermitd:hermit-settings boot-skill       — view/clear/change the operator’s replacement startup skill
 /hermitd:hermit-settings quality-gate     — set post-implementation /simplify gate tier (budget|balanced|quality)
@@ -111,6 +112,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `browser-default` | `browser.default` | enum | agent-browser / chrome; agent-browser or chrome (requires chrome enabled) | immediately |
 | `browser-inactivity-timeout` | `browser.inactivity_timeout` | integer | any; seconds before an unused signed-in browser closes; 0 turns it off | within a minute |
 | `browser-saved-logins` | `browser.saved_logins` | boolean | yes / no; off stops the agent from saving or using saved logins; existing saved logins stay on disk until deleted | next start of the agent's browser |
+| `browser-software-webgl` | `browser.software_webgl` | boolean | yes / no; render WebGL in software when no GPU is usable; off leaves WebGL sites broken on GPU-less machines | next start of the agent's browser |
 | `transcription` | `transcription.enabled` | boolean | yes / no; transcribe inbound voice notes | next voice note (Docker image: next hermitd update) |
 | `transcription-echo` | `transcription.echo` | boolean | yes / no; echo transcripts in the same chat | next voice note |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |
@@ -398,6 +400,11 @@ Note: "Channel changes take effect on next `hermitd-start` run (type `/hermitd:h
   - `add <PLUGIN> [<MARKETPLACE>]`: append an entry with `scope: "project"`, `enabled: true` and write the whole list back with `set docker.recommended_plugins '<array>'`. `<MARKETPLACE>` is an `org/repo` (e.g. `obra/superpowers-marketplace`) or omitted (defaults to `anthropics/claude-plugins-official`). The marketplace need not be registered locally: the container entrypoint adds it on first boot. **Dedupe rule:** refuse the add if an existing entry has the same `(plugin, marketplace)` pair (scope is NOT part of the key) — operator should `enable` or `remove` first.
   - If input is just a plugin name without a verb: treat as `enable` if it exists, `add` if it doesn't
 - After changes, note: "Restart container to install new plugins: `hermitd restart`"
+
+**If argument is "browser-chrome-args":**
+- Show the current `browser.chrome_args` list (or "No extra Chrome flags" if empty). These flags are appended to every launch of the agent's browser, after its own; WebGL is the separate `browser-software-webgl` setting.
+- Ask which flags to add or remove. Each entry is one flag starting with `--`, with its value after `=` (`--lang=pt-PT`). Apply the complete array with `settings-edit set browser.chrome_args '<JSON array>'`; it takes effect at the next start of the agent's browser.
+- A refused flag stops the browser with `browser_arg_refused:<flag>` (the list is in `${CLAUDE_PLUGIN_ROOT}/docs/config-reference.md` under `browser`); tell the operator which flag to remove.
 
 **If argument is "scheduled-checks":**
 - Read `state/reflection-state.json` for last run dates. If missing, show "(no runs yet)".
