@@ -209,7 +209,7 @@ function emitGuestBanner(agentDir: string): void {
   // claims a running resident with no name to address.
   if (residentSessionActive(agentDir)) {
     const peerName = residentPeerName(agentDir);
-    console.log(`---Guest Session--- A managed hermit session is already running here.${peerName ? ` Resident: @${safe(peerName)}.` : ''} If your brief carries a task id, submit through task report in a quoted heredoc and end on the same report. Without a task id, answer only in your own session. Work normally; resident duties belong to the hermit.`);
+    console.log(`---Guest Session--- A managed hermit session is already running here.${peerName ? ` Resident: @${safe(peerName)}.` : ''} If your brief carries a task id, submit through task report with --as helper:<name> and --kind result|needs-input|note in a quoted heredoc and end on the same report. Without a task id, answer only in your own session. Work normally; resident duties belong to the hermit.`);
   } else {
     console.log('---Guest Session--- Start the resident with hermitd start.');
   }

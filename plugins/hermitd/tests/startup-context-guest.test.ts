@@ -115,6 +115,7 @@ describe('startup-context.ts — resident vs guest', () => {
       expect(res.stdout).toContain('A managed hermit session is already running here');
       expect(res.stdout).toContain('@hermit-peer');
       expect(res.stdout).toContain('end on the same report');
+      expect(res.stdout).toContain('--as helper:<name> and --kind result|needs-input|note');
       expect(res.stdout).not.toContain('---Open tasks---');
       expect(res.stdout.trim().split('\n').length).toBeLessThanOrEqual(8);
     } finally {
