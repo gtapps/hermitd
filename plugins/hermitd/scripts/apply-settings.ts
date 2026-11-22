@@ -216,6 +216,7 @@ const HERMIT_ALLOW = [
   'Bash(.hermit/bin/hermitd-run rc-server stop)',
   'Bash(.hermit/bin/hermitd-run rc-server status)',
   'Bash(.hermit/bin/hermitd-run rc-server gc)',
+  'Bash(.hermit/bin/hermitd-run cloud-session lookup *)',
   // The later skill's bookkeeping verbs. `add` and `check` are deliberately
   // absent: `check` runs a shell command stored days earlier, and a grant
   // would let it run with no gate looking at it; both stay with the prompt or

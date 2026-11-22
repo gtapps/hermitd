@@ -4,7 +4,8 @@
 // a requested watch is saved through `settings-edit … append monitors` with a
 // `watch-poll` command, a watch that is a step of other work stays temporary,
 // and a member's watch is saved disabled with a yes/no queued.
-// `.hermit/bin/hermitd-run` is a stub that prints OK, so no write reaches state.
+// `.hermit/bin/hermitd-run` is a stub that prints OK by default, so no write reaches state;
+// a case can set its own stub output.
 // Run with `--allow-tools Bash`: an ungranted tool is withheld, so no call is traced.
 // Run from anywhere: bun evals/_generators/gen-watch.ts
 
@@ -55,13 +56,13 @@ function turn(mid: string, user: string, body: string, task?: string): string {
   });
 }
 
-function watchCase(name: string, split: string, desc: string, expected: string, body: string, graders: Grader[], reply: Grader = replied): void {
+function watchCase(name: string, split: string, desc: string, expected: string, body: string, graders: Grader[], reply: Grader | null = replied, stub = STUB): void {
   const y = ['schema_version: "1.1"', `name: ${name}`, `description: ${yq(desc)}`, `tags: [watch, ${split}]`,
     `expected_outcome: ${yq(expected)}`, 'context:', '  scaffold_script: scaffold.sh', 'execution:',
     '  max_turns: 14', '  timeout_seconds: 420', '  allowed_tools: [Skill, Read, Glob, Grep, Bash]',
     '  env: {EVAL_HERMIT_RESIDENT: "1"}', '  append_system_prompt: |', indent(residentPrompt()),
-    '  prompt: |', indent(body), 'graders:', ...[...graders, reply].map(g => '  - ' + JSON.stringify(g))];
-  const scaffold = residentScaffold(CONFIG, { '.hermit/bin/hermitd-run': STUB }) + 'chmod +x .hermit/bin/hermitd-run\n';
+    '  prompt: |', indent(body), 'graders:', ...[...graders, ...(reply ? [reply] : [])].map(g => '  - ' + JSON.stringify(g))];
+  const scaffold = residentScaffold(CONFIG, { '.hermit/bin/hermitd-run': stub }) + 'chmod +x .hermit/bin/hermitd-run\n';
   writeCase(path.join(OUT, name), y, scaffold);
 }
 
@@ -110,5 +111,30 @@ watchCase('met-watch-asks-stop', 'train', 'A saved watch reports the event that 
   [{ name: 'asked-to-stop', type: 'tool_used', tool: 'Bash', input_match: String.raw`task(?:\.ts)? (?:open|block)[\s\S]*watch-stop:deploy-finished`, weight: 3 },
     { name: 'no-monitors-write', type: 'tool_used', tool: 'Bash', input_match: String.raw`settings-edit[^\n]*monitors`, min: 0, max: 0, weight: 2 }],
   noticeSent('deploy-finished'));
+
+// A cloud helper's report is stored by the UserPromptSubmit hook, which then posts one of these tokens to the resident.
+const CLOUD_TASK = 'T-20261021-090100';
+const cloudNotice = (body: string) =>
+  `<cross-session-message from="uds:/run/user/1000/cc-socks/4112470.sock" from-name="hermitd" from-mode="auto">\n${body}\n</cross-session-message>`;
+// Hand copy of `task list --id <T> --json --with-decisions` for a task holding a stored report.
+const cloudRow = JSON.stringify({ rows: [{ id: CLOUD_TASK, handle: 'audit-laptop-backups', title: 'Audit the laptop backups', status: 'open',
+  owner: 'helper:laptop-audit', delegated: true, result_rev: 1, report_id: 'r7k2m9q4x1', report_kind: 'result', delivery: 'relay',
+  report_verdict: 'Backups run nightly; one share is excluded', report_decisions: [], conversation: `discord:${CHAT}`,
+  card_chat_id: null, card_message_id: null, waiting_on: null }], total: 1, omitted: 0 });
+const noReportRead: Grader = { name: 'body-unread', type: 'tool_used', tool: 'Read', input_match: 'helper-reports', min: 0, max: 0, weight: 3 };
+const noBodyCat: Grader = { name: 'body-not-printed', type: 'tool_used', tool: 'Bash', input_match: 'helper-reports', min: 0, max: 0, weight: 2 };
+
+watchCase('cloud-report-stored', 'train', 'A stored cloud helper report reaches the report receipt path without its body being read.',
+  'Bash task list for the task id; no read of .hermit/helper-reports/',
+  withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`CLOUD_REPORT_STORED ${CLOUD_TASK}`), [])),
+  [{ name: 'looked-up-task', type: 'tool_used', tool: 'Bash', input_match: String.raw`task list[^\n]*${CLOUD_TASK}`, weight: 3 }, noReportRead, noBodyCat],
+  null, `#!/usr/bin/env bash\ncat <<'JSON'\n${cloudRow}\nJSON\n`);
+
+watchCase('cloud-report-failed', 'heldout', 'A failed cloud report store is reported once and nothing is stored or read.',
+  'No task report, no read of .hermit/helper-reports/',
+  withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`CLOUD_REPORT_FAILED ${CLOUD_TASK} not_owner`), [])),
+  [{ name: 'no-store', type: 'tool_used', tool: 'Bash', input_match: 'task report', min: 0, max: 0, weight: 3 }, noReportRead,
+    { name: 'no-close', type: 'tool_used', tool: 'Bash', input_match: 'task close', min: 0, max: 0, weight: 2 }],
+  null);
 
 report('watch');

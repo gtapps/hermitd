@@ -24,7 +24,7 @@ import { operatorLanguage as resolveOperatorLanguage } from './lib/operator-lang
 import { readSettledConfig } from './lib/config-read';
 import { residentLiveness, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { readRuntimeJson, writeRuntimeJson } from './lib/runtime';
-import { findResident, ownsResidentIdentity } from './lib/session-registry';
+import { ownsResidentIdentity, residentPeerName } from './lib/session-registry';
 import { defaultConfigDir, envAuthPresent, resolveAuthMode } from './lib/setup-token';
 import { actSurfaceLine } from './lib/act-surface';
 import { seedOperatorActivity } from './record-operator-action';
@@ -182,23 +182,6 @@ function residentSessionActive(agentDir: string): boolean {
   // Unreadable state or no recorded session → no resident claim, full framing (fail-open).
   if (!tmuxSession) return false;
   return residentLiveness(runtime, tmuxSession, REAL_LIVENESS_DEPS(agentDir)).state === 'alive';
-}
-
-// The name a peer must address to reach the resident. `peer_name` is only the
-// name the resident *requested* at boot — Claude Code renames a session that
-// collides with a live one already holding it, so the registry entry's own
-// `name` is authoritative and `peer_name` is the fallback for a resident that
-// booted before the `session_pid` stamp existed (or on a host whose registry
-// can't be validated). The registry is read under the resident's own recorded
-// config dir: a guest may have been launched with a different CLAUDE_CONFIG_DIR.
-// Empty means there is no addressable resident.
-function residentPeerName(agentDir: string): string {
-  const runtime = readRuntimeJson(path.resolve(agentDir, 'state'));
-  if (!runtime) return '';
-  const configDir = typeof runtime.config_dir === 'string' && runtime.config_dir ? runtime.config_dir : undefined;
-  const registered = findResident(runtime, configDir);
-  if (registered && typeof registered.name === 'string' && registered.name) return registered.name;
-  return typeof runtime.peer_name === 'string' ? runtime.peer_name : '';
 }
 
 // Keep the guest injection short because a guest session is here to do

@@ -9,6 +9,7 @@ export const PROTECTED_PATHS: readonly string[] = [
   'shutdown_skill',
   'backup',
   'remote',
+  'remote_environments',
   'chrome',
   'auth_mode',
   'voice.prose',

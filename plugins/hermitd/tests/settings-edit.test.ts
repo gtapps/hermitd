@@ -35,6 +35,18 @@ describe('getPath / setPath / togglePath', () => {
     expect(getPath(obj, 'heartbeat.stale_threshold')).toBe('2h');
   });
 
+  test('remote environment names are literal map keys', () => {
+    const obj = { remote_environments: { laptop: 'env_A' } };
+    setPath(obj, 'remote_environments.laptop.local', 'env_B');
+    setPath(obj, 'remote_environments.__proto__', 'env_C');
+    expect(getPath(obj, 'remote_environments.laptop.local')).toBe('env_B');
+    expect(getPath(obj, 'remote_environments.__proto__')).toBe('env_C');
+    expect(unsetPath(obj, 'remote_environments.laptop.local')).toBe(true);
+    expect(unsetPath(obj, 'remote_environments.__proto__')).toBe(true);
+    expect(unsetPath(obj, 'remote_environments.__proto__')).toBe(false);
+    expect(obj.remote_environments).toEqual({ laptop: 'env_A' });
+  });
+
   test('getPath returns undefined for missing paths without throwing', () => {
     expect(getPath({ a: 1 }, 'b.c.d')).toBeUndefined();
   });
@@ -320,7 +332,7 @@ describe('settings registry', () => {
     const tableArgs = new Set(tableSettings().map(s => s.arg));
     // A branch that is also in the table means the prose was left behind.
     for (const b of branches) expect(tableArgs.has(b)).toBe(false);
-    expect(branches.length).toBe(16); // 8 stateful + browser-chrome-args + 3 side-effecting + history + voice + messages + rules
+    expect(branches.length).toBe(17); // 9 stateful + browser-chrome-args + 3 side-effecting + history + voice + messages + rules
   });
 
   test('enums come from the shared module, not a second copy', () => {
@@ -350,7 +362,7 @@ describe('settings-edit show', () => {
     expect(row(out, 'identity', 'name')).not.toHaveProperty('value');
     expect(out.operational.some((r: any) => r.arg === null)).toBe(true);
     expect(out.stateful.map((r: any) => r.arg)).toEqual(
-      ['channels', 'brief', 'heartbeat', 'watchdog', 'routines', 'scheduled-checks', 'env', 'docker']);
+      ['channels', 'brief', 'heartbeat', 'watchdog', 'routines', 'scheduled-checks', 'env', 'remote-environments', 'docker']);
   });
 
   test('stateful sections summarize counts and names', () => {
@@ -358,6 +370,7 @@ describe('settings-edit show', () => {
       channels: { primary: 'discord', discord: { enabled: true, morning_brief: { enabled: true, time: '08:00' } }, telegram: {} },
       routines: [{ id: 'a', enabled: true }, { id: 'b', enabled: false }],
       env: { FOO: '1' },
+      remote_environments: { 'laptop.local': 'env_B' },
     }, 'cfg.json');
     const s = (arg: string) => out.stateful.find((r: any) => r.arg === arg);
     expect(s('channels')).toMatchObject({ configured: ['discord', 'telegram'], enabled: ['discord'] });
@@ -365,6 +378,7 @@ describe('settings-edit show', () => {
     expect(s('routines')).toMatchObject({ enabled: 1, total: 2 });
     expect(s('docker').applies).toBe('hermitd restart --build');
     expect(s('env').keys).toEqual(['FOO']);
+    expect(s('remote-environments').entries).toEqual({ 'laptop.local': 'env_B' });
   });
 
   test('CLI show exits 0 and prints one JSON object', async () => {

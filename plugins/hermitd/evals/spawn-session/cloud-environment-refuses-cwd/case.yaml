@@ -1,0 +1,33 @@
+schema_version: "1.1"
+name: spawn-cloud-environment-refuses-cwd
+description: 'A remote-environment launch that also names a local --cwd is refused before any launch.'
+tags: [spawn-session]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 10
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash, Write]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    The operator asked: run a helper on my laptop in /home/sam/src/site to
+    check why the build fails.
+
+    Run `/hermitd:spawn-session --environment laptop --cwd /home/sam/src/site`
+    for that work. `config.json` has `remote: true` and
+    `remote_environments.laptop` enrolled.
+graders:
+  - name: no-cloud-launch
+    type: tool_used
+    tool: Bash
+    input_match: 'cloud-session start'
+    min: 0
+    max: 0
+    weight: 3
+  - name: no-local-launch
+    type: tool_used
+    tool: Bash
+    input_match: 'claude[^\n]*--bg'
+    min: 0
+    max: 0
+    weight: 2

@@ -11,6 +11,7 @@
   },
   "channels": {},
   "remote": true,
+  "remote_environments": {},
   "auth_mode": null,
   "model": "sonnet",
   "effort": null,

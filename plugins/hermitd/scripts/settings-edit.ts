@@ -214,10 +214,22 @@ function parseValue(raw: string): Json {
 
 // --- Pure path helpers (exported for unit tests) ---
 
+function pathKeys(dotted: string): string[] {
+  const prefix = 'remote_environments.';
+  // Environment names may contain dots and are literal keys in this map.
+  if (dotted.startsWith(prefix)) return ['remote_environments', dotted.slice(prefix.length)];
+  return dotted.split('.');
+}
+
 export function getPath(obj: Json, dotted?: string): Json {
   if (!dotted) return obj;
   let cur = obj;
-  for (const key of dotted.split('.')) {
+  const keys = pathKeys(dotted);
+  if (keys[0] === 'remote_environments' && keys.length === 2) {
+    const entries = obj?.remote_environments;
+    return entries && Object.hasOwn(entries, keys[1]) ? entries[keys[1]] : undefined;
+  }
+  for (const key of keys) {
     if (cur == null) return undefined;
     cur = cur[key];
   }
@@ -253,8 +265,12 @@ function indexRangeError(dotted: string, key: string, len: number, appendable: b
  * there `length` is out of range like anything past it.
  */
 export function setPath(obj: Json, dotted: string, value: Json): Json {
-  const keys = dotted.split('.');
+  const keys = pathKeys(dotted);
   const leaf = keys.pop()!;
+  if (keys.length === 1 && keys[0] === 'remote_environments') {
+    obj.remote_environments = { ...obj.remote_environments, [leaf]: value };
+    return obj;
+  }
   let cur = obj;
   for (const key of keys) {
     if (Array.isArray(cur)) {
@@ -281,7 +297,7 @@ export function setPath(obj: Json, dotted: string, value: Json): Json {
  * array, so it has to leave the array dense.
  */
 export function unsetPath(obj: Json, dotted: string): boolean {
-  const keys = dotted.split('.');
+  const keys = pathKeys(dotted);
   const leaf = keys.pop()!;
   let cur = obj;
   for (const key of keys) {
@@ -294,7 +310,7 @@ export function unsetPath(obj: Json, dotted: string): boolean {
     cur.splice(i, 1);
     return true;
   }
-  if (!(leaf in cur)) return false;
+  if (keys.length === 1 && keys[0] === 'remote_environments' ? !Object.hasOwn(cur, leaf) : !(leaf in cur)) return false;
   delete cur[leaf];
   return true;
 }
@@ -339,6 +355,7 @@ function statefulRows(config: Json): Json[] {
     { arg: 'routines', label: 'Routines', ...count(routines) },
     { arg: 'scheduled-checks', label: 'Session checks', ...count(checks) },
     { arg: 'env', label: 'Environment', keys: envKeys },
+    { arg: 'remote-environments', label: 'Remote helper environments', entries: config.remote_environments ?? {} },
     { arg: 'docker', label: 'Docker packages', packages: Array.isArray(packages) ? packages : [], applies: 'hermitd restart --build' },
   ];
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `/hermitd:spawn-session --environment <name>` starts a task-bound helper on another of the operator's machines through its Remote Control spawn server. Its report is stored on the task by a hook and never enters the agent's context. Enroll a machine with `/hermitd:hermit-settings remote-environments <name> <link>`.
+
+### Upgrade Instructions
+
+1. Nothing to write: the finalizer adds `remote_environments` (`{}`) from the template defaults when it is missing, and permissions sync adds the `cloud-session lookup` allow entry.
+2. If `.hermit/resident-prompt.md` is non-empty and lacks the `CLOUD_REPORT_STORED` routing rule, add the shipped rule from `prompts/resident.md` after its cross-session idle notice rule. Preserve other lines and tell the operator what changed.
+3. **Operator action required:** restart the agent so the report hook stage and the resident prompt load.
+
 ## [1.4.40] - 2026-11-22
 
 ### Added

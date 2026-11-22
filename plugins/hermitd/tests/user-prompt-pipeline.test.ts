@@ -23,6 +23,7 @@ import { readTasks, encodeTask, mutateTask } from '../scripts/lib/tasks';
 import { assistantEntry } from './helpers/transcript';
 import { markGuest } from '../scripts/lib/guest-marker';
 import { run as conversationStage } from '../scripts/lib/prompt-stages/conversation';
+import { run as cloudReportStage } from '../scripts/lib/prompt-stages/cloud-report';
 import { parseChannelEnvelope } from '../scripts/lib/channel-envelope';
 import { startHttpStub } from './helpers/http-stub';
 
@@ -38,6 +39,65 @@ function trackedWorkdir(): Workdir {
   workdirs.push(wd);
   return wd;
 }
+
+describe('cloud helper report intake', () => {
+  const task = 'T-20261122-120000';
+  const sender = 'bridge:session_Test123';
+  const report = `TASK_REPORT ${task} result\nPrivate report body.`;
+  const wrap = (from: string, text: string) =>
+    `<cross-session-message from="${from}" from-name="helper" from-mode="auto">\n${text}`;
+
+  function binding(wd: Workdir, ingested: string[] = []) {
+    fs.writeFileSync(hermit(wd.dir, 'state', 'cloud-sessions.json'), JSON.stringify([{
+      session_id: 'session_Test123', task, helper: 'LaptopHelper', environment: 'laptop',
+      started_at: '2026-11-22T12:00:00Z', ingested,
+    }]));
+  }
+
+  test('matches only a bound outer bridge sender and a valid header for its task', () => {
+    const wd = trackedWorkdir();
+    binding(wd);
+    const dir = hermit(wd.dir);
+    const calls: string[][] = [];
+    const dispatch = (...args: string[]) => { calls.push(args); };
+    const runStage = (prompt: string) => cloudReportStage({
+      dir, prompt, promptId: 'first', envelope: null, transcriptPath: null,
+      config: () => null, runtime: () => null,
+    }, dispatch);
+    for (const prompt of [
+      'Plain operator prompt',
+      wrap('bridge:session_Unknown', report),
+      wrap('uds:session_Test123', report),
+      wrap('uds:session_Test123', wrap(sender, report)),
+      wrap(sender, report.replace(task, 'T-20261122-120001')),
+      wrap(sender, report.replace('result', 'unknown')),
+      wrap(sender, '\n' + report),
+    ]) expect(runStage(prompt)).toBeUndefined();
+    expect(calls).toEqual([]);
+    expect(runStage(wrap(sender, report))).toEqual({ block: 'Cloud helper report intercepted' });
+    expect(calls).toEqual([[dir, sender, 'first', report]]);
+    binding(wd, ['first']);
+    expect(runStage(wrap(sender, report))).toEqual({ block: 'Cloud helper report intercepted' });
+    expect(calls).toHaveLength(1);
+  });
+
+  test('resident blocks a matched report but a guest receives the ordinary prompt path', async () => {
+    const wd = trackedWorkdir();
+    binding(wd, ['first']);
+    markGuest(hermit(wd.dir, 'state'), 'guest-session');
+    const runHook = (session_id: string) => runScript('user-prompt-pipeline.ts', {
+      stdin: JSON.stringify({ prompt: wrap(sender, report), prompt_id: 'first', session_id }),
+      cwd: wd.dir, env: { AGENT_DIR: hermit(wd.dir) },
+    });
+    const resident = await runHook('resident-session');
+    expect(resident.exitCode).toBe(0);
+    expect(JSON.parse(resident.stdout)).toEqual({ decision: 'block', reason: 'Cloud helper report intercepted' });
+    expect(resident.stdout).not.toContain('Private report body.');
+    const guest = await runHook('guest-session');
+    expect(guest.exitCode).toBe(0);
+    expect(guest.stdout).not.toContain('"decision":"block"');
+  });
+});
 
 function envelope(body: string, user = 'u1', chatId = '12345'): string {
   return `<channel source="telegram" chat_id="${chatId}" user="${user}">${body}</channel>`;

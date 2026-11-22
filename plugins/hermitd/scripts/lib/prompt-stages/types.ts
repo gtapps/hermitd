@@ -16,6 +16,8 @@ export interface StageContext {
   skipHarnessCommand?: boolean;
   suppressResponderInvoke?: boolean;
   sessionId?: string | null;
+  /** The hook payload’s id for a submitted prompt, when present. */
+  promptId?: string | null;
   closedThread?: boolean;
   openTasksInChat?: boolean;
   conversation?: { key: string; task_id: string; owner: string };
@@ -44,7 +46,8 @@ export interface StageResult {
    * Reason for a `{"decision":"block"}`. Set only after the stage has confirmed
    * the operator was told out-of-band (a successful channel send) — blocking
    * without that would swallow the message into silence. Passive-chat capture is
-   * the exception: unaddressed or non-allowed chatter is intentionally silent.
+   * an exception for unaddressed or disallowed chatter. The cloud report stage
+   * blocks matched protocol messages and hands them to a detached ingest.
    */
   block?: string;
 }

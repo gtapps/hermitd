@@ -33,6 +33,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings escalation     — set escalation threshold
 /hermitd:hermit-settings channels       — configure channels
 /hermitd:hermit-settings remote          — toggle remote control
+/hermitd:hermit-settings remote-environments <name> <link|env_id|remove>: manage remote helper environments
 /hermitd:hermit-settings model           — set Claude model
 /hermitd:hermit-settings delegation-model — model for background helpers and task workers
 /hermitd:hermit-settings delegation-effort — effort for background helpers and task workers
@@ -368,6 +369,11 @@ Note: "Channel changes take effect on next `hermitd-start` run (type `/hermitd:h
   - If input is `remove <KEY>`: `unset env.<KEY>`
   - If input is `<KEY> <VALUE>`: `set env.<KEY> '"<VALUE>"'` — env values must stay **strings**, and `set` JSON-parses its argument, so a bare `20000` would land as a number and reach the launch overlay as one.
 - Note: "Env changes reach the session through the launch overlay at the next `hermitd-start`. Type `/hermitd:hermit-restart` in a terminal or the Claude app to apply them."
+
+**If argument is "remote-environments":**
+- With no name or value, show the entries in `remote_environments`.
+- With `<name> remove`, use `unset remote_environments.<name>`.
+- Otherwise take the `env_…` ID as given or from the `environment` value of a `https://claude.ai/code?environment=env_…` link, and `set remote_environments.<name> <env_id>` with the ID alone; `set` rejects an invalid name or ID.
 
 **If argument is "docker":**
 - Show current `docker.packages` list:

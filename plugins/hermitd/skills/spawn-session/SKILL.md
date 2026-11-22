@@ -11,7 +11,7 @@ notice, and relay the report through `/hermitd:watch`.
 ## Usage
 
 ```
-/hermitd:spawn-session <prompt-or-/skill> [--cwd <abs-dir>] [--worktree] [--name <n>] [--model <m>] [--effort <e>] [--background <abs-file>] [--task <id>] [--strict-mcp-config]
+/hermitd:spawn-session <prompt-or-/skill> [--cwd <abs-dir>] [--worktree] [--name <n>] [--model <m>] [--effort <e>] [--background <abs-file>] [--task <id>] [--strict-mcp-config] [--environment <name>]
 /hermitd:spawn-session --switch <n> --record <T-id> [--model <m>] [--effort <e>]
 ```
 
@@ -97,7 +97,9 @@ alternate invocation, or weaker permission mode. The exceptions are
 
 ## Plan
 
-1. Parse `--cwd`, `--worktree`, `--name`, `--model`, `--effort`, `--background`, `--task`, and `--strict-mcp-config` from the invocation. `--cwd` must be an absolute path to an existing directory. `--background` must name an existing absolute file; append it to the prompt as an `@<abs-path>` mention. `--task <id>` is resolved in step 2 before any launch.
+1. If the invocation includes `--environment <name>`, follow [cloud-environment.md](cloud-environment.md) for the entire launch instead of the local procedure below.
+
+   Otherwise parse `--cwd`, `--worktree`, `--name`, `--model`, `--effort`, `--background`, `--task`, and `--strict-mcp-config` from the invocation. `--cwd` must be an absolute path to an existing directory. `--background` must name an existing absolute file; append it to the prompt as an `@<abs-path>` mention. `--task <id>` is resolved in step 2 before any launch.
    Remaining text is the prompt. Empty prompt: stop with a one-line ask for
    the work to run.
 
@@ -222,7 +224,7 @@ the caller so it can handle a resume that could not start.
 
 ## Switch a running helper
 
-For `--switch`, Read [switch.md](switch.md) and follow that procedure instead of
+For `--switch` without `--environment`, Read [switch.md](switch.md) and follow that procedure instead of
 the launch Plan. It preserves the helper's conversation, name and thread binding.
 
 ## Stuck helper

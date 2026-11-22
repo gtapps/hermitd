@@ -56,6 +56,8 @@ import {
 } from '../scripts/hermitd-start';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import { readRuntimeState } from '../scripts/lib/runtime';
+import { renderHelperPrompt } from '../scripts/lib/helper-prompt';
+import { sha256 } from '../scripts/lib/hash';
 import { automodeAllowEntry, AUTOMODE_WATCH_ALLOW_ENTRY, SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from '../scripts/lib/settings/automode-entries';
 import { operatorAutoModeFingerprint } from '../scripts/lib/settings/operator-auto-mode';
 import { claudeStateFile, TOKEN_ENV_VAR } from '../scripts/lib/setup-token';
@@ -2475,6 +2477,11 @@ test('overlay-missing: buildClaudeCommand exits 1 and prints the refusal when st
 });
 
 describe('resident prompt launch requirement', () => {
+  test('the local transport renders the same helper text byte for byte', () => {
+    const template = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/helper.md'), 'utf8');
+    const local = renderHelperPrompt(template, 'local', { PROJECT_ROOT: '/example/project', RESIDENT_NAME: 'resident' });
+    expect(sha256(local)).toBe('f82f74ab23fff489d9be37917f6291854a1baca15661f996971e5b35cd9b6027');
+  });
   test('command appends the absolute resident path', async () => {
     const { cmd } = await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
     expect(cmd[cmd.indexOf('--append-system-prompt-file') + 1]).toBe(path.resolve('.hermit/state/resident-system-prompt.md'));
