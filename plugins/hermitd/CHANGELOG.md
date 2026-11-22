@@ -17,12 +17,20 @@
 - `hermitd connector enable` requires a root HTTPS URL on port 443.
 - `hermitd connector status` reports `channel`, `unanswered` and `oldest_unanswered_at` in place of `channel_connected`.
 - Doctor warns about unanswered connector messages.
+- Monitor-mode agents skip the daily 04:00 routine re-arm wake. The watchdog restarts dead monitor supervisors or re-arms monitors with stale liveness. CronCreate fallback renews its registrations in place.
+- Claude Code 2.1.330 or newer is required.
 
 ### Fixed
 
 - Bootstrap installer installs `unzip` before Bun on Linux.
 - Background subagents that stop more than once no longer count their earlier usage again in recorded spend.
 - Missing display executables on Linux hosts appear as a pending setup step.
+
+### Upgrade Instructions
+
+1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate drop-rearm-anchor` to remove the old anchor routine from the installed config.
+
+**Leftover check:** Removed the `hermitd:heartbeat-restart` config routine id and the `anchor` and `anchor_age_days` fields from the arm output.
 
 ## [1.4.39] - 2026-11-21
 

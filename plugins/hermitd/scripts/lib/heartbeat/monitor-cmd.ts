@@ -1,8 +1,8 @@
 // The heartbeat monitor's registration identity, in one place.
 //
 // Two callers judge whether the live heartbeat monitor is the one the config
-// currently describes: `routines.ts arm anchor` (deciding whether the daily
-// re-arm has anything to do) and `heartbeat.ts start-check` (deciding whether to
+// currently describes: `hermit-routines load` (which also checks the routine
+// leg) and `heartbeat.ts start-check` (deciding whether to
 // re-register at all). The plugin root is module-owned so they agree
 // byte-for-byte: a caller-supplied root is a second definition of "healthy",
 // and the two drift the first time a path is a symlink.
@@ -91,7 +91,7 @@ export function sameMonitorCommand(registered: unknown, expected: string): boole
 
 /**
  * Is the registered heartbeat monitor current and ticking? `disabled` is reported
- * healthy so the daily anchor leaves a deliberately-off heartbeat alone; `start`
+ * healthy so load and the fallback anchor leave a disabled heartbeat off. `start`
  * is an explicit operator act and treats that reason as a re-arm instead.
  */
 export function heartbeatHealth(hermitDir: string, config: Json, nowMs: number): LegHealth {

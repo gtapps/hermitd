@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/84012a4d-4ca1-475e-b82d-1db45634a5e3
 <details open>
 <summary>Already run Claude Code? Install the plugin</summary>
 
-With Claude Code 2.1.327+ and Bun 1.4.2+ installed:
+With Claude Code 2.1.330+ and Bun 1.4.2+ installed:
 
 ```bash
 claude plugin install hermitd --marketplace gtapps/hermitd --scope local

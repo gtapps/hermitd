@@ -82,13 +82,9 @@ export function logRoutineEvent(
 ): string | null {
   const metrics = path.join(hermitRoot, 'state', 'routine-metrics.jsonl');
 
-  // Dedup guard (issue #464): heartbeat-restart re-invokes `hermit-routines
-  // load` at its own prompt tail, which can re-trigger the cron and emit a
-  // second `fired` with no intervening `started`. The prompt always logs
-  // `started` immediately before `fired`, so a `fired` whose latest same-routine
-  // event is already `fired` can only be the spurious re-trigger.
-  // A missing or unreadable ledger reads as "no prior event", so nothing is
-  // suppressed — same fail-open behavior as the inline scan this replaced.
+  // The fallback anchor can invoke load from its cron prompt. A duplicate finish
+  // without an intervening started row must not count as a second fire. An
+  // unreadable ledger gives no evidence of a duplicate.
   if (event === 'fired' && lastRoutineEvent(metrics, id) === 'fired') return null;
 
   // appendFileSync throws when the resolved dir has no state/ (a scaffolded-but-

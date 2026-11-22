@@ -10,7 +10,7 @@ tmux-based setup for running your hermit without Docker, plus the lifecycle refe
 | ------------------------ | ------------ | ------------------------------------------ |
 | **tmux**                 | Boot scripts | `brew install tmux` / `apt install tmux` — see [Installing tmux](https://github.com/tmux/tmux/wiki/Installing) for other platforms |
 | **Bun 1.4.2+**           | Hooks, scripts | Every hook and helper script runs on Bun |
-| **Claude Code v2.1.327+** | Channels, sandbox | Minimum supported version |
+| **Claude Code v2.1.330+** | Channels, sandbox | Minimum supported version |
 
 tmux is required. Channels are optional.
 
@@ -115,7 +115,7 @@ Reflection is not driven by idleness; it runs on the `reflect` schedule under `/
 
 ## Routines
 
-Routines are time-triggered skills managed by the `/hermitd:hermit-routines` skill. Where the Monitor tool is available, all enabled routines except `hermitd:heartbeat-restart` run from one native plugin monitor started by the activation skill: it evaluates every routine's cron schedule directly (no LLM needed to check the clock), so a skipped fire costs zero model tokens and routines due in the same poll batch into a single wake. `hermitd:heartbeat-restart` stays a CronCreate re-arm anchor that keeps the monitor alive. Where Monitor is unavailable, `load` falls back to registering every enabled routine as its own per-session CronCreate job, idle-gated at the harness turn level. Scheduled work that needs only a github.com repository, with no local files or services, can use Claude Code's native [`/schedule`](https://code.claude.com/docs/en/routines), which runs in the cloud on a one-hour minimum interval and requires a claude.ai subscription login; hermit routines are for precheck-gated work on this machine.
+Routines are time-triggered skills managed by `/hermitd:hermit-routines`. One native plugin monitor evaluates enabled schedules outside the session, so skips cost zero model tokens and routines due in the same poll share a wake. If the monitor misses its first tick, `load` registers one per-session CronCreate job per enabled routine. Scheduled work that needs only a github.com repository can use Claude Code's native [`/schedule`](https://code.claude.com/docs/en/routines), which runs in the cloud on a one-hour minimum interval and requires a claude.ai subscription login.
 
 ### Config
 
@@ -125,15 +125,14 @@ Routines live in `config.json` as a `routines` array:
 "routines": [
   {"id": "morning", "schedule": "30 8 * * *", "skill": "hermitd:brief --morning", "enabled": true},
   {"id": "evening", "schedule": "30 22 * * *", "skill": "hermitd:brief --evening", "enabled": true},
-  {"id": "hermitd:heartbeat-restart", "schedule": "0 4 * * *", "skill": "hermitd:hermit-routines load", "enabled": true},
   {"id": "weekly-deps", "schedule": "0 9 * * 1", "skill": "my-plugin:dependency-audit", "enabled": false}
 ]
 ```
 
 - `id`: unique name for dedup and display
-- `schedule`: 5-field cron expression (`minute hour dom month dow`), written in `config.timezone`. Monitor mode evaluates it directly in that timezone; the CronCreate anchor/fallback path converts it to machine-local time at registration (see [Config reference — routines.schedule](../docs/config-reference.md#cron-schedule-rules))
+- `schedule`: 5-field cron expression (`minute hour dom month dow`), written in `config.timezone`. Monitor mode evaluates it directly in that timezone; the CronCreate fallback converts it to machine-local time at registration (see [Cron schedule rules](config-reference.md#cron-schedule-rules))
 - `skill`: full slash-command name (e.g. `hermitd:brief --morning` for plugin skills, `ha-refresh-context` for local project skills)
-- `model`: optional — one of `opus`, `sonnet`, `haiku`. Runs the skill in a subagent at that model to save cost on lightweight routines (e.g. URL checks, threshold comparisons). Subagents run in isolated context and return only a one-line status, so only use it on stateless routines — not ones whose value is chat/transcript output, and not `hermitd:heartbeat-restart` (ignored there). See [config-reference](config-reference.md#routines) for details.
+- `model` optionally runs the skill in an isolated subagent at `opus`, `sonnet`, or `haiku`. The subagent returns one status line. Use it for stateless tasks such as URL checks or threshold comparisons. See [Config reference](config-reference.md#routines).
 - `effort`: optional, and only with `model`. One of `low`, `medium`, `high`, `xhigh`, `max`. Sets that subagent's effort; omit it to keep the subagent's default. See [config-reference](config-reference.md#routines).
 - `enabled`: toggle without removing
 
@@ -145,28 +144,28 @@ Interrupted occurrences are recorded in `state/routine-unfinished.json` in monit
 
 The retry's precheck spends the attempt and reads up to ten outbound first lines from the routine's client chat. The skill continues from that history and checks actions outside the chat before repeating them. Set `retry_after_crash: false` on a routine to opt out, especially when its external actions cannot safely be resumed. Planned restarts, opt-outs, disabled or removed routines, changed skills, superseded occurrences and Esc-aborted turns close silently. Expired occurrences and interrupted retries produce one short operator notice in the configured language. Closures use `failed-interrupted` with `detail: <reason>:<cause>`; `started` with `detail: retry` identifies recovery starts.
 
-`hermitd-start.ts` auto-sends `/hermitd:hermit-routines load` after launching the always-on session. The skill resolves `$CLAUDE_PLUGIN_ROOT`, then asks `scripts/routines.ts arm begin` what actually needs arming: a `healthy` verdict (monitor registered for this boot, ticking, and matching config; anchor current) stops the skill right there with no `TaskStop`/`Monitor`/`Cron*` calls at all. On `arm` it executes the plan the verb printed:
+`hermitd-start.ts` queues `/hermitd:hermit-routines load` when launching an always-on agent with routines. The skill runs `routines.ts arm begin` to check both routine scheduling and heartbeat. A `healthy` verdict ends the skill without tool calls to change the registrations.
 
-**Monitor mode (tried first).** Activates one native plugin monitor started by the activation skill (`scripts/routine-monitor.sh`, 60s poll) running `scripts/routines.ts due`, which reads `config.routines` directly, evaluates each enabled non-anchor routine's schedule against `state/routine-schedule.json` cursors, applies the pause and execution gates itself, and prints a single `ROUTINE_DUE [hermit-routine:<id>] ...` line only for routines that should actually wake the session ; a routine that's due-but-skipped costs zero model tokens. `hermit-routines run <ids>` handles the wake: it re-runs `scripts/routines.ts precheck` for the `started` stamp, invokes the skill on `proceed`, then calls `scripts/routines.ts finish`, which verifies any declared `expect_artifact` contract and writes the one terminal row to `state/routine-metrics.jsonl`. The anchor (`hermitd:heartbeat-restart`) still registers via a single `CronCreate`, kept fresh by the same diff-planner (`scripts/routines.ts arm`) described below, scoped to that one routine.
+**Monitor mode.** The activation skill starts a native plugin monitor that runs `routines.ts due` every 60 seconds. It evaluates enabled routines against `state/routine-schedule.json`, applies the pause and execution gates, and emits a single `ROUTINE_DUE [hermit-routine:<id>] ...` line for routines that should wake the session. `hermit-routines run <ids>` stamps each start with `routines.ts precheck`, invokes the skill and records the outcome with `routines.ts finish`.
 
-**CronCreate fallback** applies when the Monitor tool is unavailable (Amazon Bedrock, Google Cloud's Agent Platform, Microsoft Foundry, or `DISABLE_TELEMETRY` / `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` set) or when the monitor subprocess never produced a liveness tick. Every enabled routine, anchor included, registers as its own per-session CronCreate. `scripts/routines.ts arm begin --fallback` diffs against `state/cron-registry.json` (a derived mirror, keyed to the current boot via `state/.boot-id`): unchanged (`keep`), re-registered (`delete`+`create`) on a schedule/metadata edit, or re-registered regardless of config changes once aging toward CC's 7-day auto-expiry cliff. The schedule shift (`config.timezone` → machine local time, via `lib/cron-shift.ts`) happens inside this step; monitor-mode routines skip it, evaluating directly in `config.timezone`. Each `create` gets a prompt that runs `scripts/routines.ts precheck`, invokes the skill on `proceed`, then calls `scripts/routines.ts finish`, which verifies any declared `expect_artifact` contract and writes the one terminal row to `state/routine-metrics.jsonl`; each `delete` tears down the matching `[hermit-routine:*]` entry first. On an unchanged, fresh config this is a no-op with zero `CronList`/`CronCreate`/`CronDelete` calls. CronCreate fires only between REPL turns, never mid-task; a fire that comes due during `in_progress` is deferred (not dropped) until idle.
+**CronCreate fallback** applies if the routine monitor misses its first tick. `arm begin` compares enabled routines with the current boot's `state/cron-registry.json`. It keeps current registrations and replaces changed ones or those older than 25 days, ahead of Claude Code's 30-day expiry. Schedules shift from `config.timezone` to machine-local time at registration. Each routine prompt runs `routines.ts precheck`, invokes the skill on `proceed`, then records the outcome with `routines.ts finish`. CronCreate defers due fires until the session is idle.
 
-`/hermitd:hermit-routines load --reset` bypasses both diffs and does an unconditional sweep — the escape hatch for suspected drift.
+`/hermitd:hermit-routines load --reset` deletes all routine CronCreates and retries native monitoring within the boot.
 
-`routines.ts precheck` gates every routine fire regardless of delivery mechanism (the `hermitd:heartbeat-restart` anchor is the exception, since its rendered prompt runs `arm anchor`, which applies the pause gate and the `started`/`fired` stamps itself): it suppresses a routine with a `skipped-paused` event when the binding pause flag is set; otherwise it stamps `started` and returns `proceed`. When the routine declares `expect_artifact`, `precheck` also freezes that fire's contract into `state/routine-run.json` (the `{date}` token resolved in `config.timezone` at start, plus the target's filesystem identity), which `routines.ts finish` compares against afterwards. In monitor mode, `routines.ts due` applies the pause gate itself before ever waking the session, plus a lateness gate (occurrences older than `routine_max_lateness_minutes`, default 60, are consumed with a `skipped-late` event and never wake the session) and an operator-turn defer (Stop-cleared `state/operator-turn-open.json` marker, 60-min TTL backstop) approximating the idle gate CronCreate gets for free from the harness. A deferred occurrence records a `held_at` poll stamp in `state/routine-schedule.json`: its lateness clock runs from that stamp, so time spent deferred does not count and the occurrence fires at the first poll after the turn clears. Only observed polls earn that credit: an occurrence already past the limit when the turn opens is still consumed as `skipped-late`, and so is one whose deferral was interrupted by downtime.
+`routines.ts precheck` gates every configured routine in both modes. It records `skipped-paused` when paused. Otherwise it stamps `started` and returns `proceed`. When the routine declares `expect_artifact`, `precheck` also freezes that fire's contract into `state/routine-run.json` (the `{date}` token resolved in `config.timezone` at start, plus the target's filesystem identity), which `routines.ts finish` compares against afterwards. In monitor mode, `routines.ts due` applies the pause gate itself before ever waking the session, plus a lateness gate (occurrences older than `routine_max_lateness_minutes`, default 60, are consumed with a `skipped-late` event and never wake the session) and an operator-turn defer (Stop-cleared `state/operator-turn-open.json` marker, 60-min TTL backstop) approximating the idle gate CronCreate gets for free from the harness. A deferred occurrence records a `held_at` poll stamp in `state/routine-schedule.json`: its lateness clock runs from that stamp, so time spent deferred does not count and the occurrence fires at the first poll after the turn clears. Only observed polls earn that credit: an occurrence already past the limit when the turn opens is still consumed as `skipped-late`, and so is one whose deferral was interrupted by downtime.
 
-**`hermitd:heartbeat-restart`** fires at 4am daily and re-invokes `load`, re-arming the routine monitor (or, in fallback mode, the routine CronCreates — which expire after 7 days without this daily re-arm); unless `heartbeat.enabled` is explicitly false, the same fire re-registers the heartbeat Monitor.
+Fallback keeps an internal daily 04:00 anchor while scheduled routines exist. It checks routine registrations, renews them in place as needed and checks heartbeat health. The watchdog restarts dead monitor supervisors or re-arms monitors with stale liveness. Automatic monitor recovery after a crash or stale liveness needs the watchdog, and an always-on agent with it off re-arms at its next start.
 
-Inspect live state with `/hermitd:hermit-routines status` (monitor liveness + anchor, or the full CronCreate list in fallback mode). Inspect fire history with `tail .hermit/state/routine-metrics.jsonl` — each row's `delivery` field is `monitor` or `cron-create`.
+Run `/hermitd:hermit-routines status` to inspect monitor liveness or the fallback CronCreates. Each row in `.hermit/state/routine-metrics.jsonl` identifies delivery as `monitor` or `cron-create`.
 
 ### Relationship to heartbeat and monitors
 
 |                | Routines                         | Heartbeat                      | Monitors                          |
 | -------------- | -------------------------------- | ------------------------------ | --------------------------------- |
 | Timing         | Exact cron schedule              | Every N minutes                | Event-driven or interval          |
-| Engine         | Monitor subprocess (60s poll, gates in-script); CronCreate anchor + fallback | CC Monitor (subprocess poll)   | Background watch monitor for config watches; CC Monitor tool for ad-hoc |
+| Engine         | Monitor subprocess (60s poll, gates in-script) or CronCreate fallback | CC Monitor (subprocess poll)   | Background watch monitor for config watches; CC Monitor tool for ad-hoc |
 | Cost           | Zero tokens for a skipped fire (monitor mode) | Zero tokens when quiet         | Zero tokens when quiet            |
-| Survives exit  | No (re-registered on launch; anchor re-arms daily) | No (re-armed daily by hermitd:heartbeat-restart) | Config watches return at the next launch while enabled; ad-hoc watches end with the session |
+| Survives exit  | Re-arms on always-on launch | Re-arms on always-on launch | Config watches return at the next launch while enabled; ad-hoc watches end with the session |
 | Mid-task fire  | Deferred while an operator turn is open (Stop-cleared marker, 60-min TTL) — coarser than CronCreate's turn-level idle gate, can interject | Yes (interrupts)               | Yes (interrupts)                  |
 | Use for        | Scheduled tasks (briefs, audits) | Continuous monitoring          | Reactive watching / quiet polling |
 
@@ -202,7 +201,7 @@ Four levers, in rough order of impact:
 {"id": "cortex-refresh", "schedule": "0 6 * * *", "skill": "...", "model": "haiku"}
 ```
 
-Not suitable for routines whose value is chat or transcript output (subagent output collapses to one line) or for `hermitd:heartbeat-restart` (must run in-session). See the [Routines](#routines) section above and [config-reference](config-reference.md#routines).
+Use the session model when the routine needs to produce chat or transcript output. See [Routines](#routines) and [Config reference](config-reference.md#routines).
 
 **3. Interval and active hours.** Cost is wakes/day × cost/wake. Widen `heartbeat.every` (default `30m`) or tighten `active_hours` in `config.json`. Only `EVALUATE` wakes cost tokens; the `--peek` poll between them is free.
 

@@ -3226,7 +3226,7 @@ test('stale liveness but hermit paused → no re-arm', withHermit(async (h) => {
 }));
 
 test('stale routine-monitor liveness → monitor-rearm, only hermit-routines load injected', withHermit(async (h) => {
-  // Routine monitor enabled (a non-anchor routine), interval 60s → threshold 10m.
+  // Routine monitor enabled, interval 60s → threshold 10m.
   writeRoutineMonitorConfig(h);
   writeState(h, 'routine-monitor.runtime.json', { started_at: isoAgo(25 / 60), interval: 60, mode: 'monitor' });
   writeState(h, 'routine-monitor-liveness.json', { last_peek_at: isoAgo(20 / 60) }); // 20 min ago > 10m
@@ -3337,13 +3337,8 @@ test('croncreate-fallback from a previous boot → re-arm', withHermit(async (h)
 
 // 11f. The same re-arms on an IDLE session arc.
 //
-// A hermit rests at 'idle' between arcs, so that is where a Monitor that died has to be
-// recovered from. Before this, the supervision-only cut exited above step 5, and the
-// only recovery left was the daily hermitd:heartbeat-restart anchor — a CronCreate that dies with the
-// process it was registered in, i.e. in the same event that kills the monitors. A restart
-// catching the hermit at 'idle' therefore silenced heartbeat and routines until an operator
-// noticed. Idle still suppresses step 4 (the nudge and the pane-frozen restart); that half of
-// the contract is pinned in section 5b.
+// Agents spend time idle between arcs, so monitor recovery must run there.
+// Idle still suppresses the nudge and pane-frozen restart covered in section 5b.
 // -------------------------------------------------------
 
 test('idle arc + stale heartbeat liveness → monitor-rearm, heartbeat start injected', withHermit(async (h) => {
@@ -3374,14 +3369,24 @@ test('idle arc + stale routine-monitor liveness → monitor-rearm, hermit-routin
   expect(calls).not.toContain('heartbeat start');
 }));
 
-// The anchor's `fired` age is no longer a re-arm signal: it only advances at the
-// routine's next real fire, so a non-daily anchor (or a fire whose model turn stopped
-// before `finish`) looked "missed" for most of every cycle and re-injected both
-// bootstrap prompts every damper window. Live monitors are the only signal now.
-test('stale hermitd:heartbeat-restart fired age + live monitors → no re-arm', withHermit(async (h) => {
+test('same-boot stale routine liveness queues load with only configured routines', withHermit(async (h) => {
+  writeRoutineMonitorConfig(h);
+  writeBootMarker(h, 'boot-B', 30);
+  writeState(h, 'routine-monitor.runtime.json', {
+    started_at: isoAgo(25 / 60), interval: 60, mode: 'monitor', boot_id: 'boot-B',
+  });
+  writeState(h, 'routine-monitor-liveness.json', { last_peek_at: isoAgo(20 / 60) });
+  writeFakeTmux(h, 0);
+  writeFakePgrep(h, 1);
+  expect((await watchdog(h, 'run')).exitCode).toBe(0);
+  expect(events(h)).toContain('monitor-rearm');
+  expect(tmuxCalls(h)).toContain('/hermitd:hermit-routines load');
+}));
+
+test('stale routine fire with live monitors does not trigger a re-arm', withHermit(async (h) => {
   writeRoutineMonitorConfig(h);
   fs.writeFileSync(state(h, 'routine-metrics.jsonl'), JSON.stringify({
-    ts: isoAgoSeconds(28), routine_id: 'hermitd:heartbeat-restart', event: 'fired', delivery: 'cron-create',
+    ts: isoAgoSeconds(28), routine_id: 'scheduled-checks', event: 'fired', delivery: 'cron-create',
   }) + '\n');
   touchAgo(state(h, '.heartbeat'), 1800); // fresh — wedge detection stays out of the way
   writeState(h, 'heartbeat-monitor.runtime.json', { started_at: isoAgo(9) });

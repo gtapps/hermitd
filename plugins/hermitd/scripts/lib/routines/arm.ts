@@ -14,11 +14,9 @@ import { bootMismatch, monitorFreshness, waitForFirstTick } from '../monitor-hea
 import { isPaused } from '../pause';
 import { resolveHermitNowMs } from '../time';
 import { logRoutineEvent } from './event';
-import { lastRoutineFire } from './history';
 import {
   commitCron,
   computeWakeSpread,
-  filterRoutinesByIds,
   planCron,
   readBootId,
   readMirror,
@@ -29,8 +27,8 @@ import {
 type Json = any;
 
 const ANCHOR_ID = 'hermitd:heartbeat-restart';
+const ANCHOR_ROUTINE = { id: ANCHOR_ID, schedule: '0 4 * * *', skill: 'hermitd:hermit-routines load', enabled: true };
 const MONITOR_INTERVAL_SECS = 60;
-const ANCHOR_MAX_AGE_MS = 26 * 60 * 60 * 1000;
 
 type Context = {
   hermitDir: string;
@@ -57,7 +55,7 @@ function context(hermitDirArg: string, pluginRootArg: string): Context {
   const config = readConfigRaw(hermitDir);
   if (config === null) throw new Error('config.json unreadable');
   const routines = Array.isArray(config.routines) ? config.routines : [];
-  const scheduled = routines.filter((r: Json) => r?.enabled === true && r.id !== ANCHOR_ID);
+  const scheduled = routines.filter((r: Json) => r?.enabled === true);
   const mirrorPath = path.join(hermitDir, 'state', 'cron-registry.json');
   return {
     hermitDir,
@@ -77,9 +75,13 @@ export function routineCommand(hermitDir: string): string {
 }
 
 function plan(ctx: Context, fallback: boolean, reset: boolean): { plan: PlanResult; routines: Json[] } {
-  const routines = fallback ? ctx.routines : filterRoutinesByIds(ctx.routines, ANCHOR_ID);
+  const routines = fallback && ctx.scheduled.length > 0
+    ? [ANCHOR_ROUTINE, ...ctx.routines.filter(r => r?.id !== ANCHOR_ID)]
+    : [];
   let machineTz: string | null = null;
-  try { machineTz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
+  if (routines.length > 0) {
+    try { machineTz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch {}
+  }
   return {
     routines,
     plan: planCron(
@@ -112,9 +114,7 @@ function monitorHealth(ctx: Context): LegHealth {
       : { healthy: false, reason: 'fallback-drift' };
   }
   if (runtime?.mode !== 'monitor') return { healthy: false, reason: 'runtime-missing' };
-  // Same check as the heartbeat leg (lib/heartbeat/monitor-cmd.ts) — see bootMismatch
-  // for why. The anchor plan catches this too whenever the anchor is enabled; this
-  // covers the config that disables it.
+  // Like the heartbeat leg, the routine monitor belongs to the boot that started it.
   if (bootMismatch(runtime.boot_id, ctx.bootId)) {
     return { healthy: false, reason: 'boot-mismatch' };
   }
@@ -138,32 +138,7 @@ function monitorHealth(ctx: Context): LegHealth {
       return { healthy: false, reason: livenessReason(freshness.reason) };
     }
   }
-  const anchorPlan = plan(ctx, false, false).plan;
-  if (!planEmpty(anchorPlan)) {
-    return { healthy: false, reason: 'anchor-drift' };
-  }
-
-  const anchorEnabled = ctx.routines.some((r: Json) => r?.id === ANCHOR_ID && r.enabled === true);
-  if (anchorEnabled) {
-    const fired = lastRoutineFire(path.join(ctx.hermitDir, 'state', 'routine-metrics.jsonl'), ANCHOR_ID);
-    const firedMs = fired === null ? NaN : Date.parse(fired);
-    const registered = ctx.mirror.routines[ANCHOR_ID]?.registered_at;
-    const fireFresh = Number.isFinite(firedMs) && ctx.nowMs - firedMs <= ANCHOR_MAX_AGE_MS;
-    const registrationFresh = Number.isFinite(registered) && ctx.nowMs - registered <= ANCHOR_MAX_AGE_MS;
-    if (!fireFresh && !registrationFresh) return { healthy: false, reason: 'anchor-old' };
-  }
   return { healthy: true, reason: runtime.mode };
-}
-
-function anchorAgeDays(ctx: Context): number {
-  const fired = lastRoutineFire(path.join(ctx.hermitDir, 'state', 'routine-metrics.jsonl'), ANCHOR_ID);
-  const ages = [
-    fired === null ? NaN : ctx.nowMs - Date.parse(fired),
-    Number.isFinite(ctx.mirror.routines[ANCHOR_ID]?.registered_at)
-      ? ctx.nowMs - ctx.mirror.routines[ANCHOR_ID].registered_at
-      : NaN,
-  ].filter(Number.isFinite) as number[];
-  return Number((ages.length ? Math.max(0, Math.min(...ages)) / 86400000 : 0).toFixed(1));
 }
 
 function healthyVerdict(ctx: Context, heartbeat: LegHealth): Json {
@@ -171,7 +146,6 @@ function healthyVerdict(ctx: Context, heartbeat: LegHealth): Json {
   return {
     status: 'healthy',
     routines: { mode: runtime?.mode === 'croncreate-fallback' ? 'fallback' : 'monitor', scheduled: ctx.scheduled.length },
-    anchor_age_days: anchorAgeDays(ctx),
     heartbeat: heartbeat.reason === 'disabled' ? 'disabled' : 'ok',
   };
 }
@@ -205,7 +179,7 @@ function planFields(ctx: Context, result: PlanResult): Json {
   try {
     const configured = ctx.config?.routine_wake_lint?.max_windows;
     const maxWindows = Number.isFinite(configured) && configured > 0 ? configured : 6;
-    const spread = computeWakeSpread(result.enabledShifted, maxWindows);
+    const spread = computeWakeSpread(result.enabledShifted.filter(r => r.id !== ANCHOR_ID), maxWindows);
     if (spread) fields.wake_spread = { distinct: spread.distinct, max_windows: maxWindows, loneliest: spread.loneliest };
   } catch {}
   return fields;
@@ -229,9 +203,7 @@ function armVerdict(ctx: Context): { body: Json; healthy: boolean; paused: boole
 
 function cmdAnchor(ctx: Context): void {
   const verdict = armVerdict(ctx);
-  // The anchor's ledger rows are what keep `monitorHealth` from reading a live anchor
-  // as `anchor-old`, so its fire IS the state change — `check` exists for callers that
-  // want the same verdict without claiming a fire happened.
+  // Record the fallback anchor wake. Use check for the verdict alone.
   if (verdict.paused) stamp(ctx, 'skipped-paused');
   else if (verdict.healthy) { stamp(ctx, 'started'); stamp(ctx, 'fired'); }
   else stamp(ctx, 'started');
@@ -250,27 +222,29 @@ function cmdBegin(ctx: Context, flags: string[]): void {
     return;
   }
   const reset = flags.includes('--reset');
-  const fallback = flags.includes('--fallback');
-  // Read once for both the healthy short-circuit and the heartbeat plan below: heartbeatHealth
-  // re-reads two state files plus `.boot-id`, and both sites see identical inputs. Null
-  // on `--fallback`, the one path that never plans the heartbeat leg.
-  const heartbeat = fallback ? null : heartbeatHealth(ctx.hermitDir, ctx.config, ctx.nowMs);
+  const skipHeartbeat = flags.includes('--fallback');
+  const runtimePath = path.join(ctx.hermitDir, 'state', 'routine-monitor.runtime.json');
+  const runtime = readJson(runtimePath);
+  const sameBootFallback = runtime?.mode === 'croncreate-fallback'
+    && typeof runtime.boot_id === 'string' && runtime.boot_id === ctx.bootId;
+  const routineFallback = skipHeartbeat || (!reset && sameBootFallback);
+  const heartbeat = skipHeartbeat ? null : heartbeatHealth(ctx.hermitDir, ctx.config, ctx.nowMs);
   const routines = monitorHealth(ctx);
-  if (heartbeat?.reason === 'restart-required' || (!fallback && routines.reason === 'restart-required')) {
+  if (heartbeat?.reason === 'restart-required' || (!routineFallback && routines.reason === 'restart-required')) {
     printJson(COMMAND_DRIFT_VERDICT);
     return;
   }
-  if (heartbeat && !reset && heartbeat.healthy && routines.healthy) {
+  const currentBackend = runtime?.mode === 'monitor' || sameBootFallback;
+  if (heartbeat && !reset && currentBackend && heartbeat.healthy && routines.healthy) {
     printJson(healthyVerdict(ctx, heartbeat));
     return;
   }
 
-  const runtime = readJson(path.join(ctx.hermitDir, 'state', 'routine-monitor.runtime.json'));
-  const firstTransition = runtime?.mode !== 'monitor';
+  const firstTransition = !routineFallback && runtime?.mode !== 'monitor';
   const out: Json = {
     status: 'arm',
-    legs: fallback ? ['routines'] : ['routines', 'heartbeat'],
-    mode: fallback ? 'fallback' : reset ? 'reset' : 'reconcile',
+    legs: skipHeartbeat ? ['routines'] : ['routines', 'heartbeat'],
+    mode: routineFallback ? 'fallback' : reset ? 'reset' : 'reconcile',
   };
   // The heartbeat leg rides along so one `load` arms both monitors. `--fallback` is
   // the second pass of a load whose first pass already committed the heartbeat, and
@@ -281,28 +255,31 @@ function cmdBegin(ctx: Context, flags: string[]): void {
     out.heartbeat = prepareHeartbeatArm(ctx.hermitDir, ctx.config);
     activate = true;
   }
-  // Only ever a transition INTO monitor mode. The flag tells the skill to CronDelete
-  // every non-anchor `[hermit-routine:*]` entry, which is right when those crons are
-  // being replaced by a monitor — and wrong in fallback mode, where they ARE the
-  // routines and only the ids in `create` would come back.
-  if (firstTransition && !fallback) out.first_transition = true;
-  if (reset || firstTransition) {
+  // On transition to native monitoring, the skill deletes every [hermit-routine:*]
+  // cron, including the anchor. Fallback renewal only replaces the planned ids.
+  if (firstTransition) out.first_transition = true;
+  if (reset || firstTransition || (skipHeartbeat && runtime?.mode !== 'monitor')) {
     try { fs.rmSync(path.join(ctx.hermitDir, 'state', 'routine-schedule.json'), { force: true }); } catch {}
   }
   // The outgoing monitor's last tick must not be mistaken for the incoming one's
   // first: `arm commit` waits for a liveness file to appear, and a leftover one
   // would let a subprocess that never spawned read as alive.
-  if (runtime?.launch !== 'native' || bootMismatch(runtime.boot_id, ctx.bootId)) {
+  const retryNative = reset && sameBootFallback;
+  if (retryNative || runtime?.launch !== 'native' || bootMismatch(runtime.boot_id, ctx.bootId)) {
     try { fs.rmSync(path.join(ctx.hermitDir, 'state', 'routine-monitor-liveness.json'), { force: true }); } catch {}
   }
-  if (!fallback) {
+  if (retryNative) {
+    // Release the parked supervisor after clearing its old tick and before activation.
+    fs.rmSync(runtimePath, { force: true });
+  }
+  if (!routineFallback) {
     if (ctx.scheduled.length === 0) out.monitor_skip = 'zero_scheduled';
     else activate = true;
   }
   if (activate) out.activate = MONITOR_ACTIVATE;
-  const result = plan(ctx, fallback, reset).plan;
+  const result = plan(ctx, routineFallback, reset).plan;
   const warnings = [
-    ...(fallback && ctx.scheduled.length > 0
+    ...(routineFallback && ctx.scheduled.length > 0
       ? [{ id: 'routines', message: 'routine_max_lateness_minutes is not enforced in CronCreate fallback; Monitor scheduling is required' }]
       : []),
     ...result.creates.filter(item => item.warn).map(item => ({ id: item.id, message: item.warn })),
@@ -355,7 +332,7 @@ async function cmdCommit(ctx: Context, taskId: string, flags: string[]): Promise
       started_at: new Date(ctx.nowMs).toISOString(),
       boot_id: ctx.bootId,
     });
-    printJson(await withHeartbeat(armed(ctx, created), heartbeatLeg));
+    printJson(await withHeartbeat(armed(ctx), heartbeatLeg));
     return;
   }
 
@@ -374,11 +351,11 @@ async function cmdCommit(ctx: Context, taskId: string, flags: string[]): Promise
   };
   if (noMonitor) runtime.routines = 0;
   writeJson(path.join(ctx.hermitDir, 'state', 'routine-monitor.runtime.json'), runtime);
-  printJson(await withHeartbeat(live ? armed(ctx, created) : { status: 'fallback', reason: 'liveness_absent' }, heartbeatLeg));
+  printJson(await withHeartbeat(live ? armed(ctx) : { status: 'fallback', reason: 'liveness_absent' }, heartbeatLeg));
 }
 
-function armed(ctx: Context, created: Set<string>): Json {
-  return { status: 'armed', scheduled: ctx.scheduled.length, anchor: created.has(ANCHOR_ID) ? 'created' : 'kept' };
+function armed(ctx: Context): Json {
+  return { status: 'armed', scheduled: ctx.scheduled.length };
 }
 
 async function withHeartbeat(result: Json, heartbeatLeg: Promise<HeartbeatCommit> | null): Promise<Json> {

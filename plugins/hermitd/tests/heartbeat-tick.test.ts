@@ -417,8 +417,8 @@ describe('heartbeat start-check', () => {
     expect(json(await run('start-check', [hermit]))).toEqual({ status: 'fresh', interval: 1800 });
   });
 
-  // `disabled` reads healthy to the daily anchor, which must leave a deliberately
-  // stopped heartbeat stopped. Reaching `start` is an explicit act and overrides it.
+  // The fallback anchor reads disabled as healthy. An explicit start can still
+  // arm the heartbeat for this session.
   test('heartbeat.enabled=false still re-arms on an explicit start', async () => {
     const hermit = fixture({ config: { timezone: 'UTC', heartbeat: { enabled: false, every: '30m', active_hours: ALWAYS_ON } } });
     seedMonitor(hermit);
@@ -507,23 +507,23 @@ describe('heartbeat start-commit', () => {
       .toMatchObject({ status: 'rearm', reason: 'liveness_absent' });
   });
 
-  test('the record it writes reads as healthy to the routine anchor', async () => {
+  test('the record it writes reads as healthy to the arm check with no routines', async () => {
     const hermit = fixture({
       config: {
         timezone: 'UTC',
         heartbeat: { every: '30m', active_hours: ALWAYS_ON },
-        routines: [{ id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:hermit-routines load', enabled: true }],
+        routines: [],
       },
     });
     write(hermit, 'state/heartbeat-liveness.json', { last_peek_at: NOW });
     await run('start-commit', [hermit, 'native']);
 
     const r = await runScript('routines.ts', {
-      args: ['arm', 'anchor', hermit, PLUGIN_ROOT],
+      args: ['arm', 'check', hermit, PLUGIN_ROOT],
       env: { HERMIT_NOW: NOW },
     });
     // The routines leg is unarmed in this fixture; what matters is that the
     // heartbeat leg is absent from the reasons.
-    expect(r.stdout).not.toContain('heartbeat:');
+    expect(json(r.stdout)).toEqual({ status: 'arm', legs: ['routines'], reasons: ['routines:runtime_missing'] });
   });
 });

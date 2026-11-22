@@ -220,9 +220,7 @@ For routines — if Yes: use the config defaults (`active_hours.start = 08:00`, 
 
 - `{"id":"hermitd:morning","schedule":"30 8 * * *","skill":"hermitd:brief --morning","enabled":true}`
 - `{"id":"hermitd:evening","schedule":"30 22 * * *","skill":"hermitd:brief --evening","enabled":true}`
-- Always add (regardless of routine choice): `{"id":"hermitd:heartbeat-restart","schedule":"0 4 * * *","skill":"hermitd:hermit-routines load","enabled":true}`
-- If no routines: still add hermitd:heartbeat-restart to the `routines` array (it's infrastructure, not a user routine)
-- **Routines auto-register only on always-on launches via `hermitd-start.ts`** (as one persistent routine monitor; CronCreate fallback where Monitor is unavailable). Interactive users who want routines active in interactive mode must run `/hermitd:hermit-routines load` themselves. Mention this once at the end of hatch if the operator is running interactively.
+- **Routines auto-register only on always-on launches via `hermitd-start.ts`** (one persistent routine monitor with CronCreate fallback if the first tick never lands). Interactive users who want routines active in interactive mode must run `/hermitd:hermit-routines load` themselves. Mention this once at the end of hatch if the operator is running interactively.
 - Keep the template's `"precheck": "reflect"` on the reflect routine: it is the wake gate, and it is what keeps a day with nothing to reflect on from waking the session at all.
 - If the operator wants a custom routine beyond the morning/evening defaults, point them at [Routine Authoring](../../docs/routine-authoring.md) for the cost-conscious authoring pattern (scoped skill, haiku pin, a `precheck` wake gate with its optional `precheck_timeout_s`) rather than hand-deriving it.
 
@@ -255,7 +253,7 @@ with the answers payload as JSON on stdin. The script reads the template (or, on
 - **Phase 2** → `agent_name`, `language`, `timezone`. An `invalid_config` error naming `timezone` wrote nothing: ask for the zone again and re-run.
 - **Phase 3** → `escalation`, `remote`.
 - **Phase 4** → `channels.<name>`: `enabled`, `morning_brief_time` (omit if declined; on re-init, send it as `null` to turn off a brief the operator previously enabled). The script fills in `default_chat_id: null`, and `state_dir: .claude.local/channels/<name>` on first creation and preserves both (plus any other channel it doesn't recognize, `channels.primary`, and third-party `marketplace` channels) on re-init merge. Do **not** include `push_notifications` in the payload — the script never touches it; it stays at the template default (`true`) or, on re-init, whatever value is already on disk. The runtime channel-first/push-fallback guard in prompts/resident.md already prevents double-notification.
-- **Phase 5** → `browser.enabled`, `browser.default`, `transcription` (boolean), `chrome` when Chrome is chosen, `permission_mode`, `routines` (morning/evening only — `hermitd:heartbeat-restart` and the other infrastructure routines are already in the template and are never touched by this payload).
+- **Phase 5** → `browser.enabled`, `browser.default`, `transcription` (boolean), `chrome` when Chrome is chosen, `permission_mode`, `routines` (morning/evening only. This payload leaves other template and existing routines in place).
 - **Never in a hatch payload** → `auth_mode`. It records which credential the hermit already runs on, and hatch has not established one yet; it stays at the template default (`null`, resolved from the credential volume at read time) and is written later by `/docker-setup`, `hermitd-docker login`, or a completed renewal.
 - **Step 3 hermit activation** → `activated_hermit`. `slug` is `activated_hermit.plugin`. Hatch never writes the operator’s startup skill.
 
@@ -642,7 +640,7 @@ Quick replaces Step 4 entirely and applies these defaults silently at the shared
 | Advanced Phase 4 equivalent | channels.<name>.* | state_dir + enabled + default_chat_id=null; omit morning_brief |
 | Quick Turn 2 channel choice | push_notifications | template default (true) — don't override |
 | Advanced Phase 5 browser equivalent | `browser` | template defaults: enabled, default `agent-browser`; ask no browser question, preserve an existing re-init choice |
-| Advanced Phase 5 equivalent | permission_mode, routines | permission_mode = `auto`; routines = morning 08:30 + evening 22:30 + (template) heartbeat 04:00 |
+| Advanced Phase 5 equivalent | permission_mode, routines | permission_mode = `auto`; routines = morning 08:30 + evening 22:30 |
 | Step 7 | .gitignore append | apply silently (per-line idempotent) |
 | Step 7a | .worktreeinclude managed block | apply silently (marker-block idempotent — skip if marker already present) |
 | Step 7.5 | git init (fresh dirs only) | run `git init` if `git_init_eligible`; omit otherwise |

@@ -41,7 +41,6 @@ const ROUTINE = (overrides: any = {}) => ({
   id: 'test-routine', skill: 'hermitd:reflect', schedule: '0 9 * * *',
   enabled: true, ...overrides,
 });
-const ANCHOR = { id: 'hermitd:heartbeat-restart', skill: 'hermitd:heartbeat start', schedule: '0 4 * * *', enabled: true };
 
 function withDir(fn: (dir: string) => Promise<void> | void) {
   return async () => {
@@ -67,13 +66,12 @@ describe('routine-due', () => {
   }));
 
   test('no schedule file + due-now mark → init-to-now, NO emission, entry created', withDir(async (dir) => {
-    writeConfig(dir, [ROUTINE(), ANCHOR]);
+    writeConfig(dir, [ROUTINE()]);
     const r = await run(dir, '2026-07-15T09:00:00Z');
     expect(r.exitCode).toBe(0);
     expect(r.stdout.trim()).toBe('');
     const sched = readSchedule(dir);
     expect(sched['test-routine'].last_consumed_mark).toBe('2026-07-15T09:00:00.000Z');
-    expect(sched['hermitd:heartbeat-restart']).toBeUndefined(); // anchor never tracked
   }));
 
   test('mark in window → emits bracketed id, consumes latest match', withDir(async (dir) => {
@@ -240,13 +238,6 @@ describe('routine-due', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ routine_id: 'test-routine', event: 'skipped-paused', delivery: 'monitor' });
     expect(readSchedule(dir)['test-routine'].last_consumed_mark).toBe('2026-07-15T09:00:00.000Z');
-  }));
-
-  test('hermitd:heartbeat-restart is never emitted, never touched in schedule file', withDir(async (dir) => {
-    writeConfig(dir, [ANCHOR]);
-    const r = await run(dir, '2026-07-15T04:00:00Z'); // matches anchor's own schedule
-    expect(r.stdout.trim()).toBe('');
-    expect(readSchedule(dir)).toBeNull(); // nothing written — anchor filtered before any state touch
   }));
 
   test('liveness file written on: normal run, no-op run, and corrupt-config run', withDir(async (dir) => {
