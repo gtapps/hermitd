@@ -37,7 +37,7 @@
 
 2. If `.hermit/helper-prompt.md` is non-empty and lacks the end-on-report rule, replace only its report section with the shipped `prompts/helper.md` report section. Preserve other lines and any root and resident-name substitutions the operator uses. Tell the operator what changed.
 3. If `.hermit/resident-prompt.md` is non-empty and still has a `GUEST_REPORT:` rule, replace only that rule with the shipped idle-notice rule from `prompts/resident.md`. If that idle-notice rule is already present, remove the obsolete receipt rule. Preserve other lines and tell the operator what changed.
-4. The new prompts take effect after restart. Helpers resumed from old sessions can retain their saved prompt. A fresh launch uses the new prompt.
+4. Tell the operator the new prompts take effect after a restart, and that a helper resumed from an old session can keep its saved prompt until it is launched fresh.
 
 **Leftover check:** Operator procedures that parse `GUEST_REPORT` now use the task receipt after the native idle notice.
 

@@ -134,15 +134,20 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
 
     let delivery: ReportDelivery = 'no_channel';
     if (recorded.conversation) {
-      const config = readSettledConfig(dir);
-      const notice = loadMessages(dir, config.language).t('task_report_truncated');
-      const [source, destination] = recorded.conversation.split(':');
-      const [chatId, thread] = destination.split('~');
-      const label = threadRecords(dir).filter(task => task.conversation === recorded.conversation).length >= 2
-        && await classifyChat(dir, config, source, chatId, thread) === 'shared'
-        ? `${recorded.handle} · ${clip(safeForLLM(recorded.title), 60)}: ` : '';
-      delivery = deliveryOf(await sendToOwnedChat(dir, `${source}:${chatId}`, label + text, { config, thread, discordCapNotice: notice }));
-      settleReportDelivery(dir, id, report, delivery);
+      // The report is already stored and recorded, so a send error becomes a
+      // receipt rather than an exit the author would read as "not stored".
+      try {
+        const config = readSettledConfig(dir);
+        const notice = loadMessages(dir, config.language).t('task_report_truncated');
+        const [source, destination] = recorded.conversation.split(':');
+        const [chatId, thread] = destination.split('~');
+        const label = threadRecords(dir).filter(task => task.conversation === recorded.conversation).length >= 2
+          && await classifyChat(dir, config, source, chatId, thread) === 'shared'
+          ? `${recorded.handle} · ${clip(safeForLLM(recorded.title), 60)}: ` : '';
+        delivery = deliveryOf(await sendToOwnedChat(dir, `${source}:${chatId}`, label + text, { config, thread, discordCapNotice: notice }));
+      } catch { delivery = 'failed'; }
+      // An unsettled record keeps `pending`, which the resident reports without resending.
+      try { settleReportDelivery(dir, id, report, delivery); } catch {}
     }
     return { report, task: id, recorded: true, result_rev: recorded.result_rev, delivery };
   } catch (error) {

@@ -717,7 +717,8 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     if (verb === 'close' || verb === 'check-result') {
       digest = { ...(digest as object), ...closeLearning(dir, record) };
     }
-    if (report?.autoClose && HELPER_OWNER.test(report.author)) {
+    // A named approver, a check or a proposal's admin decision still owns closure.
+    if (report?.autoClose && HELPER_OWNER.test(report.author) && !record.approver && !record.check && record.kind !== 'proposal') {
       const tags = typeof record.tags === 'string' ? JSON.parse(record.tags) as string[] : record.tags;
       if (tags?.includes('auto-close')) finish(record, 'confirmed', report.author, 'Decision-free helper result', now);
     }
@@ -788,7 +789,7 @@ function checkFlag(flags: TaskFlags): string | null {
 }
 
 export function eligibleHelper(dir: string, conversation: string | null, folder: string) {
-  if (conversation !== null) checkKey(conversation);
+  try { if (conversation !== null) checkKey(conversation); } catch { throw new Error('invalid_conversation'); }
   const baseChat = (key: string | null) => key === null ? null : key.split('~', 1)[0];
   const chat = baseChat(conversation);
   const records = readTasks(dir);
@@ -808,7 +809,8 @@ export function eligibleHelper(dir: string, conversation: string | null, folder:
   const bgId = handoff[2].slice(0, 8);
   const state = readHelperJob(bgId);
   if (!state) return refused('job_state_unreadable');
-  if ((state.worktreePath ?? state.cwd) !== folder) return refused('different_folder');
+  const jobFolder = state.worktreePath ?? state.cwd;
+  if (typeof jobFolder !== 'string' || path.resolve(jobFolder) !== path.resolve(folder)) return refused('different_folder');
   if (records.some(record => record.owner === candidate.owner && isInProgress(record))) return refused('helper_busy');
   return { eligible: true, helper: candidate.owner, bg_id: bgId };
 }

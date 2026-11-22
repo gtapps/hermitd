@@ -209,6 +209,16 @@ for (const scalarTags of [false, true]) {
   });
 }
 
+test('auto-close leaves a named approver or a check to close the record', async () => {
+  const f = taskFixture(); try {
+    for (const extra of [['--approver', 'discord:u2'], ['--check', 'true']]) {
+      const { id } = await f.open(['--owner', author, '--tags', '["task","auto-close"]', ...extra]);
+      expect(await f.ok('report', args(id, 'result'), 'Verdict\n- Step')).toMatchObject({ recorded: true });
+      expect(decodeTask(f.text(id)).status).toBe('open');
+    }
+  } finally { f.cleanup(); }
+});
+
 test('an empty procedure does not create a file and a missing delimiter preserves the whole body', async () => {
   const f = taskFixture(); try {
     const { id } = await f.open(['--owner', author]);

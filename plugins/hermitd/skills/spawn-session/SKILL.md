@@ -202,7 +202,7 @@ the caller so it can handle a resume that could not start.
    Still listed at the deadline: end without resuming and report that outcome.
    Then call `TaskStop` on the old watch entry's `poll_task_id` when present;
    an error means it already exited.
-3. Read each affected record’s current `report_id` with `task list --id <T-id> --json` as its baseline. Include the task id, `helper:<n>` and operator language in the instructions. From the project root, run
+3. Read each affected record’s current `report_id` with `task list --all --id <T-id> --json` as its baseline. Include the task id, `helper:<n>` and operator language in the instructions. From the project root, run
    `claude --bg --resume <sessionId> '<instructions>'` with no other flag.
    Apply the launch limits' `'\''` quoting rule to every apostrophe in the
    instructions. The saved options include the helper system prompt; extra
