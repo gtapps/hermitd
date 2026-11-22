@@ -201,7 +201,10 @@ describe('transcribe verb', () => {
         requests.push(String(url));
         expect(init?.signal).toBeInstanceOf(AbortSignal);
         expect(init?.body).toBeInstanceOf(FormData);
-        expect((init!.body as FormData).get('model')).toBe(requests.length === 1 ? 'whisper-large-v3-turbo' : 'whisper-1');
+        const body = init!.body as FormData;
+        expect(body.get('model')).toBe(requests.length === 1 ? 'whisper-large-v3-turbo' : 'gpt-transcribe');
+        expect(body.get('language')).toBe(requests.length === 1 ? 'en' : null);
+        expect(body.get('languages[]')).toBe(requests.length === 1 ? null : 'en');
         return requests.length === 1 ? new Response('', { status: 503 }) : Response.json({ text: 'cloud words' });
       }) as unknown as typeof fetch,
     });

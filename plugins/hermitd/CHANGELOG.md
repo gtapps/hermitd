@@ -6,6 +6,10 @@
 
 - `/hermitd:spawn-session --environment <name>` starts a task-bound helper on another of the operator's machines through its Remote Control spawn server. Its report is stored on the task by a hook and never enters the agent's context. Enroll a machine with `/hermitd:hermit-settings remote-environments <name> <link>`.
 
+### Changed
+
+- The OpenAI voice-note fallback uses `gpt-transcribe` instead of `whisper-1`, which OpenAI removes on 2027-02-26.
+
 ### Upgrade Instructions
 
 1. Nothing to write: the finalizer adds `remote_environments` (`{}`) from the template defaults when it is missing, and permissions sync adds the `cloud-session lookup` allow entry.
