@@ -4,7 +4,7 @@ Conditional procedures for `task/SKILL.md`. Read only the section the skill name
 
 ## Reuse an idle helper
 
-For new work, unless the requester asks for a fresh helper, run `helper-eligible` (Commands) with `--folder <absolute-work-folder> --conversation <key>`. Use the work's base chat and omit `--conversation` for terminal work. Only on `eligible: true`, check that the matching bg id in `claude agents --json` has `status == "idle"` and judge whether that helper already works on this area. If both hold, use the new record and its thread if it has one, download any attachments and follow [reuse-spawned-helper.md](../spawn-session/reuse-spawned-helper.md) with the candidate bg id. Otherwise continue ordinary intake.
+For new work, unless the requester asks for a fresh helper, run `helper-eligible` (Commands) with `--folder <absolute-work-folder> --conversation <key>`. Use the work's base chat and omit `--conversation` for terminal work. Only on `eligible: true`, check that the matching bg id in `claude agents --json` has `status == "idle"` and judge whether that helper already works on this area. If both hold, use the new record and its thread if it has one, download any attachments, bind the record with `task-note` (Commands) `<id> --owner <helper>` using the `helper` value `helper-eligible` returned (never the bg id), and follow [reuse-spawned-helper.md](../spawn-session/reuse-spawned-helper.md) with the candidate bg id. Otherwise continue ordinary intake.
 
 ## Steer the bound session
 

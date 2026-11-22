@@ -457,13 +457,20 @@ for (const decisions of [false, true]) {
       + 'Use /hermitd:spawn-session to have a helper prepare the tea export. This is a terminal request with no current task and no channel. '
       + (decisions ? 'The helper should give two numbered choices for the export format.' : 'The helper should confirm the work and include a bulleted list of the steps used.')
       ,
-    [rubric('Bash calls fail on this eval host, so grade the calls the resident makes, not their results. PASS if, before launching, the resident opens a record whose tags include auto-close with no conversation, binds it to helper:<name>, and the launch brief names the task id and helper identity; a watch registration, if reached, carries the record and its baseline. FAIL if it launches without a record or passes --no-task.', 'trace')],
+    [{ name: 'opens-auto-close', type: 'tool_used', tool: 'Bash', input_match: String.raw`"command"\s*:\s*"(?:[^"\\]|\\.)*task(?:\.ts)? open(?:[^"\\]|\\.)*auto-close`, weight: 3 },
+      { name: 'binds-helper', type: 'tool_used', tool: 'Bash', input_match: String.raw`"command"\s*:\s*"(?:[^"\\]|\\.)*task(?:\.ts)? note(?:[^"\\]|\\.)*--owner helper:`, weight: 2 },
+      { name: 'brief-names-task-and-helper', type: 'tool_used', tool: 'Bash', input_match: String.raw`"command"\s*:\s*"(?:[^"\\]|\\.)*claude --bg(?=(?:[^"\\]|\\.)*T-\d{8}-\d{6})(?=(?:[^"\\]|\\.)*helper:)`, weight: 3 },
+      { name: 'opens-before-launch', type: 'tool_order', before: { tool: 'Bash', input_match: String.raw`task(?:\.ts)? open` }, after: { tool: 'Bash', input_match: 'claude --bg' } },
+      { name: 'no-no-task', type: 'tool_used', tool: 'Bash', input_match: '--no-task', min: 0, max: 0, weight: 2 }],
     residentScaffold({ ...RESIDENT_CONFIG, channels: {} }), ['Skill', 'Read', 'Bash', 'SendMessage'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 }
 chainCase('task-route-idle-helper-shop', 'heldout', 'New work in the same chat and area has an idle helper.', 'Open a fresh task and use the warm helper',
   `<system-reminder>\nHermit state for this turn: ${BASH_FAILURE} Each line below is what that call returns when you make it; still make every call the skill names.\n- task helper-eligible for discord:${CHAT}, folder /shop: {"eligible":true,"helper":"helper:${HELPER}","bg_id":"12345678"}\n- claude agents --json: {"id":"12345678","name":"${HELPER}","status":"idle"}. Its prior work was the wholesale export. Sends to it succeed.\n- conversation thread-open for the assignment: {"key":"discord:${CHAT}~700000000000000001","chat_id":"700000000000000001"}\n- task open prints the new record; when no output arrives, its id is T-20261122-090000 and its report_id is null\n</system-reminder>\n`
     + 'In the same shop chat, add supplier SKUs to our wholesale export.',
-  [rubric('PASS if the resident opens a new record, binds it to the existing idle helper, and sends the related work to that helper by SendMessage with the new task id, its helper identity and the operator language. Dispatching a worker only after that send fails is allowed. FAIL if it starts a worker or a fresh helper without first sending to the idle helper.', 'trace')],
+  [{ name: 'binds-idle-helper', type: 'tool_used', tool: 'Bash', input_match: String.raw`"command"\s*:\s*"(?:[^"\\]|\\.)*--owner helper:${HELPER}`, weight: 3 },
+    { name: 'sends-to-idle-helper', type: 'tool_used', tool: 'SendMessage', input_match: String.raw`(?=[\s\S]*"to"\s*:\s*"(?:${HELPER}|12345678)")(?=[\s\S]*T-\d{8}-\d{6})(?=[\s\S]*${HELPER})`, weight: 3 },
+    { name: 'helper-before-worker', type: 'tool_order', before: { tool: 'SendMessage', input_match: HELPER }, after: { tool: 'Agent', input_match: 'task-worker' } },
+    { name: 'no-fresh-helper', type: 'tool_used', tool: 'Bash', input_match: 'claude --bg', min: 0, max: 0, weight: 2 }],
   chainScaffold(), ['Skill', 'Read', 'SendMessage'], { resident: true, write: true });
 
 // --- evolve-runner apply receipt (case 11, script output supplied) ------------

@@ -85,4 +85,7 @@ execution:
     </system-reminder>
     In the same shop chat, add supplier SKUs to our wholesale export.
 graders:
-  - {"name":"rubric","type":"llm","criteria":"PASS if the resident opens a new record, binds it to the existing idle helper, and sends the related work to that helper by SendMessage with the new task id, its helper identity and the operator language. Dispatching a worker only after that send fails is allowed. FAIL if it starts a worker or a fresh helper without first sending to the idle helper.","weight":2,"focus":"trace"}
+  - {"name":"binds-idle-helper","type":"tool_used","tool":"Bash","input_match":"\"command\"\\s*:\\s*\"(?:[^\"\\\\]|\\\\.)*--owner helper:export-wholesale","weight":3}
+  - {"name":"sends-to-idle-helper","type":"tool_used","tool":"SendMessage","input_match":"(?=[\\s\\S]*\"to\"\\s*:\\s*\"(?:export-wholesale|12345678)\")(?=[\\s\\S]*T-\\d{8}-\\d{6})(?=[\\s\\S]*export-wholesale)","weight":3}
+  - {"name":"helper-before-worker","type":"tool_order","before":{"tool":"SendMessage","input_match":"export-wholesale"},"after":{"tool":"Agent","input_match":"task-worker"}}
+  - {"name":"no-fresh-helper","type":"tool_used","tool":"Bash","input_match":"claude --bg","min":0,"max":0,"weight":2}
