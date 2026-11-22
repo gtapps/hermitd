@@ -12,6 +12,7 @@ const EXPECTED_PATHS = [
   'shutdown_skill',
   'backup',
   'remote',
+  'remote_environments',
   'chrome',
   'auth_mode',
   'voice.prose',
@@ -55,6 +56,9 @@ describe('protected settings paths', () => {
   test('browser launch settings require the settings gate', () => {
     expect(askPathRegex().test('browser.software_webgl')).toBe(true);
     expect(askPathRegex().test('browser.chrome_args')).toBe(true);
+  });
+  test('named remote environments require the settings gate', () => {
+    expect(askPathRegex().test('remote_environments.laptop.local')).toBe(true);
   });
   test('the protected surface stays complete', () => {
     expect(PROTECTED_PATHS).toEqual(EXPECTED_PATHS);

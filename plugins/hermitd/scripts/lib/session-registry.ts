@@ -24,6 +24,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { readRuntimeJson } from './runtime';
 import { defaultConfigDir } from './setup-token';
 import { pidAlive, pidNamespace, procStartOf } from './lockfile';
 
@@ -139,6 +140,23 @@ export function findResident(runtime: any, configDir?: string): SessionEntry | n
   const pid = runtime?.session_pid;
   if (typeof pid !== 'number') return null;
   return readRegistry(configDir).find((e) => e.pid === pid) ?? null;
+}
+
+// The name a peer must address to reach the resident. `peer_name` is only the
+// name the resident *requested* at boot — Claude Code renames a session that
+// collides with a live one already holding it, so the registry entry's own
+// `name` is authoritative and `peer_name` is the fallback for a resident that
+// booted before the `session_pid` stamp existed (or on a host whose registry
+// can't be validated). The registry is read under the resident's own recorded
+// config dir: a guest may have been launched with a different CLAUDE_CONFIG_DIR.
+// Empty means there is no addressable resident.
+export function residentPeerName(agentDir: string): string {
+  const runtime = readRuntimeJson(path.resolve(agentDir, 'state'));
+  if (!runtime) return '';
+  const configDir = typeof runtime.config_dir === 'string' && runtime.config_dir ? runtime.config_dir : undefined;
+  const registered = findResident(runtime, configDir);
+  if (registered && typeof registered.name === 'string' && registered.name) return registered.name;
+  return typeof runtime.peer_name === 'string' ? runtime.peer_name : '';
 }
 
 /**

@@ -12,6 +12,14 @@ test('standalone clear settings are validated and the retired flag is ignored', 
   expect(validate({ tasks: { queue_nudge_minutes: -1 } }).errors.some(e => e.includes('queue_nudge_minutes'))).toBe(true);
 });
 
+test('remote environment names and IDs validate', () => {
+  const errors = (environments: unknown) =>
+    validate({ remote_environments: environments }).errors.filter(error => error.startsWith('remote_environments'));
+  expect(errors({ 'Laptop.local_1-2': 'env_Ab12' })).toEqual([]);
+  expect(errors({ 'bad name': 'env_Ab12' })).toEqual(['remote_environments: invalid name "bad name"']);
+  expect(errors({ laptop: 'session_Ab12' })).toEqual(['remote_environments.laptop: must be an env_ ID']);
+});
+
 function configAt(dotted: string, value: unknown): Record<string, unknown> {
   return dotted.split('.').reverse().reduce<Record<string, unknown> | unknown>(
     (nested, key) => ({ [key]: nested }), value,

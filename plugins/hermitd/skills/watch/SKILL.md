@@ -26,7 +26,7 @@ Classes:
 /hermitd:watch <stream-command>           # start ad-hoc stream
 /hermitd:watch enable <id> --answer <a>  # [internal] turn on a staged watch (config-watch.md)
 /hermitd:watch session <name|glob> [note] [--record <T-id> --prior-report <id|null>] [--proposal <task-id>] [--fresh-launch] [--implement] [--retry] [--id <bg-id>] # watch local session(s) until their next idle notice
-/hermitd:watch notice <text>              # [internal] handle a watched-session notice
+/hermitd:watch notice <text>              # [internal] handle a watched-session or cloud-report notice
 /hermitd:watch start                      # activate the config watch monitor
 /hermitd:watch stop [id]                  # stop by id (or auto if 1 ad-hoc watch)
 /hermitd:watch stop --all                 # stop all ad-hoc watches
@@ -140,6 +140,7 @@ Read `config.json` → `monitors[]`, `state/watch-monitor.runtime.json`, and `st
 
 ### Handling notices
 
+For `CLOUD_REPORT_STORED` or `CLOUD_REPORT_FAILED`, read [notices.md](notices.md) § Handling cloud report notices.
 For a background completion matching `poll_task_id`, read [notices.md](notices.md) § Handling helper poll exits first.
 Check Monitor expiry below before self-exit. For other Monitor completions, read
 [notices.md](notices.md) § Handling self-exit notifications. For a watched-session idle

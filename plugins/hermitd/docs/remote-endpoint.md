@@ -100,3 +100,23 @@ status — the server's TUI redraws continuously and floods any follower.
 - **This recipe is disposable by design.** Server mode, capacity limits and
   resume flags all point at Anthropic shipping a supervised daemon; when that
   lands, delete the unit and keep using the CLI.
+
+## Use it as a helper environment
+
+On the machine that will run the helper, open a trusted project folder with a
+committed checkout and start the Remote Control spawn server:
+
+```bash
+claude remote-control --spawn worktree --permission-mode auto
+```
+
+Copy the environment link and enroll it on the resident with
+`/hermitd:hermit-settings remote-environments <name> <link>`. The resident
+needs `remote: true` and a claude.ai login. Ask the resident to spawn a helper
+on that environment with `/hermitd:spawn-session <work> --environment <name>`.
+
+Work queues while the machine is offline. Anyone signed into the account can
+start sessions in the enrolled folder. A wrong environment ID behaves like
+`claude --cloud`: a hosted session in the operator's account receives the
+committed repo from the resident's launch folder. Check the helper's placement
+when reporting status.

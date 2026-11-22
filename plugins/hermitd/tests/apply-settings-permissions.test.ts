@@ -414,6 +414,7 @@ describe('literal-path hermitd-run grants', () => {
     'Bash(.hermit/bin/hermitd-run rc-server stop)',
     'Bash(.hermit/bin/hermitd-run rc-server status)',
     'Bash(.hermit/bin/hermitd-run rc-server gc)',
+    'Bash(.hermit/bin/hermitd-run cloud-session lookup *)',
     'Bash(.hermit/bin/hermitd-run later list *)',
     'Bash(.hermit/bin/hermitd-run later cancel *)',
     'Bash(.hermit/bin/hermitd-run later verdict *)',

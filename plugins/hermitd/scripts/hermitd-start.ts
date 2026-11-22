@@ -38,7 +38,7 @@ import { artifactGrantApplies, generatedAutoMode, mergeOperatorAutoMode, operato
 import { overlayHooks } from './lib/settings/overlay-hooks';
 import { registerProject } from './lib/host-registry';
 import { writeFileAtomic } from './lib/md-write';
-import { renderTemplate } from './lib/render-template';
+import { renderHelperPrompt } from './lib/helper-prompt';
 import { buildResidentPrompt, resolveResumeTarget } from './lib/resident-prompt';
 export { resolveResumeTarget } from './lib/resident-prompt';
 
@@ -146,6 +146,7 @@ const DEFAULT_CONFIG: Json = {
   voice: { style: null, prose: null },
   channels: {},
   remote: true,
+  remote_environments: {},
   auth_mode: null,
   model: 'sonnet',
   effort: null,
@@ -745,7 +746,7 @@ function writeSystemPrompts(residentName: string): void {
   // leftover check: a stray `{{...}}` there must not stop boot.
   const helper = helperOverride !== null
     ? Object.entries(vars).reduce((text, [key, value]) => text.replaceAll(`{{${key}}}`, value), helperOverride)
-    : `${renderTemplate(readShippedPrompt('helper.md'), vars)}\n${rules}`;
+    : `${renderHelperPrompt(readShippedPrompt('helper.md'), 'local', vars)}\n${rules}`;
   writeFileAtomic(path.resolve(STATE_DIR, 'helper-system-prompt.md'), helper);
   writeFileAtomic(path.resolve(STATE_DIR, 'resident-system-prompt.md'), resident);
 }

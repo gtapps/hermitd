@@ -16,6 +16,7 @@ const CROSS_READERS: Record<string, Record<string, ReadKind>> = {
     'task -> watch/session-watch.md': 'commands',
     'task -> watch/notices.md': 'commands',
     'task -> spawn-session/reuse-spawned-helper.md': 'commands',
+    'task -> spawn-session/cloud-environment.md': 'commands',
     'task -> proposal-create/apply.md': 'commands',
     'hermit-settings -> proposal-create/apply.md': 'prose-only',
     'watch -> channel-responder/questions.md': 'prose-only',

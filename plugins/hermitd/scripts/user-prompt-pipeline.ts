@@ -60,6 +60,7 @@ import { run as harnessCommand } from './lib/prompt-stages/harness-command';
 import { run as skillRelay } from './lib/prompt-stages/skill-relay';
 import { run as firstChat } from './lib/prompt-stages/first-chat';
 import { run as harnessVerify } from './lib/prompt-stages/harness-verify';
+import { run as cloudReport } from './lib/prompt-stages/cloud-report';
 import { run as shutdownGate } from './lib/prompt-stages/shutdown-gate';
 import { run as channelStatusResponder } from './lib/prompt-stages/channel-status-responder';
 
@@ -95,11 +96,13 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     // Defensive parse: stages that don't need the payload still run on bad input,
     // exactly as stop-pipeline.ts does.
     let prompt: string | null = null;
+    let promptId: string | null = null;
     let transcript: string | null = null;
     let sessionId: string | null = null;
     try {
       const payload = JSON.parse(raw);
       prompt = payload && typeof payload.prompt === 'string' ? payload.prompt : null;
+      promptId = typeof payload?.prompt_id === 'string' && payload.prompt_id ? payload.prompt_id : null;
       transcript = ccTranscriptPath(payload);
       sessionId = ccSessionId(payload);
     } catch {
@@ -126,6 +129,7 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
       dir,
       harnessMode,
       sessionId,
+      promptId,
       prompt,
       get envelope() {
         if (envelopeCache === undefined) envelopeCache = parseChannelEnvelope(prompt, this.config());
@@ -187,6 +191,8 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     // A guest's own prompts still receive context, but cannot control the resident.
     // Its channel messages never get this far: the resident gate above blocks them.
     if (guest) return;
+    await stage('cloud-report', cloudReport, ctx);
+    if (blockReason) return;
 
     const rt = ctx.runtime();
     const shutdownPending = !!rt && !!rt.shutdown_requested_at && !rt.shutdown_completed_at;

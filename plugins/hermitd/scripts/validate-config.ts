@@ -10,6 +10,7 @@ import { validatePrecheckValue, validatePrecheckTimeout, BUILTIN_REFLECT, BUILTI
 import { ENV_VAR_RE, DIRECT_SEND_CHANNELS, isDict } from './lib/channel-config';
 import { isKey } from './lib/conversation-key';
 import { toPushUrl } from './lib/backup';
+import { ENV_ID, ENV_NAME } from './lib/cloud-bindings';
 
 type Json = any;
 
@@ -710,6 +711,18 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
             }
           }
         }
+      }
+    }
+  }
+
+  const environments = config.remote_environments;
+  if (environments && typeof environments === 'object' && !Array.isArray(environments)) {
+    for (const [name, id] of Object.entries(environments)) {
+      if (!ENV_NAME.test(name)) {
+        errors.push(`remote_environments: invalid name ${JSON.stringify(name)}`);
+      }
+      if (typeof id !== 'string' || !ENV_ID.test(id)) {
+        errors.push(`remote_environments.${name}: must be an env_ ID`);
       }
     }
   }

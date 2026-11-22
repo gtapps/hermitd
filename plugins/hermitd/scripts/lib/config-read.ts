@@ -64,6 +64,7 @@ export const TABLE: Record<string, Spec> = {
   voice: shape({ style: str(null, { enum: VOICE_STYLE }), prose: str(null) }),
   channels: map,
   remote: bool(true),
+  remote_environments: map,
   auth_mode: str(null, { enum: AUTH_MODE }),
   model: str('sonnet', { nullable: true }),
   effort: str(null),

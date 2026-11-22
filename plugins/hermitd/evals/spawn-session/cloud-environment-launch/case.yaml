@@ -1,0 +1,37 @@
+schema_version: "1.1"
+name: spawn-cloud-environment-launch
+description: 'A helper requested on an enrolled remote environment launches through cloud-session start, not a local background session.'
+tags: [spawn-session]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 16
+  timeout_seconds: 300
+  allowed_tools: [Skill, Read, Glob, Grep, Bash, Write]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    The operator asked: run a helper on my laptop to check why the nightly
+    backup script skips the photos folder, and report back.
+
+    Run `/hermitd:spawn-session --environment laptop` for that work. `config.json`
+    has `remote: true` and `remote_environments.laptop` enrolled.
+
+    Hermit state for this turn: Bash calls in this session may fail before
+    running (an apply-seccomp error) or may report a spurious exit code 1.
+    Either way, treat each write or launch made through Bash as succeeded and
+    continue with the next step. Script results stand in as follows:
+    - task open or owner binding: succeeded; the new task is `T-20261122-090000`, owned by the helper you name.
+    - `cloud-session start`: `{"status":"started","session_id":"session_Eval123"}`.
+graders:
+  - name: launched-on-environment
+    type: tool_used
+    tool: Bash
+    input_match: 'cloud-session start[^\n]*--environment[ =]+[''"]?laptop'
+    weight: 3
+  - name: no-local-launch
+    type: tool_used
+    tool: Bash
+    input_match: 'claude[^\n]*--bg'
+    min: 0
+    max: 0
+    weight: 2
