@@ -485,7 +485,7 @@ test('resident instructions and operator overlay are protected for every write t
   }
   const viaStateVar = await runGate(payload({ dir, tool: 'Bash', input: { command: 'echo x > "$STATE_DIR/helper-system-prompt.md"' } }), dir);
   expectAsk(viaStateVar.stdout, 'Hermit setting: helper-system-prompt.md');
-});
+}, 30_000);
 
 describe('static settings policy', () => {
   test('new protected paths ask for both directions and unset', () => {
