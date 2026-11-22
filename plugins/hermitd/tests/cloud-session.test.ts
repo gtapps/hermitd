@@ -57,7 +57,7 @@ test('start refuses disabled remote control and unknown environments before tmux
   expect(fs.existsSync(f.log)).toBe(false);
 }));
 
-test('start uses argv settings and registers the helper; lookup prunes a closed task', withDir(async root => {
+test('start uses argv settings and registers the helper; lookup skips a closed task but keeps its binding', withDir(async root => {
   const f = fixture(root);
   const launched = await f.run('start', [...f.startArgs, '--model', 'opus', '--effort', 'high']);
   expect(launched.stdout).not.toContain('https://');
@@ -95,7 +95,7 @@ test('start uses argv settings and registers the helper; lookup prunes a closed 
     ...task, status: 'closed', closed_by: 'cancelled', closed_at: new Date().toISOString(),
   }));
   expect(JSON.parse((await f.run('lookup', ['--task', f.task])).stdout)).toEqual({ status: 'no_match' });
-  expect(readCloudBindings(f.dir)).toEqual([]);
+  expect(readCloudBindings(f.dir)).toHaveLength(1);
 }));
 
 test('start cleans up after a login refusal', withDir(async root => {
@@ -155,6 +155,11 @@ test('ingest binds the sender and task, posts only a receipt, and ignores the sa
     const record = readTasks(f.dir)[0];
     expect(record.result_rev).toBe(before + 1);
     expect(fs.readFileSync(path.join(f.dir, 'helper-reports', record.report_id + '.md'), 'utf8')).toBe(body);
+    // A report after the task closed still matches its binding and is refused, never passed through.
+    fs.writeFileSync(path.join(f.dir, 'tasks', f.task + '.md'), encodeTask({
+      ...readTasks(f.dir)[0], status: 'closed', closed_by: 'cancelled', closed_at: new Date().toISOString(),
+    }));
+    expect(await ingest(f.task, 'late')).toEqual({ status: 'failed', reason: 'closed' });
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
   }
@@ -162,5 +167,6 @@ test('ingest binds the sender and task, posts only a receipt, and ignores the sa
     `CLOUD_REPORT_FAILED ${f.task} wrong_task`,
     `CLOUD_REPORT_FAILED ${f.task} not_owner`,
     `CLOUD_REPORT_STORED ${f.task}`,
+    `CLOUD_REPORT_FAILED ${f.task} closed`,
   ]);
 }));

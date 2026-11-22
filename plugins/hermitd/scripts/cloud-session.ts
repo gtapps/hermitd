@@ -20,6 +20,9 @@ import { type Binding, bindingFile, bridgeSessionId, ENV_ID, parseReport, readCl
 const LOGIN_RE = /must be logged in|claude\.ai subscription|please run \/login/i;
 const LAUNCH_TIMEOUT_MS = 60_000;
 const POLL_MS = 250;
+// Bindings outlive their task, so a late report is still intercepted and refused as
+// closed instead of reaching the resident's model. The cap only bounds the file.
+const MAX_BINDINGS = 200;
 
 type StartOptions = {
   environment: string;
@@ -47,12 +50,6 @@ async function withBindingLock<T>(dir: string, operation: () => T | Promise<T>):
   } finally {
     releaseLock(lock);
   }
-}
-
-function pruneClosed(dir: string, entries: Binding[]): Binding[] {
-  if (!entries.length) return entries;
-  const live = new Set(readTasks(dir).filter(task => task.status === 'open').map(task => task.id));
-  return entries.filter(entry => live.has(entry.task));
 }
 
 export async function start(dir: string, options: StartOptions, timeoutMs = LAUNCH_TIMEOUT_MS) {
@@ -117,22 +114,18 @@ export async function start(dir: string, options: StartOptions, timeoutMs = LAUN
     environment: options.environment, started_at: new Date().toISOString(), ingested: [],
   };
   await withBindingLock(dir, () => {
-    const entries = pruneClosed(dir, readCloudBindings(dir));
-    saveCloudBindings(dir, [...entries, binding]);
+    saveCloudBindings(dir, [...readCloudBindings(dir), binding].slice(-MAX_BINDINGS));
   });
   return { status: 'started', session_id: sessionId };
 }
 
 function lookup(dir: string, flag: string, value: string) {
-  return withBindingLock(dir, () => {
-    const all = readCloudBindings(dir);
-    const live = pruneClosed(dir, all);
-    if (live.length !== all.length) saveCloudBindings(dir, live);
-    const entry = live.findLast(row => flag === '--task' ? row.task === value : row.session_id === bridgeSessionId(value));
-    if (!entry) return { status: 'no_match' };
-    const { task, helper, environment, session_id } = entry;
-    return { task, helper, environment, session_id };
-  });
+  const open = new Set(readTasks(dir).filter(task => task.status === 'open').map(task => task.id));
+  const entry = readCloudBindings(dir).findLast(row => open.has(row.task)
+    && (flag === '--task' ? row.task === value : row.session_id === bridgeSessionId(value)));
+  if (!entry) return { status: 'no_match' };
+  const { task, helper, environment, session_id } = entry;
+  return { task, helper, environment, session_id };
 }
 
 const REPORT_FAILURES = new Set([
