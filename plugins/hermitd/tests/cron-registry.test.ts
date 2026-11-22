@@ -10,7 +10,7 @@
 // routine as needing (re-)creation with NO deletes (durable:false crons already
 // died with the prior process); an entry aged past the conservative re-register
 // threshold is recreated even with unchanged config, so a long-lived process can
-// never silently ride a routine past CC's real 7-day auto-expiry cliff.
+// never silently ride a routine past CC's 30-day recurring-task expiry.
 
 import { afterAll, describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
