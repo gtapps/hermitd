@@ -8,6 +8,8 @@ import { mutateTask } from '../scripts/lib/tasks';
 import { browserUserAgent } from '../scripts/lib/browser-runtime';
 import { freshDirFactory, writeConfig } from './helpers/workdir';
 import { PLUGIN_ROOT } from './helpers/run';
+
+const DOCKER_WEBGL = ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader-webgl'];
 const { freshDir, cleanup } = freshDirFactory('browser-agent-');
 const sockets: string[] = [];
 afterAll(() => { cleanup(); for (const dir of sockets) fs.rmSync(dir, { recursive: true }); });
@@ -241,7 +243,7 @@ test('persistent commands require a live claim, renew it and preserve argv and e
   const result = await run(['--task', 'task-a', 'open', 'https://example.com/a?x=1&y=two words'], { TEST_EXIT: '7' });
   expect(result.code).toBe(7);
   expect(result.data.argv).toEqual(['open', 'https://example.com/a?x=1&y=two words']);
-  expect(result.data.env).toMatchObject({ DISPLAY: ':17', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_PROFILE: '/home/claude/.claude/browser/profile', AGENT_BROWSER_ARGS: ['--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled', '--window-size=500,1082', '--window-position=0,0'].join('\n'), AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' });
+  expect(result.data.env).toMatchObject({ DISPLAY: ':17', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_PROFILE: '/home/claude/.claude/browser/profile', AGENT_BROWSER_ARGS: ['--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled', ...DOCKER_WEBGL, '--window-size=500,1082', '--window-position=0,0'].join('\n'), AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' });
   expect(browserLease('status', undefined, dir).expires_at!).toBeGreaterThan(before);
 });
 
@@ -385,17 +387,50 @@ test('container executable path follows the managed image marker', async () => {
   const oldImage = await run(argv);
   expect(oldImage.data.env.AGENT_BROWSER_EXECUTABLE_PATH).toBe('/opt/chrome-linux64/chrome');
   expect(oldImage.data.env.AGENT_BROWSER_ARGS.split('\n')).toEqual([
-    '--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled',
+    '--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled', ...DOCKER_WEBGL,
   ]);
   fs.writeFileSync(marker, 'display=plugin\nchrome=156.0.8078.80\n');
   const result = await run(argv);
   expect(result.data.env.AGENT_BROWSER_ARGS.split('\n')).toEqual([
-    '--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled',
+    '--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled', ...DOCKER_WEBGL,
     '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
   ]);
   expect(await ensureDisplay(dir, { deployment: 'container', platform: 'linux', marker, available: false })).toEqual({ blocker: 'display_start_failed' });
   fs.writeFileSync(marker, 'display=plugin\nchrome=156.bad\n');
   expect((await run(argv)).data.env.AGENT_BROWSER_ARGS).not.toContain('--user-agent=');
+});
+
+test('browser config turns software WebGL off and appends operator Chrome flags', async () => {
+  const { root, run } = fixture();
+  writeConfig(root, { browser: { software_webgl: false, chrome_args: ['--lang=pt-PT', '--disable-features=A,B', '--no-sandbox'] } });
+  const result = await run(['--session', 'public', 'snapshot']);
+  expect(result.data.env.AGENT_BROWSER_ARGS.split('\n')).toEqual([
+    '--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled',
+    '--lang=pt-PT', '--disable-features=A,B', '--no-sandbox',
+  ]);
+});
+
+test('browser config refuses Chrome flags that override the wrapper policy', async () => {
+  const refused: [unknown, string][] = [
+    ['--remote-debugging-address=0.0.0.0', '--remote-debugging-address'], ['--host-resolver-rules=MAP * 1.2.3.4', '--host-resolver-rules'],
+    ['--load-extension', '--load-extension'], ['--user-data-dir=/tmp/x', '--user-data-dir'], ['--disable-web-security', '--disable-web-security'],
+    ['--lang=pt\n--headless', '--lang'], ['--lang=pt, --headless', '--lang'], ['--headless ', '--headless'], ['lang=pt', 'lang'], [7, 'not_a_string'],
+  ];
+  for (const [arg, flag] of refused) {
+    const { root, run, calls } = fixture();
+    writeConfig(root, { browser: { chrome_args: [arg] } });
+    expect(await run(['--session', 'public', 'snapshot'])).toMatchObject({ code: 1, data: { error: `browser_arg_refused:${flag}` } });
+    expect(calls()).toEqual([]);
+  }
+  const { dir, root, run } = fixture();
+  const data = path.join(dir, '../browser-data');
+  const install = path.join(data, '0.41.0-156.0.8078.80');
+  fs.mkdirSync(path.join(install, 'chrome'), { recursive: true });
+  for (const file of ['agent-browser', 'chrome/chrome']) fs.writeFileSync(path.join(install, file), '', { mode: 0o755 });
+  fs.writeFileSync(path.join(install, 'config.json'), '{}');
+  fs.writeFileSync(path.join(install, 'complete.json'), '{"binary":"agent-browser","chrome":"chrome/chrome"}');
+  writeConfig(root, { browser: { chrome_args: ['--no-sandbox'] } });
+  expect(await run(['--session', 'public', 'snapshot'], {}, { deployment: 'host', data, platform: 'linux' })).toMatchObject({ code: 1, data: { error: 'browser_arg_refused:--no-sandbox' } });
 });
 
 test('host anonymous sessions derive the Chrome major from the installed directory', async () => {
@@ -409,7 +444,7 @@ test('host anonymous sessions derive the Chrome major from the installed directo
   const options = { deployment: 'host' as const, data, platform: 'linux' as const };
   const result = await run(['--session', 'public', 'snapshot'], {}, options);
   expect(result.data.env.AGENT_BROWSER_ARGS.split('\n')).toEqual([
-    '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled',
+    '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled', '--enable-unsafe-swiftshader',
     '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
   ]);
   fs.renameSync(install, path.join(data, '0.41.0-preview-157.0.1.2'));

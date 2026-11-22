@@ -58,6 +58,8 @@ Read upstream command guidance with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-a
 
 After a browser restart or an idle close, the next command lands on a blank page. Reopen the task URL and check the page before continuing; the profile keeps sign-ins. A hard kill within about 30 seconds of login can lose the sign-in.
 
+When a page fails at a canvas, editor, map or upload step without a clear error, check WebGL with `eval '!!document.createElement("canvas").getContext("webgl")'` on the same browser. If it prints `false`, report that WebGL is off in the agent's browser and name the `browser.software_webgl` setting; leave any settings change to the operator.
+
 Handle wrapper results before continuing:
 
 | Result | Action |
@@ -73,6 +75,7 @@ Handle wrapper results before continuing:
 | `terminal_only` | Have an admin run the save or delete command at the host terminal. |
 | `name_taken` | On a save, ask for another login name. On a delete, the login belongs to another agent or cannot be read with this agent's key; leave it. |
 | `vault_not_linked` | Report that the Docker vault is outside the persistent volume. See the browser section in troubleshooting. |
+| `browser_arg_refused:<flag>` | Report that `browser.chrome_args` holds a flag the browser refuses, naming it; the operator removes it with `/hermitd:hermit-settings browser-chrome-args`. |
 | `saved_logins_off` | Saved logins are turned off on this install. Use Take over. Change the setting only when asked. |
 | `store_pending` | This task prepared a secret store: repeat `browser-store-copied` with the same name and file, or run `browser-store-copied-cancel` (Commands). |
 

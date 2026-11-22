@@ -7,6 +7,7 @@
 - `hermitd run channel-token` saves a bot token from a hidden terminal prompt.
 
 - `hermitd connector enable` picks a free port when `--port` is omitted on first enable and refuses a port or public address another agent has claimed.
+- `browser.chrome_args` adds extra Chrome flags to the agent's browser, and refuses flags that override the browser's own policy.
 
 ### Changed
 
@@ -23,6 +24,7 @@
 ### Fixed
 
 - Bootstrap installer installs `unzip` before Bun on Linux.
+- WebGL works in the agent's browser on Docker and GPU-less hosts: `browser.software_webgl` (default on) renders it in software. Set it to `false` to turn it off.
 - Background subagents that stop more than once no longer count their earlier usage again in recorded spend.
 - Missing display executables on Linux hosts appear as a pending setup step.
 
