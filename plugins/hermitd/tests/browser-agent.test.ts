@@ -7,9 +7,9 @@ import { browserLease } from '../scripts/lib/browser-lease';
 import { mutateTask } from '../scripts/lib/tasks';
 import { browserUserAgent } from '../scripts/lib/browser-runtime';
 import { freshDirFactory, writeConfig } from './helpers/workdir';
+import { PLUGIN_ROOT } from './helpers/run';
 
 const DOCKER_WEBGL = ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader-webgl'];
-import { PLUGIN_ROOT } from './helpers/run';
 const { freshDir, cleanup } = freshDirFactory('browser-agent-');
 const sockets: string[] = [];
 afterAll(() => { cleanup(); for (const dir of sockets) fs.rmSync(dir, { recursive: true }); });
@@ -414,7 +414,7 @@ test('browser config refuses Chrome flags that override the wrapper policy', asy
   const refused: [unknown, string][] = [
     ['--remote-debugging-address=0.0.0.0', '--remote-debugging-address'], ['--host-resolver-rules=MAP * 1.2.3.4', '--host-resolver-rules'],
     ['--load-extension', '--load-extension'], ['--user-data-dir=/tmp/x', '--user-data-dir'], ['--disable-web-security', '--disable-web-security'],
-    ['--lang=pt\n--headless', '--lang'], ['lang=pt', 'lang'], [7, 'not_a_string'],
+    ['--lang=pt\n--headless', '--lang'], ['--lang=pt, --headless', '--lang'], ['--headless ', '--headless'], ['lang=pt', 'lang'], [7, 'not_a_string'],
   ];
   for (const [arg, flag] of refused) {
     const { root, run, calls } = fixture();

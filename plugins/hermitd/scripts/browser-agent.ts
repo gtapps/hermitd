@@ -382,8 +382,10 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   const webglArgs = config.browser.software_webgl ? ['--enable-unsafe-swiftshader', ...host ? [] : ['--use-gl=angle', '--use-angle=swiftshader-webgl']] : [];
   const chromeArgs: string[] = config.browser.chrome_args;
   for (const arg of chromeArgs) {
-    const flag = typeof arg === 'string' ? arg.split(/[=\r\n]/)[0] : 'not_a_string';
-    const refused = !flag.startsWith('--') || /[\r\n]/.test(arg) || REFUSED_CHROME_ARGS.has(flag) || (host && flag === '--no-sandbox');
+    // Split and trim the way agent-browser reads AGENT_BROWSER_ARGS: newlines, and commas before another `--` flag.
+    const parts = typeof arg === 'string' ? arg.split(/[\r\n]|,(?=[ \t]*--)/).map(part => part.replace(/^[\s,]+|[\s,]+$/g, '')) : [];
+    const flag = parts.length ? parts[0].split('=')[0] : 'not_a_string';
+    const refused = parts.length !== 1 || !flag.startsWith('--') || REFUSED_CHROME_ARGS.has(flag) || (host && flag === '--no-sandbox');
     if (refused && argv.at(-1) !== 'close') { printJson({ error: `browser_arg_refused:${flag}` }); return 1; }
   }
   const baseArgs = [...host ? [] : ['--no-sandbox'], '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled', ...webglArgs, ...chromeArgs];
