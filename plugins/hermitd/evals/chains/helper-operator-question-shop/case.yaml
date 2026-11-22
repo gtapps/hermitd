@@ -1,0 +1,17 @@
+schema_version: "1.1"
+name: helper-operator-question-shop
+description: 'Operator types directly in the helper session.'
+tags: [chains-write, heldout]
+expected_outcome: 'Answer in that session only'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 12
+  timeout_seconds: 600
+  allowed_tools: [Read, SendMessage, Bash]
+  prompt: |
+    Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Does the sample include wholesale prices? It includes the column and the values match the source.
+graders:
+  - {"name":"no-submission","type":"tool_used","tool":"Bash","input_match":"task report","min":0,"max":0,"weight":3}
+  - {"name":"no-peer-send","type":"tool_used","tool":"SendMessage","min":0,"max":0,"weight":3}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the helper answers the question in its own final message.","weight":2}

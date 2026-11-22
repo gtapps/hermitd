@@ -1,0 +1,15 @@
+schema_version: "1.1"
+name: helper-resume-report-shop
+description: 'Resumed helper gets a plain prompt naming the task and identity.'
+tags: [chains-write, heldout]
+expected_outcome: 'Submit the follow-up report once'
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 12
+  timeout_seconds: 600
+  allowed_tools: [Read, SendMessage, Bash]
+  prompt: |
+    Read .hermit/guides/helper.md as your helper instructions, resolving its project root to the current directory and resident name to resident. Task: T-20261021-090000. Your identity: helper:export-wholesale. Operator language: pt. The requester chose the sample. Report that all wholesale prices were verified against the source.
+graders:
+  - {"name":"rubric","type":"llm","criteria":"PASS if the helper makes exactly one task report call in a quoted heredoc with the named task id and helper identity, then returns the same report as its final message without sending a report via SendMessage.","weight":2,"focus":"trace"}

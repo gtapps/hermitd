@@ -67,6 +67,9 @@ approved_rev: null
 approved_by: null
 source: auto-detected
 category: improvement
+report_id: null
+report_kind: null
+delivery: null
 muted: false
 delegated: false
 tags: "[]"
@@ -122,6 +125,9 @@ approved_rev: null
 approved_by: null
 source: auto-detected
 category: improvement
+report_id: null
+report_kind: null
+delivery: null
 muted: false
 delegated: false
 tags: "[]"
@@ -177,6 +183,9 @@ approved_rev: null
 approved_by: null
 source: auto-detected
 category: improvement
+report_id: null
+report_kind: null
+delivery: null
 muted: false
 delegated: false
 tags: "[]"
@@ -232,6 +241,9 @@ approved_rev: null
 approved_by: null
 source: auto-detected
 category: improvement
+report_id: null
+report_kind: null
+delivery: null
 muted: false
 delegated: false
 tags: "[]"
@@ -287,6 +299,9 @@ approved_rev: 0
 approved_by: operator
 source: auto-detected
 category: improvement
+report_id: null
+report_kind: null
+delivery: null
 muted: false
 delegated: false
 tags: "[]"

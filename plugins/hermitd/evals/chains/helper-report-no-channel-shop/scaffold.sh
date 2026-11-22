@@ -32,13 +32,17 @@ cat > '.hermit/state/monitors.runtime.json' <<'HERMIT_FIXTURE'
       "id": "session-export-wholesale-1793030000-a1b2",
       "description": "wholesale stock export",
       "target": "export-wholesale",
-      "record": "T-20261021-090000",
-      "started_at": "2026-10-21T08:30:00Z",
+      "records": [
+        {
+          "record": "T-20261021-090000",
+          "prior_report": null
+        }
+      ],
       "source": "adhoc",
       "class": "peer-idle"
     }
   ],
-  "last_cleared": "2026-10-21T08:00:00Z"
+  "last_cleared": null
 }
 HERMIT_FIXTURE
 mkdir -p "memory"

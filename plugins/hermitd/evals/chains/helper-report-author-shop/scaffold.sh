@@ -29,6 +29,14 @@ cat > '.hermit/OPERATOR.md' <<'HERMIT_FIXTURE'
 
 Runs a small online tea shop alone. Prefers short messages.
 HERMIT_FIXTURE
+mkdir -p ".hermit/bin"
+cat > '.hermit/bin/hermitd-run' <<'HERMIT_FIXTURE'
+#!/usr/bin/env bash
+[[ "$1" == task && "$2" == report ]] || exit 1
+cat >/dev/null
+printf '%s\n' '{"report":"abcdef1234","task":"T-20261021-090000","recorded":true,"result_rev":1,"delivery":"sent"}'
+HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'
 HERMIT_FIXTURE
+chmod +x .hermit/bin/hermitd-run

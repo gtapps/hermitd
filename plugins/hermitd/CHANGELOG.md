@@ -10,6 +10,11 @@
 
 ### Changed
 
+- Full reports in helper sessions, with one idle notice and a bounded receipt for the resident.
+- Short report-backs for relay and terminal tasks, with the full report available on request.
+- Related new work routed to idle helpers in the same chat and folder.
+- `!status` wording of “ready for review” for results awaiting confirmation.
+
 - Quick hatch applies settings without a confirmation prompt and reports the defaults it applied.
 - Setup launches with Claude in Chrome and offers the walk-through first when Chrome is reachable. The walk-through continues when sign-in succeeds.
 - Chrome-assisted pairing is available after an accepted walk-through.
@@ -29,6 +34,12 @@
 ### Upgrade Instructions
 
 1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate drop-rearm-anchor` to remove the old anchor routine from the installed config.
+
+2. If `.hermit/helper-prompt.md` is non-empty and lacks the end-on-report rule, replace only its report section with the shipped `prompts/helper.md` report section. Preserve other lines and any root and resident-name substitutions the operator uses. Tell the operator what changed.
+3. If `.hermit/resident-prompt.md` is non-empty and still has a `GUEST_REPORT:` rule, replace only that rule with the shipped idle-notice rule from `prompts/resident.md`. If that idle-notice rule is already present, remove the obsolete receipt rule. Preserve other lines and tell the operator what changed.
+4. The new prompts take effect after restart. Helpers resumed from old sessions can retain their saved prompt. A fresh launch uses the new prompt.
+
+**Leftover check:** Operator procedures that parse `GUEST_REPORT` now use the task receipt after the native idle notice.
 
 **Leftover check:** Removed the `hermitd:heartbeat-restart` config routine id and the `anchor` and `anchor_age_days` fields from the arm output.
 
