@@ -98,6 +98,21 @@ test('start uses argv settings and registers the helper; lookup skips a closed t
   expect(readCloudBindings(f.dir)).toHaveLength(1);
 }));
 
+test('start caps bindings by evicting closed tasks and keeps an open task binding', withDir(async root => {
+  const f = fixture(root);
+  const row = (session_id: string, task: string) =>
+    ({ session_id, task, helper, environment, started_at: new Date().toISOString(), ingested: [] });
+  const closed = Array.from({ length: 200 }, (_, i) => row('session_Closed' + i, 'T-20000101-000000'));
+  fs.writeFileSync(path.join(f.dir, 'state', 'cloud-sessions.json'), JSON.stringify([row('session_Old', f.task), ...closed]));
+  expect(JSON.parse((await f.run('start', f.startArgs)).stdout).status).toBe('started');
+  const ids = readCloudBindings(f.dir).map(entry => entry.session_id);
+  expect(ids).toHaveLength(200);
+  expect(ids[0]).toBe('session_Old');
+  expect(ids).not.toContain('session_Closed0');
+  expect(ids).not.toContain('session_Closed1');
+  expect(ids.at(-1)).toBe('session_Test123');
+}));
+
 test('start cleans up after a login refusal', withDir(async root => {
   const f = fixture(root);
   expect(JSON.parse((await f.run('start', f.startArgs, { FAKE_PANE: 'please run /login' })).stdout))

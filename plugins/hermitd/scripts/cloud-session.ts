@@ -114,7 +114,14 @@ export async function start(dir: string, options: StartOptions, timeoutMs = LAUN
     environment: options.environment, started_at: new Date().toISOString(), ingested: [],
   };
   await withBindingLock(dir, () => {
-    saveCloudBindings(dir, [...readCloudBindings(dir), binding].slice(-MAX_BINDINGS));
+    let entries = [...readCloudBindings(dir), binding];
+    let excess = entries.length - MAX_BINDINGS;
+    if (excess > 0) {
+      // Evict the oldest closed-task bindings only; an open task keeps its interception.
+      const open = new Set(readTasks(dir).filter(record => record.status === 'open').map(record => record.id));
+      entries = entries.filter(entry => open.has(entry.task) || excess-- <= 0);
+    }
+    saveCloudBindings(dir, entries);
   });
   return { status: 'started', session_id: sessionId };
 }
