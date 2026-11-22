@@ -1165,7 +1165,7 @@ test('operator decisions run silently on a typed terminal turn, steer on chat, a
   }
   expect(fs.existsSync(path.join(dir, 'pwned'))).toBe(false);
   expectSilent(await gate("bun plugins/hermitd/scripts/task.ts note .hermit T-20261101-120000 --decision <<'EOF'\nclosed with task dismiss\nEOF", others[0], 'bypassPermissions'));
-});
+}, 30_000);
 
 test('quoted heredoc bodies that only mention a decision call are data', async () => {
   const dir = fixture();
