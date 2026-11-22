@@ -2,7 +2,7 @@ import { afterAll, expect, test } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { promptHash } from '../scripts/lib/routines/registry';
+import { promptHash, REREGISTER_AGE_MS } from '../scripts/lib/routines/registry';
 import { runScript } from './helpers/run';
 
 const pluginRoot = path.resolve(import.meta.dir, '..');
@@ -14,20 +14,19 @@ afterAll(() => {
   for (const dir of tmpdirs) fs.rmSync(dir, { recursive: true, force: true });
 });
 
+const anchorRoutine = {
+  id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *',
+  skill: 'hermitd:hermit-routines load', enabled: true,
+};
+const reflectRoutine = { id: 'reflect', schedule: '0 9 * * *', skill: 'hermitd:reflect', enabled: true };
+
 function fixture(options: { scheduled?: boolean; heartbeat?: boolean } = {}) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'routine-arm-')));
   tmpdirs.push(root);
   const hermit = path.join(root, '.hermit');
   const state = path.join(hermit, 'state');
   fs.mkdirSync(state, { recursive: true });
-  const anchor = {
-    id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *',
-    skill: 'hermitd:hermit-routines load', enabled: true,
-  };
-  const routines = [anchor];
-  if (options.scheduled !== false) {
-    routines.push({ id: 'reflect', schedule: '0 9 * * *', skill: 'hermitd:reflect', enabled: true } as typeof anchor);
-  }
+  const routines = options.scheduled === false ? [] : [reflectRoutine];
   const config = {
     timezone: null,
     routines,
@@ -37,12 +36,7 @@ function fixture(options: { scheduled?: boolean; heartbeat?: boolean } = {}) {
   fs.writeFileSync(path.join(state, '.boot-id'), 'boot-a\n');
   fs.writeFileSync(path.join(state, 'cron-registry.json'), JSON.stringify({
     boot_id: 'boot-a',
-    routines: {
-      'hermitd:heartbeat-restart': {
-        prompt_hash: promptHash(anchor, anchor.schedule, pluginRoot),
-        registered_at: now,
-      },
-    },
+    routines: {},
   }));
   const routineCommand = `bash "${pluginRoot}"/scripts/monitor-supervisor.sh routines "${hermit}"`;
   const heartbeatCommand = `bash "${pluginRoot}"/scripts/monitor-supervisor.sh heartbeat "${hermit}"`;
@@ -155,7 +149,7 @@ test('anchor HEALTHY stamps started and fired', async () => {
   const f = fixture();
   const result = await arm(f.hermit, ['anchor']);
   expect(result.exitCode).toBe(0);
-  expect(out(result)).toEqual({ status: 'healthy', routines: { mode: 'monitor', scheduled: 1 }, anchor_age_days: 0, heartbeat: 'ok' });
+  expect(out(result)).toEqual({ status: 'healthy', routines: { mode: 'monitor', scheduled: 1 }, heartbeat: 'ok' });
   const events = fs.readFileSync(path.join(f.state, 'routine-metrics.jsonl'), 'utf8')
     .trim().split('\n').map(line => JSON.parse(line).event);
   expect(events).toEqual(['started', 'fired']);
@@ -198,19 +192,35 @@ test('anchor pause short-circuits and stamps skipped-paused', async () => {
   expect(fs.readFileSync(path.join(f.state, 'routine-metrics.jsonl'), 'utf8')).toContain('skipped-paused');
 });
 
-test('begin reset always plans, removes cursor, and renders the anchor prompt', async () => {
+test('begin reset removes the cursor and plans no CronCreate', async () => {
   const f = fixture();
   fs.writeFileSync(path.join(f.state, 'routine-schedule.json'), '{}');
   const result = await arm(f.hermit, ['begin', '--reset']);
   const plan = out(result);
   expect(plan).toMatchObject({ status: 'arm', legs: ['routines', 'heartbeat'], mode: 'reset', activate: '/hermitd:monitor-activate' });
   expect(result.stdout).not.toContain('OLD_TASK:');
-  expect(plan.create.map((item: { id: string }) => item.id).sort()).toEqual(['hermitd:heartbeat-restart']);
+  expect(plan.create).toEqual([]);
+  expect(plan.anchor_prompt).toBeUndefined();
+  expect(fs.existsSync(path.join(f.state, 'routine-schedule.json'))).toBe(false);
+});
+
+test('explicit fallback plans the built-in anchor in the configured timezone', async () => {
+  const f = fixture();
+  const configPath = path.join(f.hermit, 'config.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  config.timezone = 'Asia/Tokyo';
+  config.routine_wake_lint = { max_windows: 1 };
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  const plan = out(await arm(f.hermit, ['begin', '--fallback'], { TZ: 'UTC' }));
+  expect(plan.create).toEqual([
+    { id: anchorRoutine.id, schedule: '0 19 * * *' },
+    { id: reflectRoutine.id, schedule: '0 0 * * *' },
+  ]);
+  expect(plan.wake_spread).toBeUndefined();
   expect(plan.anchor_prompt).toStartWith('[hermit-routine:hermitd:heartbeat-restart]\n');
   expect(plan.anchor_prompt).toContain('arm anchor');
   expect(plan.anchor_prompt).toContain('reason "paused": report that the resident is paused');
   expect(plan.anchor_prompt).toContain('finish hermitd:heartbeat-restart cron-create');
-  expect(fs.existsSync(path.join(f.state, 'routine-schedule.json'))).toBe(false);
 });
 
 test('begin never prints an old task from a previous boot', async () => {
@@ -234,36 +244,63 @@ test('begin never stops a task from a runtime record without boot_id', async () 
   expect(result.stdout).not.toContain('OLD_TASK:');
 });
 
-test('commit none writes monitor runtime and commits the anchor mirror', async () => {
+test('commit none writes monitor runtime with an empty mirror', async () => {
   const f = fixture({ scheduled: false, heartbeat: false });
-  fs.writeFileSync(path.join(f.state, 'cron-registry.json'), JSON.stringify({ boot_id: null, routines: {} }));
-  const result = await arm(f.hermit, ['commit', 'none', '--created', 'hermitd:heartbeat-restart']);
-  expect(out(result)).toEqual({ status: 'armed', scheduled: 0, anchor: 'created' });
+  const result = await arm(f.hermit, ['commit', 'none']);
+  expect(out(result)).toEqual({ status: 'armed', scheduled: 0 });
   const runtime = JSON.parse(fs.readFileSync(path.join(f.state, 'routine-monitor.runtime.json'), 'utf8'));
   expect(runtime).toMatchObject({ mode: 'monitor', routines: 0, boot_id: 'boot-a' });
   const mirror = JSON.parse(fs.readFileSync(path.join(f.state, 'cron-registry.json'), 'utf8'));
-  expect(Object.keys(mirror.routines)).toEqual(['hermitd:heartbeat-restart']);
+  expect(mirror.routines).toEqual({});
 });
 
-test('daily HEALTHY verdicts cannot carry registration past the 5-day planner cliff', async () => {
+async function commitFallback(f: { hermit: string }) {
+  const result = await arm(f.hermit, ['commit', 'fallback', '--created', `${anchorRoutine.id},${reflectRoutine.id}`], { HERMIT_NOW: iso() });
+  expect(result.exitCode).toBe(0);
+  expect(out(result).status).toBe('armed');
+}
+
+test('fallback plans and commits the built-in anchor even with a customized config entry', async () => {
   const f = fixture();
-  let sawArm = false;
-  for (let day = 1; day <= 6; day++) {
-    const dayNow = now + day * 86400000;
-    fs.writeFileSync(path.join(f.state, 'routine-monitor-liveness.json'), JSON.stringify({ last_peek_at: iso(dayNow) }));
-    fs.writeFileSync(path.join(f.state, 'heartbeat-liveness.json'), JSON.stringify({ last_peek_at: iso(dayNow) }));
-    fs.writeFileSync(path.join(f.state, 'routine-metrics.jsonl'), JSON.stringify({
-      ts: iso(dayNow - 86400000), routine_id: 'hermitd:heartbeat-restart', event: 'fired', delivery: 'cron-create',
-    }) + '\n');
-    const result = out(await arm(f.hermit, ['anchor'], { HERMIT_NOW: iso(dayNow) }));
-    if (result.status === 'arm') {
-      sawArm = true;
-      expect(day).toBeLessThanOrEqual(6);
-      break;
-    }
-    expect(result.status).toBe('healthy');
-  }
-  expect(sawArm).toBe(true);
+  const configPath = path.join(f.hermit, 'config.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  config.routines.push({ ...anchorRoutine, schedule: '15 3 * * *', model: 'haiku' });
+  fs.writeFileSync(configPath, JSON.stringify(config));
+
+  const first = out(await arm(f.hermit, ['begin', '--fallback']));
+  expect(first.create).toContainEqual({ id: anchorRoutine.id, schedule: anchorRoutine.schedule });
+  await commitFallback(f);
+  const mirrorPath = path.join(f.state, 'cron-registry.json');
+  const entry = JSON.parse(fs.readFileSync(mirrorPath, 'utf8')).routines[anchorRoutine.id];
+  expect(entry.prompt_hash).toBe(promptHash(anchorRoutine, anchorRoutine.schedule, pluginRoot));
+
+  const second = out(await arm(f.hermit, ['begin', '--fallback']));
+  expect(second).toMatchObject({ delete: [], create: [], keep: 2 });
+  expect(second.anchor_prompt).toBeUndefined();
+  await arm(f.hermit, ['commit', 'fallback']);
+  expect(JSON.parse(fs.readFileSync(mirrorPath, 'utf8')).routines[anchorRoutine.id]).toEqual(entry);
+});
+
+test('fallback with all routines disabled deletes the tracked anchor without recreating it', async () => {
+  const f = fixture();
+  await commitFallback(f);
+  const configPath = path.join(f.hermit, 'config.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  config.routines[0].enabled = false;
+  fs.writeFileSync(configPath, JSON.stringify(config));
+  const plan = out(await arm(f.hermit, ['begin', '--fallback']));
+  expect(plan).toMatchObject({ delete: [anchorRoutine.id, reflectRoutine.id], create: [] });
+  expect(plan.anchor_prompt).toBeUndefined();
+});
+
+test('daily healthy fallback verdicts cannot extend cron registrations past 25 days', async () => {
+  const f = fixture({ heartbeat: false });
+  await commitFallback(f);
+  const renewAfter = 25 * 86400000;
+  const atThreshold = out(await arm(f.hermit, ['anchor'], { HERMIT_NOW: iso(now + renewAfter) }));
+  expect(atThreshold.status).toBe('healthy');
+  const aged = out(await arm(f.hermit, ['anchor'], { HERMIT_NOW: iso(now + renewAfter + 1) }));
+  expect(aged).toEqual({ status: 'arm', legs: ['routines'], reasons: ['routines:fallback_drift'] });
 });
 
 // --- The heartbeat leg riding along on `load` (one boot arms both monitors) ---
@@ -275,6 +312,75 @@ function staleHeartbeat(f: { state: string }) {
   runtime.interval = 600;
   fs.writeFileSync(p, JSON.stringify(runtime));
 }
+
+test('same-boot fallback renews only the aged cron without activation', async () => {
+  const f = fixture();
+  await commitFallback(f);
+  const mirrorPath = path.join(f.state, 'cron-registry.json');
+  const mirror = JSON.parse(fs.readFileSync(mirrorPath, 'utf8'));
+  mirror.routines[reflectRoutine.id].registered_at = now - REREGISTER_AGE_MS - 1;
+  fs.writeFileSync(mirrorPath, JSON.stringify(mirror));
+  const plan = out(await arm(f.hermit, ['begin'], { HERMIT_NOW: iso() }));
+  expect(plan).toMatchObject({
+    status: 'arm', mode: 'fallback', delete: [reflectRoutine.id],
+    create: [{ id: reflectRoutine.id, schedule: reflectRoutine.schedule }], keep: 1,
+  });
+  expect(plan.first_transition).toBeUndefined();
+  expect(plan.monitor_skip).toBeUndefined();
+  expect(plan.activate).toBeUndefined();
+});
+
+test.each(['boot-old', undefined])('fallback record with boot id %s returns to native planning', async bootId => {
+  const f = fixture();
+  await commitFallback(f);
+  const runtimePath = path.join(f.state, 'routine-monitor.runtime.json');
+  fs.writeFileSync(runtimePath, JSON.stringify({ mode: 'croncreate-fallback', boot_id: bootId }));
+  const plan = out(await arm(f.hermit, ['begin']));
+  expect(plan).toMatchObject({ status: 'arm', mode: 'reconcile', first_transition: true, create: [] });
+});
+
+test('same-boot fallback reset unparks the routine supervisor for a native retry', async () => {
+  const f = fixture();
+  await commitFallback(f);
+  const plan = out(await arm(f.hermit, ['begin', '--reset']));
+  expect(plan).toMatchObject({
+    status: 'arm', mode: 'reset', first_transition: true, activate: '/hermitd:monitor-activate', create: [],
+  });
+  expect(fs.existsSync(path.join(f.state, 'routine-monitor.runtime.json'))).toBe(false);
+});
+
+test.each([
+  { mode: 'croncreate-fallback', boot_id: 'boot-old' },
+  { mode: 'monitor', boot_id: 'boot-a' },
+])('reset preserves a $mode record for boot $boot_id', async record => {
+  const f = fixture();
+  const runtimePath = path.join(f.state, 'routine-monitor.runtime.json');
+  const original = JSON.stringify(record);
+  fs.writeFileSync(runtimePath, original);
+  expect(out(await arm(f.hermit, ['begin', '--reset'])).mode).toBe('reset');
+  expect(fs.readFileSync(runtimePath, 'utf8')).toBe(original);
+});
+
+test('same-boot fallback load plans the unhealthy heartbeat without native routine activation', async () => {
+  const f = fixture();
+  await commitFallback(f);
+  staleHeartbeat(f);
+  const plan = out(await arm(f.hermit, ['begin']));
+  expect(plan).toMatchObject({
+    status: 'arm', mode: 'fallback', legs: ['routines', 'heartbeat'],
+    heartbeat: { interval: 1800 }, activate: '/hermitd:monitor-activate', delete: [], create: [],
+  });
+  expect(plan.first_transition).toBeUndefined();
+  expect(plan.monitor_skip).toBeUndefined();
+});
+
+test('same-boot fallback load short-circuits when both legs are healthy', async () => {
+  const f = fixture();
+  await commitFallback(f);
+  expect(out(await arm(f.hermit, ['begin']))).toEqual({
+    status: 'healthy', routines: { mode: 'fallback', scheduled: 1 }, heartbeat: 'ok',
+  });
+});
 
 test('begin plans the heartbeat leg with the same plan start-check would print', async () => {
   const f = fixture();
@@ -408,10 +514,19 @@ test('begin writes no armed_at fence', async () => {
 
 // --- `arm check`: the anchor's verdict without the anchor's ledger row ---
 
-test('check reports the healthy verdict and writes nothing', async () => {
+test('monitor check stays healthy with a tracked anchor and writes nothing', async () => {
   const f = fixture();
+  fs.writeFileSync(path.join(f.state, 'cron-registry.json'), JSON.stringify({
+    boot_id: 'boot-a',
+    routines: {
+      [anchorRoutine.id]: {
+        prompt_hash: promptHash(anchorRoutine, anchorRoutine.schedule, pluginRoot),
+        registered_at: now,
+      },
+    },
+  }));
   const result = await arm(f.hermit, ['check']);
-  expect(out(result)).toEqual({ status: 'healthy', routines: { mode: 'monitor', scheduled: 1 }, anchor_age_days: 0, heartbeat: 'ok' });
+  expect(out(result)).toEqual({ status: 'healthy', routines: { mode: 'monitor', scheduled: 1 }, heartbeat: 'ok' });
   expect(fs.existsSync(path.join(f.state, 'routine-metrics.jsonl'))).toBe(false);
 });
 

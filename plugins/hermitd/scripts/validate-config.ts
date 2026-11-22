@@ -178,12 +178,10 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
     errors.push('browser.admins must contain login and a channel-to-mention map');
   }
   const warnings: string[] = [];
-  function validateChat(chat: Json, location: string, owner: 'routine' | 'watch', rearm = false): void {
+  function validateChat(chat: Json, location: string, owner: 'routine' | 'watch'): void {
     if (chat === undefined || chat === null) return;
     if (!isKey(chat)) {
       errors.push(`${location}: chat must be "<channel>:<chat_id>"`);
-    } else if (rearm) {
-      warnings.push(`${location}: chat on "hermitd:heartbeat-restart" is ignored; the re-arm anchor sends no notices`);
     } else {
       const channel = chat.slice(0, chat.indexOf(':'));
       if (!isDict(config.channels?.[channel])) {
@@ -278,10 +276,6 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
           errors.push(`routines[${i}]: invalid schedule "${r.schedule}" — ${cronErr}`);
         } else if (neverFires(r.schedule)) {
           warnings.push(`routines[${i}]: schedule "${r.schedule}" never fires — no date matches it`);
-        } else if (r.id === 'hermitd:heartbeat-restart' && r.schedule.split(/\s+/).slice(2).some((f: string) => f !== '*')) {
-          // The anchor's re-arm keeps the routine CronCreates inside CC's 7-day expiry
-          // and arm.ts's 26h anchor-age window; both assume it fires every day.
-          warnings.push(`routines[${i}]: "hermitd:heartbeat-restart" schedule "${r.schedule}" is not daily — the re-arm anchor's expiry and age windows assume a daily fire`);
         }
       }
       if (typeof r.enabled !== 'boolean') {
@@ -294,26 +288,20 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       if (r.model !== undefined && r.model !== null) {
         if (typeof r.model !== 'string' || !VALID_ROUTINE_MODEL.includes(r.model)) {
           errors.push(`routines[${i}]: model "${r.model}" not in [${VALID_ROUTINE_MODEL.join(', ')}] (omit to use session model)`);
-        } else if (r.id === 'hermitd:heartbeat-restart') {
-          warnings.push(`routines[${i}]: model on "hermitd:heartbeat-restart" is ignored — re-arm must run in the session`);
         }
       }
       if (r.effort !== undefined && r.effort !== null) {
         if (typeof r.effort !== 'string' || !VALID_EFFORT.includes(r.effort)) {
           errors.push(`routines[${i}]: effort "${r.effort}" not in [${VALID_EFFORT.join(', ')}] (omit to keep the subagent's default)`);
-        } else if (r.id === 'hermitd:heartbeat-restart') {
-          warnings.push(`routines[${i}]: effort on "hermitd:heartbeat-restart" is ignored; re-arm must run in the session`);
         } else if (r.model === undefined || r.model === null) {
           warnings.push(`routines[${i}]: effort has no effect without "model"; it applies only to the model-override subagent`);
         }
       }
-      validateChat(r.chat, `routines[${i}]`, 'routine', r.id === 'hermitd:heartbeat-restart');
+      validateChat(r.chat, `routines[${i}]`, 'routine');
       if (r.precheck !== undefined && r.precheck !== null) {
         const preErr = validatePrecheckValue(r.precheck);
         if (preErr) {
           errors.push(`routines[${i}]: precheck ${preErr}`);
-        } else if (r.id === 'hermitd:heartbeat-restart') {
-          warnings.push(`routines[${i}]: precheck on "hermitd:heartbeat-restart" is ignored — the re-arm anchor never runs through the routine monitor`);
         }
       }
       if (r.precheck_timeout_s !== undefined && r.precheck_timeout_s !== null) {
@@ -323,9 +311,6 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
         } else if (r.precheck === undefined || r.precheck === null) {
           warnings.push(`routines[${i}]: precheck_timeout_s has no effect without "precheck"`);
         }
-      }
-      if (r.reflect_after === true && r.id === 'hermitd:heartbeat-restart') {
-        warnings.push(`routines[${i}]: reflect_after on "hermitd:heartbeat-restart" is ignored — the anchor short-circuits before finish on a healthy check`);
       }
       if (r.retry_after_crash !== undefined && typeof r.retry_after_crash !== 'boolean') {
         errors.push(`routines[${i}]: retry_after_crash must be boolean`);

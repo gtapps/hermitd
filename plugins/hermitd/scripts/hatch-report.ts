@@ -127,8 +127,7 @@ export function finalData(o: Observed, deployment: string, quick = false): Json 
     ...(quick ? { defaults_applied: {
       permission_mode: c.permission_mode ?? null,
       enabled_routines: (Array.isArray(c.routines) ? c.routines : [])
-        // hermitd:heartbeat-restart is plumbing the operator would not recognize as a routine.
-        .filter((routine: Json) => typeof routine?.id === 'string' && routine.enabled !== false && routine.id !== 'hermitd:heartbeat-restart')
+        .filter((routine: Json) => typeof routine?.id === 'string' && routine.enabled !== false)
         .map((routine: Json) => routine.id),
       heartbeat_every: c.heartbeat?.enabled ? c.heartbeat.every ?? null : null,
       standard_deny_rules: o.standardDenyRules,

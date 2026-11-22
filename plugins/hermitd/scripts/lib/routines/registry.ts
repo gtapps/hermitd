@@ -34,13 +34,9 @@ import { parseCronField } from '../../validate-config';
 
 type Json = any;
 
-// Re-register even an unchanged routine once it has been alive this long. CC's
-// recurring-task auto-expiry is a hard 7-day-from-creation cliff — it is NOT
-// extended by CronList/activity, only by cancel-and-recreate — so this must stay
-// comfortably under 7 days. In practice the daily heartbeat-restart reload is what
-// crosses this threshold for every routine, exactly as it does with the old
-// unconditional-reset design; the diff just skips the ones nowhere near the cliff.
-const REREGISTER_AGE_MS = 5 * 24 * 60 * 60 * 1000;
+// Recurring CronCreate tasks expire 30 days after creation. Only fallback crons
+// depend on that timer. The daily fallback anchor renews registrations past this age.
+const REREGISTER_AGE_MS = 25 * 24 * 60 * 60 * 1000;
 
 interface MirrorEntry {
   prompt_hash: string;
@@ -266,15 +262,5 @@ function commitCron(
   return next;
 }
 
-// Restrict planning/committing to a subset of routines by id csv (used to
-// register the heartbeat-restart anchor alone in monitor mode: planCron then plans
-// a delete for every previously-tracked routine outside the subset, which is what
-// sweeps stale non-anchor CronCreates). null/empty idsCsv → routines unchanged.
-function filterRoutinesByIds(routines: Json[], idsCsv: string | null): Json[] {
-  if (!idsCsv) return routines;
-  const idsSet = new Set(idsCsv.split(',').map(s => s.trim()).filter(Boolean));
-  return routines.filter((r: Json) => idsSet.has(r?.id));
-}
-
-export { planCron, commitCron, computeWakeSpread, readMirror, readBootId, promptHash, REREGISTER_AGE_MS, filterRoutinesByIds };
+export { planCron, commitCron, computeWakeSpread, readMirror, readBootId, promptHash, REREGISTER_AGE_MS };
 export type { Mirror, MirrorEntry, PlanResult, PlanCreate, ShiftedRoutine };

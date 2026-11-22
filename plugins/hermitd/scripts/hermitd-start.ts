@@ -160,7 +160,6 @@ const DEFAULT_CONFIG: Json = {
   routine_max_lateness_minutes: 60,
   routines: [
     { id: 'hermitd:dream', schedule: '0 1 * * *', skill: 'hermitd:dream', precheck: 'dream', model: 'sonnet', enabled: true },
-    { id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *', skill: 'hermitd:hermit-routines load', enabled: true },
     { id: 'hermitd:reflect', schedule: '0 9 * * *', skill: 'hermitd:reflect', enabled: true },
     { id: 'hermitd:weekly-review', schedule: '0 23 * * 0', skill: 'hermitd:weekly-review', enabled: true },
     { id: 'hermitd:later-check', schedule: '5 9 * * *', skill: 'hermitd:later run', enabled: true, precheck: 'later' },

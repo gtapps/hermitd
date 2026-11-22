@@ -72,15 +72,12 @@ for (const cause of ['expired', 'retry']) test(`${cause} produces one lost event
   expect(rows(dir)).toHaveLength(1);
 });
 
-test('pause preserves pending retry; heartbeat anchor is discarded', () => {
+test('pause preserves pending retry', () => {
   const dir = fixture();
   fs.writeFileSync(path.join(dir, 'state/pause.json'), JSON.stringify({ reason: 'operator', by: 'test', at: mark }));
   // Use the public pause writer; its state contract is independent of this fixture.
   setPause(dir, { reason: 'operator', by: 'test' });
   expect(reconcileRoutines(dir, now)).toEqual({ pending: true, entries: [] });
-  markDispatched(dir, { routine_id: 'hermitd:heartbeat-restart', skill: 'hermitd:heartbeat start', mark, delivery: 'cron-create' });
-  reconcileRoutines(dir, now);
-  expect(Object.keys(readUnfinished(dir))).toEqual([key]);
 });
 import { setPause } from '../scripts/lib/pause';
 
@@ -194,8 +191,6 @@ test('report bounds retry and closure facts by the previous boot', () => {
 
 test('report lists this boot\'s interrupted runs as pending before the first reconcile', async () => {
   const dir = fixture();
-  // The restart anchor is reconcile bookkeeping, never a pending run.
-  markStarted(dir, { routine_id: 'hermitd:heartbeat-restart', skill: 'x', mark, started_at: mark, delivery: 'monitor', session_id: 'previous' });
   stampInterrupted(dir, 'unclean');
   const result = await runScript('routines.ts', { args: ['recover', '--report'], env: { AGENT_DIR: dir } });
   expect(result.exitCode).toBe(0);

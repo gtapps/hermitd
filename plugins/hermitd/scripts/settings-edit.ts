@@ -178,6 +178,11 @@ const migrations: Record<string, Migration> = {
       config.boot_skill = '/hermitd:resident-start';
     }
   }),
+  'drop-rearm-anchor': noArgs(config => {
+    if (Array.isArray(config.routines)) {
+      config.routines = config.routines.filter((routine: Json) => routine?.id !== 'hermitd:heartbeat-restart');
+    }
+  }),
 };
 
 // Strict read: an existing-but-malformed file must abort, never fall through to {},

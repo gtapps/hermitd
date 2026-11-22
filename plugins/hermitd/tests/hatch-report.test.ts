@@ -43,7 +43,7 @@ function hatched(o: HatchedOpts = {}): string {
   fs.writeFileSync(path.join(hermit, 'config.json'), JSON.stringify({
     agent_name: 'Atlas', language: 'en', timezone: 'UTC', escalation: 'balanced',
     permission_mode: 'auto', push_notifications: true,
-    channels: {}, routines: [{ id: 'hermitd:heartbeat-restart', enabled: true }],
+    channels: {}, routines: [{ id: 'weekly-review', enabled: true }],
     scheduled_checks: [], heartbeat: { enabled: false },
     _hermit_versions: { 'hermitd': '1.2.34' },
     ...(o.config ?? {}),
@@ -219,7 +219,7 @@ test('CLI final --quick reports settings observed in the written files', async (
     settings: 'committed',
     config: {
       permission_mode: 'acceptEdits',
-      routines: [{ id: 'active', enabled: true }, { id: 'off', enabled: false }, { id: 'hermitd:heartbeat-restart', enabled: true }],
+      routines: [{ id: 'active', enabled: true }, { id: 'off', enabled: false }, { id: 'weekly-review', enabled: true }],
       heartbeat: { enabled: true, every: '45m' },
     },
   });
@@ -227,7 +227,7 @@ test('CLI final --quick reports settings observed in the written files', async (
   const quick = await runScript('hatch-report.ts', { args: [...args, '--quick'] });
   expect(quick.exitCode).toBe(0);
   expect(JSON.parse(quick.stdout).defaults_applied).toEqual({
-    permission_mode: 'acceptEdits', enabled_routines: ['active'],
+    permission_mode: 'acceptEdits', enabled_routines: ['active', 'weekly-review'],
     heartbeat_every: '45m', standard_deny_rules: false,
   });
 

@@ -109,8 +109,7 @@ ask what actually needs re-arming before loading anything:
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/routines.ts arm check .hermit ${CLAUDE_PLUGIN_ROOT}
 ```
 
-`arm check` is the read-only twin of the daily anchor's verdict — it stamps no fire, so asking
-costs one Bash call instead of loading the routines skill. Route on its JSON `status`:
+`arm check` reports routine and heartbeat health in one read-only Bash call. Route on its JSON `status`:
 
 - `healthy`: both legs are registered and current. Log it; invoke nothing.
 - `arm` with `routines` in `legs`: invoke `/hermitd:hermit-routines load`, which

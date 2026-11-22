@@ -14,7 +14,6 @@ import type { QueueRequest } from '../harness-mod';
 
 export const RETRY_WINDOW_MS = 6 * 3600000;
 const LOST_NOTICE_MS = 3600000;
-const ANCHOR = 'hermitd:heartbeat-restart';
 
 function ledger(dir: string): any[] {
   try {
@@ -43,7 +42,7 @@ function superseded(dir: string, entry: Unfinished, store = readUnfinished(dir),
 
 export function stillPendingRoutine(dir: string, key: string, now = Date.now()): boolean {
   const entry = readUnfinished(dir)[key];
-  if (!entry || entry.routine_id === ANCHOR || entry.state !== 'interrupted' || entry.attempts !== 0 || entry.cause === 'planned') return false;
+  if (!entry || entry.state !== 'interrupted' || entry.attempts !== 0 || entry.cause === 'planned') return false;
   const config = readSettledConfig(dir);
   const routine = config.routines?.find((r: any) => r.id === entry.routine_id);
   return enabledRoutine(config, entry) && routine.retry_after_crash !== false
@@ -65,7 +64,6 @@ export function reconcileRoutines(dir: string, now: number, lastTurnCompleteAt?:
     const entries: QueueRequest[] = [];
     let pending = false;
     for (const [key, entry] of Object.entries(store)) {
-      if (entry.routine_id === ANCHOR) { delete store[key]; continue; }
       const close = (reason: string) => {
         logRoutineEvent(entry.routine_id, 'failed-interrupted', dir, entry.delivery, `${reason}:${reason === 'aborted' ? '-' : entry.cause ?? '-'}`);
         delete store[key];
@@ -151,7 +149,7 @@ export function recoveryReport(dir: string) {
 
 /** Interrupted occurrences the mod's next reconcile has yet to retry or close; a lost one already has its ledger closure. */
 export function pendingRecovery(dir: string) {
-  return Object.values(readUnfinished(dir)).filter(entry => entry.routine_id !== ANCHOR && entry.state === 'interrupted')
+  return Object.values(readUnfinished(dir)).filter(entry => entry.state === 'interrupted')
     .map(entry => ({ routine_id: entry.routine_id, cause: entry.cause ?? '-', mark: entry.mark }));
 }
 

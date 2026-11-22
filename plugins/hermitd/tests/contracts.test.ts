@@ -426,8 +426,6 @@ describe('monitors validation', () => {
       monitors: [{ ...monitor, chat: 'imessage:abc' }],
     });
     expect(custom.warnings.some((w: string) => w.includes('chat'))).toBe(false);
-    const anchor = runValidate({ channels, monitors: [{ ...monitor, id: 'hermitd:heartbeat-restart', chat: 'discord:1' }] });
-    expect(anchor.warnings.some((w: string) => w.includes('ignored'))).toBe(false);
   });
 
   test('a fully valid monitor entry produces no errors or warnings', () => {
@@ -582,17 +580,6 @@ describe('routine precheck validation', () => {
     expect(out.warnings.join(' ')).toContain('precheck_timeout_s');
   });
 
-  test('a gate on the re-arm anchor warns — it never runs through the monitor', () => {
-    const out = runValidate({
-      routines: [{
-        id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *',
-        skill: 'hermitd:hermit-routines load', enabled: true, precheck: 'reflect',
-      }],
-    });
-    expect(out.errors).toEqual([]);
-    expect(out.warnings.join(' ')).toContain('hermitd:heartbeat-restart');
-  });
-
   test('the shipped doctor uses its gate and daily-auto-close is retired', () => {
     const template = readJson(path.join(TEMPLATES, 'config.json.template'));
     const byId = (id: string) => template.routines.find((r: any) => r.id === id);
@@ -699,10 +686,6 @@ describe('routine model validation', () => {
   const BASE_ROUTINE = {
     id: 'check', schedule: '0 9 * * *', skill: 'hermitd:recall', enabled: true,
   };
-  const HB_ROUTINE = {
-    id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *',
-    skill: 'hermitd:heartbeat start', enabled: true,
-  };
 
   test('each valid model value on a routine produces no errors', () => {
     for (const model of ['haiku', 'sonnet', 'opus']) {
@@ -731,12 +714,6 @@ describe('routine model validation', () => {
     expect(out.errors.some((e: string) => e.includes('not in'))).toBe(true);
   });
 
-  test('model on hermitd:heartbeat-restart produces a warning (ignored), not an error', () => {
-    const out = runValidate({ routines: [{ ...HB_ROUTINE, model: 'haiku' }] });
-    expect(out.errors).toEqual([]);
-    expect(out.warnings.some((w: string) => w.includes('ignored'))).toBe(true);
-  });
-
   test('effort beside model is accepted; an unknown effort is an error', () => {
     const out = runValidate({ routines: [{ ...BASE_ROUTINE, model: 'haiku', effort: 'high' }] });
     expect(out.errors).toEqual([]);
@@ -749,12 +726,6 @@ describe('routine model validation', () => {
     const out = runValidate({ routines: [{ ...BASE_ROUTINE, effort: 'high' }] });
     expect(out.errors).toEqual([]);
     expect(out.warnings.some((w: string) => w.includes('effort has no effect'))).toBe(true);
-  });
-
-  test('effort on hermitd:heartbeat-restart warns that it is ignored, even beside model', () => {
-    const out = runValidate({ routines: [{ ...HB_ROUTINE, model: 'haiku', effort: 'high' }] });
-    expect(out.warnings.some((w: string) => w.includes('effort on "hermitd:heartbeat-restart" is ignored'))).toBe(true);
-    expect(out.warnings.some((w: string) => w.includes('effort has no effect without'))).toBe(false);
   });
 
   test('routine chat may use any configured channel, with a warning for script notices', () => {
@@ -770,20 +741,6 @@ describe('routine model validation', () => {
     expect(unreachable.errors).toEqual([]);
     expect(unreachable.warnings.some((w: string) => w.includes('cannot be reached'))).toBe(false);
     expect(unreachable.warnings.some((w: string) => w.includes('script notices') && w.includes('reply-tool skills'))).toBe(true);
-    const anchor = runValidate({ channels, routines: [{ ...HB_ROUTINE, chat: 'discord:1' }] });
-    expect(anchor.warnings.some((w: string) => w.includes('chat on "hermitd:heartbeat-restart" is ignored'))).toBe(true);
-  });
-
-  test('a daily hermitd:heartbeat-restart schedule produces no warning', () => {
-    const out = runValidate({ routines: [HB_ROUTINE] });
-    expect(out.errors).toEqual([]);
-    expect(out.warnings.some((w: string) => w.includes('not daily'))).toBe(false);
-  });
-
-  test('a non-daily hermitd:heartbeat-restart schedule warns (not an error)', () => {
-    const out = runValidate({ routines: [{ ...HB_ROUTINE, schedule: '0 4 */3 * *' }] });
-    expect(out.errors).toEqual([]);
-    expect(out.warnings.some((w: string) => w.includes('hermitd:heartbeat-restart') && w.includes('not daily'))).toBe(true);
   });
 });
 

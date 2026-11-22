@@ -10,12 +10,12 @@
 // routine as needing (re-)creation with NO deletes (durable:false crons already
 // died with the prior process); an entry aged past the conservative re-register
 // threshold is recreated even with unchanged config, so a long-lived process can
-// never silently ride a routine past CC's real 7-day auto-expiry cliff.
+// never silently ride a routine past CC's 30-day recurring-task expiry.
 
 import { afterAll, describe, test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { planCron, commitCron, computeWakeSpread, promptHash, REREGISTER_AGE_MS, filterRoutinesByIds } from '../scripts/lib/routines/registry';
+import { planCron, commitCron, computeWakeSpread, promptHash, REREGISTER_AGE_MS } from '../scripts/lib/routines/registry';
 import { shiftCron } from '../scripts/lib/cron-shift';
 import { freshDirFactory } from './helpers/workdir';
 
@@ -332,7 +332,7 @@ describe('commitCron', () => {
 // -shifted schedules, so tested in-process like planCron/commitCron above.
 // -------------------------------------------------------
 describe('computeWakeSpread — wake-clustering lint', () => {
-  // Same schedules as state-templates/config.json.template's default routines.
+  // Example schedules clustered into five wake windows.
   const STOCK = [
     { id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *' },
     { id: 'reflect', schedule: '0 9 * * *' },
@@ -342,7 +342,7 @@ describe('computeWakeSpread — wake-clustering lint', () => {
     { id: 'doctor', schedule: '0 10 * * 1' },
   ];
 
-  test('stock template config → null (5 distinct windows, under the default 6)', () => {
+  test('clustered schedules → null (5 distinct windows, under the default 6)', () => {
     // windows: 04:00→8, 09:00 & 09:05→18, 23:00→46, 00:00→0, 10:00→20 = {0,8,18,20,46} = 5
     expect(computeWakeSpread(STOCK, 6)).toBeNull();
   });
@@ -427,67 +427,13 @@ describe('planCron — enabledShifted', () => {
   });
 });
 
-// --ids <csv> filter (monitor-mode anchor-only plan/commit). filterRoutinesByIds is a
-// pure pre-filter applied to the routines array before planCron — no change to
-// planCron/commitCron's own signatures or diff semantics, so the suites above stay
-// byte-identical to today when the flag is absent.
-describe('filterRoutinesByIds', () => {
-  test('null idsCsv → routines unchanged (identity, absent-flag case)', () => {
-    const routines = [r('hermitd:heartbeat-restart'), r('reflect'), r('weekly-review')];
-    expect(filterRoutinesByIds(routines, null)).toBe(routines);
-  });
-
-  test('csv restricts to the named ids, order-preserving', () => {
-    const routines = [r('hermitd:heartbeat-restart'), r('reflect'), r('weekly-review')];
-    const filtered = filterRoutinesByIds(routines, 'hermitd:heartbeat-restart');
-    expect(filtered.map(x => x.id)).toEqual(['hermitd:heartbeat-restart']);
-  });
-
-  test('multi-id csv with whitespace', () => {
-    const routines = [r('a'), r('b'), r('c')];
-    expect(filterRoutinesByIds(routines, ' a , c ').map(x => x.id)).toEqual(['a', 'c']);
-  });
-
-  test('empty string idsCsv → routines unchanged', () => {
-    const routines = [r('a')];
-    expect(filterRoutinesByIds(routines, '')).toBe(routines);
-  });
-});
-
-describe('planCron with --ids filter — monitor-mode anchor-only registration', () => {
-  test('plan --ids hermitd:heartbeat-restart on a mirror tracking 6 routines → KEEP anchor, DELETE the other 5', () => {
-    const all = ['hermitd:heartbeat-restart', 'reflect', 'scheduled-checks', 'weekly-review', 'daily-auto-close', 'doctor'].map(id => r(id));
-    const mirror = seedMirror(all, {}, T0 - 1000); // all 6 tracked, fresh
-    const filtered = filterRoutinesByIds(all, 'hermitd:heartbeat-restart');
-    const plan = planCron(filtered, mirror, BOOT_A, PLUGIN_ROOT, null, 'UTC', T0);
-    expect(plan.deletes.sort()).toEqual(['daily-auto-close', 'doctor', 'reflect', 'scheduled-checks', 'weekly-review']);
-    expect(plan.creates).toEqual([]);
-    expect(plan.keepCount).toBe(1); // anchor kept, unchanged
-  });
-
-  test('plan --ids hermitd:heartbeat-restart on an empty mirror → CREATE anchor only, no deletes', () => {
-    const filtered = filterRoutinesByIds([r('hermitd:heartbeat-restart'), r('reflect')], 'hermitd:heartbeat-restart');
-    const emptyMirror = { boot_id: BOOT_A, routines: {} };
-    const plan = planCron(filtered, emptyMirror, BOOT_A, PLUGIN_ROOT, null, 'UTC', T0);
-    expect(plan.creates.map(c => c.id)).toEqual(['hermitd:heartbeat-restart']);
-    expect(plan.deletes).toEqual([]);
-  });
-
-  test('commit --ids hermitd:heartbeat-restart prunes the mirror to the anchor alone', () => {
-    const all = [r('hermitd:heartbeat-restart'), r('reflect'), r('weekly-review')];
-    const mirror = seedMirror(all, {}, T0 - 1000);
-    const filtered = filterRoutinesByIds(all, 'hermitd:heartbeat-restart');
-    const plan = planCron(filtered, mirror, BOOT_A, PLUGIN_ROOT, null, 'UTC', T0);
-    const routineById = new Map(filtered.map((x: any) => [x.id, x]));
-    const next = commitCron(mirror, plan, new Set(), routineById, PLUGIN_ROOT, BOOT_A, T0);
-    expect(Object.keys(next.routines)).toEqual(['hermitd:heartbeat-restart']);
-  });
-
-  test('no --ids flag → planCron output is byte-identical to the unfiltered call', () => {
-    const all = [r('hermitd:heartbeat-restart'), r('reflect')];
-    const mirror = seedMirror(all, {}, T0 - 1000);
-    const viaFilter = planCron(filterRoutinesByIds(all, null), mirror, BOOT_A, PLUGIN_ROOT, null, 'UTC', T0);
-    const direct = planCron(all, mirror, BOOT_A, PLUGIN_ROOT, null, 'UTC', T0);
-    expect(viaFilter).toEqual(direct);
-  });
+test('an empty monitor plan deletes a tracked anchor only on the same boot', () => {
+  const anchor = r('hermitd:heartbeat-restart');
+  const mirror = seedMirror([anchor], {}, T0);
+  const sameBoot = planCron([], mirror, BOOT_A, PLUGIN_ROOT, null, 'UTC', T0);
+  expect(sameBoot.deletes).toEqual([anchor.id]);
+  expect(sameBoot.creates).toEqual([]);
+  const nextBoot = planCron([], mirror, 'boot-new', PLUGIN_ROOT, null, 'UTC', T0);
+  expect(nextBoot.deletes).toEqual([]);
+  expect(nextBoot.creates).toEqual([]);
 });

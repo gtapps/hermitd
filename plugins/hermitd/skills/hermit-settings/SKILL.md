@@ -285,7 +285,7 @@ Note: "Channel changes take effect on next `hermitd-start` run (type `/hermitd:h
 **If argument is "routines":**
 - Show current routines from `config.routines` array:
   ```
-  Routines (config.json routines → routine monitor; CronCreate fallback where Monitor is unavailable):
+  Routines (config.json routines → routine monitor; CronCreate fallback if the routine monitor misses its first tick):
 
     #  ID           Schedule       Skill                                Status    Gate
     1. morning      30 8 * * *     hermitd:brief --morning    enabled   —

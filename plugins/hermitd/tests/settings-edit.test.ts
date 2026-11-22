@@ -891,6 +891,41 @@ describe('migrate 1.4.0', () => {
   });
 });
 
+describe('migrate drop-rearm-anchor', () => {
+  const migrate = (file: string) => runScript('settings-edit.ts', { args: [file, 'migrate', 'drop-rearm-anchor'] });
+  const routine = { id: 'reflect', schedule: '0 9 * * *', skill: 'hermitd:reflect', enabled: true };
+
+  test('drops stock and customized disabled entries and audits the change once', async () => {
+    const dir = freshDir();
+    const stock = {
+      id: 'hermitd:heartbeat-restart', schedule: '0 4 * * *',
+      skill: 'hermitd:hermit-routines load', enabled: true,
+    };
+    const customized = { ...stock, schedule: '15 3 * * 1', skill: 'custom:run', enabled: false };
+    const expected = validConfig({ routines: [routine], operator_key: { keep: true } });
+    const file = seedConfig(dir, { ...expected, routines: [stock, routine, customized] });
+
+    expect((await migrate(file)).exitCode).toBe(0);
+    expect(readConfig(file)).toEqual(expected);
+    const rows = auditRows(dir);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ actor: 'settings-migrate:drop-rearm-anchor', path: 'routines' });
+    const bytes = fs.readFileSync(file, 'utf8');
+    expect((await migrate(file)).exitCode).toBe(0);
+    expect(fs.readFileSync(file, 'utf8')).toBe(bytes);
+    expect(auditRows(dir)).toEqual(rows);
+  });
+
+  test('leaves a config without the anchor byte-identical and unaudited', async () => {
+    const dir = freshDir();
+    const file = seedConfig(dir, validConfig({ routines: [routine] }));
+    const bytes = fs.readFileSync(file, 'utf8');
+    expect((await migrate(file)).exitCode).toBe(0);
+    expect(fs.readFileSync(file, 'utf8')).toBe(bytes);
+    expect(auditRows(dir)).toEqual([]);
+  });
+});
+
 describe('migrate channel-home', () => {
   test('seeds empty homes, excludes maintainers, preserves pins, and runs once', async () => {
     const file = seedConfig(freshDir(), {

@@ -1411,9 +1411,9 @@ function checkRoutineMonitor(p: DoctorPaths = PATHS) {
     if ('covered' in read) return read.covered;
     const config = read.config;
 
-    const nonAnchorEnabled = (Array.isArray(config.routines) ? config.routines : [])
-      .some((r: Json) => r && r.enabled === true && r.id !== 'hermitd:heartbeat-restart');
-    if (!nonAnchorEnabled) {
+    const anyEnabled = (Array.isArray(config.routines) ? config.routines : [])
+      .some((r: Json) => r && r.enabled === true);
+    if (!anyEnabled) {
       return { id: 'routine-monitor', status: 'ok', detail: 'routine-monitor: no monitor-scheduled routines' };
     }
 
@@ -1437,7 +1437,7 @@ function checkRoutineMonitor(p: DoctorPaths = PATHS) {
     }
 
     if (monRt.mode === 'croncreate-fallback') {
-      return { id: 'routine-monitor', status: 'ok', detail: 'routine-monitor: croncreate-fallback mode (Monitor unavailable)' };
+      return { id: 'routine-monitor', status: 'ok', detail: 'routine-monitor: croncreate-fallback mode (first tick absent). To retry native monitoring this boot, run /hermitd:hermit-routines load --reset' };
     }
     if (!runtimeExists) {
       return { id: 'routine-monitor', status: 'ok', detail: 'routine-monitor: enabled, no runtime state' };
@@ -1468,7 +1468,7 @@ function checkRoutineMonitor(p: DoctorPaths = PATHS) {
       if (health.reason === 'restart-required') {
         return { id: 'routine-monitor', status: 'fail', detail: DRIFT_RESTART_DETAIL('routine-monitor') };
       }
-      const rearm = ['runtime-missing', 'command-drift', 'launch-drift', 'anchor-drift', 'anchor-old'].includes(health.reason)
+      const rearm = ['runtime-missing', 'command-drift', 'launch-drift'].includes(health.reason)
         ? ' — re-arm with /hermitd:hermit-routines load' : '';
       return { id: 'routine-monitor', status: 'fail', detail: `routine-monitor ${health.reason}${rearm}` };
     }
@@ -1496,7 +1496,7 @@ function checkRoutinePrecheck(p: DoctorPaths = PATHS) {
     const config = read.config;
 
     const gated = (Array.isArray(config.routines) ? config.routines : [])
-      .filter((r: Json) => r && r.enabled === true && r.precheck != null && r.id !== 'hermitd:heartbeat-restart');
+      .filter((r: Json) => r && r.enabled === true && r.precheck != null);
     if (gated.length === 0) {
       return { id: 'routine-precheck', status: 'ok', detail: 'routine-precheck: no gated routines' };
     }
