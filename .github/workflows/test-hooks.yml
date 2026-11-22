@@ -62,7 +62,7 @@ jobs:
       # headroom that actually fixes the contention. It must stay above the
       # in-test `Date.now()` poll deadlines (harness-command-delivery,
       # proc-survivor, hermitd-stop) — --timeout does not extend those, so a
-      # value below them makes them unreachable. Local `bun test` stays on
-      # the 5s default so genuine slowness still surfaces in dev.
+      # value below them makes them unreachable. Per-plugin `bun test` stays on
+      # the 5s default so genuine slowness still surfaces in dev; the parallel root runner (scripts/test-all.sh) matches this value.
       - run: bun test --parallel --timeout=45000
         working-directory: plugins/hermitd
