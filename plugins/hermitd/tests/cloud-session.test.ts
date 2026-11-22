@@ -29,7 +29,8 @@ function fixture(root: string, remote = true) {
 case "$1" in
   new-session)
     printf '%s\\n' "$@" > "$FAKE_LOG"
-    cat "\${10}" > "$FAKE_LOG.settings"
+    cat "\${12}" > "$FAKE_LOG.prompt"
+    cat "\${14}" > "$FAKE_LOG.settings"
     ;;
   has-session) exit 0 ;;
   capture-pane) printf '%s\\n' "$FAKE_PANE" ;;
@@ -40,7 +41,7 @@ esac
   const env = {
     PATH: bin + path.delimiter + process.env.PATH,
     FAKE_LOG: log, FAKE_KILLED: killed,
-    FAKE_PANE: 'Created cloud session https://claude.ai/code/session_Test123',
+    FAKE_PANE: `Created cloud session: ${helper}\nView: https://claude.ai/code/session_Test123`,
   };
   const run = (verb: string, args: string[], overrides: Record<string, string> = {}, stdin?: string) =>
     runPinnedScript('cloud-session.ts', dir, [verb, dir, ...args], { env: { ...env, ...overrides }, cwd: root, stdin });
@@ -67,10 +68,12 @@ test('start uses argv settings and registers the helper; lookup prunes a closed 
   expect(fs.existsSync(settings)).toBe(false);
   expect(fs.existsSync(f.killed)).toBe(true);
   expect(JSON.parse(fs.readFileSync(f.log + '.settings', 'utf8'))).toEqual({ remote: { defaultEnvironmentId: 'env_Test1' } });
-  const cloud = argv.indexOf('--cloud');
-  expect(argv.slice(4, cloud + 1)).toEqual(['-c', root, '--', 'claude', '--settings', settings, '-n', helper,
-    '--model', 'opus', '--effort', 'high', '--cloud']);
-  const prompt = argv.slice(cloud + 1).join('\n');
+  const promptPath = argv[11];
+  expect(promptPath).toBe(settings.replace(/\.json$/, '.prompt'));
+  expect(fs.existsSync(promptPath)).toBe(false);
+  expect(argv.slice(4, 8)).toEqual(['-c', root, '--', 'sh']);
+  expect(argv.slice(12)).toEqual(['--settings', settings, '-n', helper, '--model', 'opus', '--effort', 'high', '--cloud']);
+  const prompt = fs.readFileSync(f.log + '.prompt', 'utf8');
   expect(prompt).toStartWith('# Helper session\n');
   expect(prompt).toContain('TASK_REPORT <task-id> <result|needs-input|note>');
   expect(prompt).toContain('SendMessage to resident-at-home');

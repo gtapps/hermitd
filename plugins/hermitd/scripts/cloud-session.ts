@@ -77,23 +77,30 @@ export async function start(dir: string, options: StartOptions, timeoutMs = LAUN
   fs.mkdirSync(state, { recursive: true });
   const pane = 'hermit-cloud-' + randomUUID();
   const settings = path.join(state, pane + '.json');
+  const promptPath = path.join(state, pane + '.prompt');
+  // tmux refuses a command over about 16 KB, so the prompt travels in a file. The
+  // trailing sleep keeps the pane readable after `claude --cloud` prints and exits.
   const args = ['new-session', '-d', '-s', pane, '-c', path.dirname(dir), '--',
-    'claude', '--settings', settings, '-n', options.helper];
+    'sh', '-c', 'prompt=$(cat "$1") || exit 1; shift; claude "$@" "$prompt"; sleep 120', 'sh', promptPath,
+    '--settings', settings, '-n', options.helper];
   if (options.model) args.push('--model', options.model);
   if (options.effort) args.push('--effort', options.effort);
-  args.push('--cloud', prompt);
+  args.push('--cloud');
 
   let sessionId: string | undefined;
   try {
     fs.writeFileSync(settings, JSON.stringify({ remote: { defaultEnvironmentId: id } }), { mode: 0o600, flag: 'wx' });
+    fs.writeFileSync(promptPath, prompt, { mode: 0o600, flag: 'wx' });
     if (!runTmux(args)) return { error: 'tmux_failed' };
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const paneText = capturePane(pane);
       if (paneText === null) break;
       if (LOGIN_RE.test(paneText)) return { error: 'not_logged_in' };
-      if (paneText.includes('Created cloud session')) {
-        sessionId = paneText.match(/\bsession_[A-Za-z0-9]+\b/)?.[0];
+      const created = paneText.indexOf('Created cloud session');
+      if (created !== -1) {
+        // The created line names the session, and a helper name may look like an id.
+        sessionId = paneText.slice(created).match(/\bsession_[A-Za-z0-9]+\b/g)?.find(match => !options.helper.startsWith(match));
         if (sessionId) break;
       }
       Bun.sleepSync(Math.min(POLL_MS, Math.max(0, deadline - Date.now())));
@@ -102,6 +109,7 @@ export async function start(dir: string, options: StartOptions, timeoutMs = LAUN
   } finally {
     runTmux(['kill-session', '-t', pane]);
     fs.rmSync(settings, { force: true });
+    fs.rmSync(promptPath, { force: true });
   }
 
   const binding: Binding = {
@@ -138,26 +146,35 @@ async function ingest(dir: string, sessionId: string, promptId: string, text: st
   type Outcome = { status: 'stored' | 'duplicate' } | { status: 'failed'; reason: string };
   const failed = (reason: string): Outcome => ({ status: 'failed', reason });
   let outcome: Outcome;
+  let helper = '';
   try {
-    outcome = await withBindingLock(dir, async (): Promise<Outcome> => {
+    // Claim the prompt under the lock and store outside it: storing waits on the
+    // channel send, and a second report or a lookup must not time out behind it.
+    const claim = await withBindingLock(dir, () => {
       const entries = readCloudBindings(dir);
       const entry = entries.findLast(row => row.session_id === sessionId);
       if (!entry) return failed('no_match');
       task = entry.task;
-      if (entry.ingested.includes(promptId)) return { status: 'duplicate' };
+      helper = entry.helper;
+      if (entry.ingested.includes(promptId)) return { status: 'duplicate' } as Outcome;
 
       const report = parseReport(text);
       if (!report) return failed('invalid_header');
       if (report.task !== task) return failed('wrong_task');
-      const result = await submitHelperReport(dir, task, { as: 'helper:' + entry.helper, kind: report.kind }, report.body);
-      if (result && typeof result === 'object' && 'recorded' in result && result.recorded === true) {
-        entry.ingested = [...entry.ingested, promptId].slice(-20);
-        saveCloudBindings(dir, entries);
-        return { status: 'stored' };
-      }
-      const reason = result && typeof result === 'object' && 'reason' in result ? result.reason : undefined;
-      return failed(knownFailure(reason));
+      entry.ingested = [...entry.ingested, promptId].slice(-20);
+      saveCloudBindings(dir, entries);
+      return report;
     });
+    if ('status' in claim) outcome = claim;
+    else {
+      const result = await submitHelperReport(dir, claim.task, { as: 'helper:' + helper, kind: claim.kind }, claim.body);
+      if (result && typeof result === 'object' && 'recorded' in result && result.recorded === true) {
+        outcome = { status: 'stored' };
+      } else {
+        const reason = result && typeof result === 'object' && 'reason' in result ? result.reason : undefined;
+        outcome = failed(knownFailure(reason));
+      }
+    }
   } catch (error) {
     outcome = failed(knownFailure(error instanceof Error ? error.message : ''));
     // A busy writer prevents the locked lookup. The atomic binding file still

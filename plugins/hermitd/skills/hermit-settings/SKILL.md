@@ -33,7 +33,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings escalation     — set escalation threshold
 /hermitd:hermit-settings channels       — configure channels
 /hermitd:hermit-settings remote          — toggle remote control
-/hermitd:hermit-settings remote-environments <name> <link|env_id|remove> — manage remote helper environments
+/hermitd:hermit-settings remote-environments <name> <link|env_id|remove>: manage remote helper environments
 /hermitd:hermit-settings model           — set Claude model
 /hermitd:hermit-settings delegation-model — model for background helpers and task workers
 /hermitd:hermit-settings delegation-effort — effort for background helpers and task workers

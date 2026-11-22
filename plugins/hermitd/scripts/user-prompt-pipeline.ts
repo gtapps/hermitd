@@ -176,6 +176,8 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     await stage('prompt-context', promptContext, ctx);
     await stage('conversation', conversation, ctx);
     if (harnessMode && ctx.skipHarnessCommand) return;
+    // Before the audit: a cloud helper report the model never sees is not operator activity.
+    if (!guest) await stage('cloud-report', cloudReport, ctx);
     // The reminder stage runs BEFORE the audit: it resolves passive-chat membership
     // and self-mention over the network and warms lib/channel-chats.ts's cache, which
     // record-operator-action's cache-only gate then reads. Auditing first misclassified
@@ -191,8 +193,6 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     // A guest's own prompts still receive context, but cannot control the resident.
     // Its channel messages never get this far: the resident gate above blocks them.
     if (guest) return;
-    await stage('cloud-report', cloudReport, ctx);
-    if (blockReason) return;
 
     const rt = ctx.runtime();
     const shutdownPending = !!rt && !!rt.shutdown_requested_at && !rt.shutdown_completed_at;

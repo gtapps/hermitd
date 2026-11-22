@@ -143,7 +143,7 @@ export function findResident(runtime: any, configDir?: string): SessionEntry | n
 }
 
 // The name a peer must address to reach the resident. `peer_name` is only the
-// name the resident *requested* at boot — Claude Code renames a session that
+// name the resident *requested* at boot: Claude Code renames a session that
 // collides with a live one already holding it, so the registry entry's own
 // `name` is authoritative and `peer_name` is the fallback for a resident that
 // booted before the `session_pid` stamp existed (or on a host whose registry
