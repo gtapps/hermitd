@@ -7,6 +7,8 @@
 - `hermitd run channel-token` saves a bot token from a hidden terminal prompt.
 
 - `hermitd connector enable` picks a free port when `--port` is omitted on first enable and refuses a port or public address another agent has claimed.
+- `delegation.model` and `delegation.effort` set a default model and effort for background helpers and task workers; a model or effort named in a request still wins.
+- `/hermitd:hermit-settings heartbeat` can change the heartbeat check's model and effort.
 
 ### Changed
 
@@ -29,6 +31,7 @@
 ### Upgrade Instructions
 
 1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate drop-rearm-anchor` to remove the old anchor routine from the installed config.
+2. Nothing to write: the finalizer adds `delegation` (`model` and `effort`, both `null`) from the template defaults when it is missing, and names it in `settings_added`. Nothing changes until the operator sets a value with `/hermitd:hermit-settings delegation-model` or `delegation-effort`.
 
 **Leftover check:** Removed the `hermitd:heartbeat-restart` config routine id and the `anchor` and `anchor_age_days` fields from the arm output.
 

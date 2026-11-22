@@ -14,6 +14,10 @@
   "auth_mode": null,
   "model": "sonnet",
   "effort": null,
+  "delegation": {
+    "model": null,
+    "effort": null
+  },
   "permission_mode": "auto",
   "tmux_session_name": "hermit-{project_name}",
   "auto_session": true,

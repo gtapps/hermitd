@@ -29,7 +29,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { ESCALATION, OPERATOR_PROFILE, AUTH_MODE, QUALITY_GATE_TIER, BUDGET_ACTION, VOICE_STYLE, EFFORT } from './settings/enums';
+import { ESCALATION, OPERATOR_PROFILE, AUTH_MODE, QUALITY_GATE_TIER, BUDGET_ACTION, VOICE_STYLE, EFFORT, ROUTINE_MODEL } from './settings/enums';
 
 type Json = any;
 
@@ -67,6 +67,7 @@ export const TABLE: Record<string, Spec> = {
   auth_mode: str(null, { enum: AUTH_MODE }),
   model: str('sonnet', { nullable: true }),
   effort: str(null),
+  delegation: shape({ model: str(null, { enum: ROUTINE_MODEL }), effort: str(null, { enum: EFFORT }) }),
   permission_mode: str('auto'),
   tmux_session_name: str('hermit-{project_name}'),
   auto_session: bool(true),

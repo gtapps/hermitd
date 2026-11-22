@@ -507,7 +507,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       const owner = 'owner' in flags ? ownerFlag(flags) : 'resident';
       const dedupe = flag(flags, 'dedupe-key') ?? null;
       const existing = dedupe && records.find(r => (r.status === 'open' || (flags.kind === 'proposal' && r.kind === 'proposal' && r.closed_by === 'cancelled')) && r.dedupe_key === dedupe);
-      if (existing) return openDigest(existing, records, false);
+      if (existing) return openDigest(dir, existing, records, false);
       checkOwnerAvailable(records, owner);
       const title = required(flags, 'title');
       const base = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'task';
@@ -547,7 +547,7 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
       append(record, 'Progress', requester, 'Opened: ' + record.summary, now);
       if (flags['note-stdin'] && input.trim()) append(record, 'Progress', requester, input.trim(), now);
       records.push(record);
-      digest = openDigest(record, records, true);
+      digest = openDigest(dir, record, records, true);
     } else {
       const found = records.find(r => r.id === id);
       if (!found) throw new Error('not_found');
@@ -721,8 +721,9 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
   } finally { releaseLock(lock); }
 }
 
-function openDigest(record: Task, records: Task[], created: boolean) {
-  return { id: record.id, handle: record.handle, created, open_count: records.filter(r => r.status === 'open').length, queued: taskListing(record, records).includes('queued') };
+// `delegation` carries the configured model and effort for the worker this open usually precedes.
+function openDigest(dir: string, record: Task, records: Task[], created: boolean) {
+  return { id: record.id, handle: record.handle, created, open_count: records.filter(r => r.status === 'open').length, queued: taskListing(record, records).includes('queued'), delegation: readSettledConfig(dir).delegation };
 }
 export function taskListing(record: Task, records: Task[], shared = false): string[] {
   const labels: string[] = [];
