@@ -179,7 +179,7 @@ function logDelta(
 
   // Source attribution from the launch entry's turn (best-effort, falls back to 'other').
   // findAsyncLaunch reads the whole parent transcript (no tail window), so a missed
-  // boundary here just means the launch is in the genuine first turn — no truncation
+  // boundary here just means the launch is in the genuine first turn, so no truncation
   // guard needed like cost-tracker.ts's tail-windowed scan.
   let source = 'other';
   try { source = resolveTurnSource(launch.lines, launch.index).source; } catch {}

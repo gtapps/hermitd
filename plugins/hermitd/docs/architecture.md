@@ -222,6 +222,7 @@ Task mutations and imports share `state/tasks.lock`. Every writer of `state/deci
 | `state/.heartbeat`             | heartbeat-touch.ts only                             | heartbeat (detect activity gaps)                              |
 | `state/.lifecycle.lock`        | hermitd-start.ts only                                | hermitd-stop.ts (cleanup)                                      |
 | `state/cost-index.json`        | cost-tracker.ts + subagent-cost.ts (each folds its own append; tmp+rename, offset-based) | cost-tracker.ts (getCumulativeCost fallback), doctor-check.ts |
+| `state/subagent-cost-seen.json` | subagent-cost.ts only, under `state/subagent-cost.lock` (per-agent token totals already logged; entries expire after 7 days) | subagent-cost.ts (logs only the increment on a repeat SubagentStop) |
 | `state/watchdog-state.json`    | hermitd-watchdog.ts only                             | doctor-check.ts (`last_run` liveness + `consecutive_stale` + `last_hygiene_eval` + `hygiene_eval_counts`) |
 | `state/context-surface.json`   | cost-tracker.ts only (derived at each compaction boundary) | hermitd-watchdog.ts (compact-tier conversation gate), doctor-check.ts (`context-age`) |
 | `state/watchdog-events.jsonl`  | hermitd-watchdog.ts + channel-send.ts (append; maintainer fallback and undelivered client notices)                    | doctor-check.ts (event counts), resident-start (restart reason)|
