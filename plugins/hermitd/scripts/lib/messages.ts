@@ -38,7 +38,7 @@ export const EN = {
   status_next_routine: 'Next routine: {hh}:{mm} ({id}).',
   status_all_quiet: 'All quiet — nothing in progress, nothing waiting.',
   status_waiting_header: 'Waiting on you:',
-  status_waiting_confirm: '{task}: confirm the result ({age})',
+  status_waiting_confirm: '{task}: ready for review ({age})',
   status_waiting_answer: '{task}: answer the question ({age})',
   status_waiting_more: '+{n} more',
 

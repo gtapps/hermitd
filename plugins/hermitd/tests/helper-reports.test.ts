@@ -2,9 +2,9 @@ import { expect, test } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { storeHelperReport } from '../scripts/lib/helper-reports';
-import { decodeTask, mutateTask } from '../scripts/lib/tasks';
+import { decodeTask, encodeTask, mutateTask, settleReportDelivery } from '../scripts/lib/tasks';
 import { taskFixture } from './helpers/tasks';
-import { runScript } from './helpers/run';
+import { PLUGIN_ROOT, runScript } from './helpers/run';
 
 const author = 'helper:review';
 const args = (id: string, kind = 'result') => [id, '--as', author, '--kind', kind];
@@ -101,7 +101,7 @@ test('needs-input on an approved proposal waits on the admin', async () => {
   } finally { f.cleanup(); }
 });
 
-for (const scenario of ['sent', 'partial', 'failed', 'timeout', 'disabled', 'relay', 'no_channel', 'thread', 'shared', 'cap', 'no-task'] as const) {
+for (const scenario of ['sent', 'partial', 'failed', 'timeout', 'disabled', 'relay', 'no_channel', 'thread', 'shared', 'cap'] as const) {
   test.serial(`report delivery: ${scenario}`, async () => {
     const f = taskFixture();
     const platform = scenario === 'thread' ? 'telegram' : 'discord';
@@ -124,11 +124,10 @@ for (const scenario of ['sent', 'partial', 'failed', 'timeout', 'disabled', 'rel
       const { id } = await f.open(['--owner', author, ...conversation]);
       if (scenario === 'shared') await f.open(['--conversation', 'discord:CHAT']);
       const body = scenario === 'cap' ? 'x '.repeat(15000) : scenario === 'partial' ? 'x '.repeat(2000) : 'Verdict.\n1. Decision.';
-      const call = scenario === 'no-task' ? ['--no-task', '--as', author] : args(id);
-      const result = await runScript('task.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir, ...env }, args: ['report', f.dir, ...call], stdin: body });
+      const result = await runScript('task.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir, ...env }, args: ['report', f.dir, ...args(id)], stdin: scenario === 'sent' ? body + '\n--- procedure ---\nPrivate procedure' : body });
       expect(result.exitCode).toBe(0);
       const receipt = JSON.parse(result.stdout);
-      const expected = scenario === 'disabled' || scenario === 'timeout' ? 'failed' : ['thread', 'shared', 'cap', 'no-task'].includes(scenario) ? 'sent' : scenario;
+      const expected = scenario === 'disabled' || scenario === 'timeout' ? 'failed' : ['thread', 'shared', 'cap'].includes(scenario) ? 'sent' : scenario;
       expect(receipt.delivery).toBe(expected);
       if (scenario === 'thread') expect(requests[0].body.message_thread_id).toBe('42');
       if (scenario === 'shared') {
@@ -139,7 +138,13 @@ for (const scenario of ['sent', 'partial', 'failed', 'timeout', 'disabled', 'rel
         expect(requests.length).toBe(8);
         expect(requests[7].body.content).toContain('The rest of this report is on the task.');
       }
-      if (scenario === 'no-task') expect(receipt).toMatchObject({ task: null, recorded: false, result_rev: null });
+      expect(decodeTask(f.text(id))).toMatchObject({ report_id: receipt.report, report_kind: 'result', delivery: expected });
+      if (scenario === 'sent') {
+        expect(requests[0].body.content.trimEnd()).toBe(body);
+        expect(decodeTask(f.text(id)).result).toBe(body + '\n');
+        expect(fs.readFileSync(path.join(f.dir, 'helper-reports', receipt.report + '.md'), 'utf8')).toBe(body + '\n');
+        expect(fs.readFileSync(path.join(f.dir, 'helper-reports', receipt.report + '.procedure.md'), 'utf8')).toBe('Private procedure');
+      }
     } finally { server.stop(true); f.cleanup(); }
   }, 20000);
 }
@@ -157,4 +162,90 @@ test('CLI refuses a foreign root and accepts nested and worktree-shaped callers 
       expect((await run(cwd, f.dir)).exitCode).toBe(0);
     }
   } finally { f.cleanup(); foreign.cleanup(); }
+});
+
+
+test('receipt tracks result, stall and note across reportless rounds and stale delivery updates', async () => {
+  const f = taskFixture(); try {
+    const { id } = await f.open(['--owner', author]);
+    const result = await f.ok('report', args(id), 'Done');
+    await f.ok('note', [id, '--actor', 'hermit', '--done', 'Revised definition'], '');
+    const row = async () => (await f.ok('list', ['--id', id, '--json'])).rows[0];
+    expect(await row()).toMatchObject({ result: null, report_id: result.report, report_kind: 'result', delivery: 'no_channel' });
+    for (const kind of ['needs-input', 'note']) {
+      const receipt = await f.ok('report', args(id, kind), 'Progress');
+      expect(settleReportDelivery(f.dir, id, result.report, 'failed')).toBe(false);
+      expect(await row()).toMatchObject({ report_id: receipt.report, report_kind: kind, delivery: 'no_channel' });
+    }
+  } finally { f.cleanup(); }
+});
+
+for (const scalarTags of [false, true]) {
+  test(`auto-close only closes decision-free results (scalar tags: ${scalarTags})`, async () => {
+    const f = taskFixture(); try {
+      for (const [kind, body, closes] of [
+        ['result', 'Verdict\n- Step', true],
+        ['result', 'Verdict\nDecisions:\n1. Choose', false],
+        ['result', 'Verdict\nA sentence\n  2) Choose', false],
+        ['needs-input', 'Question?', false],
+        ['note', 'Progress', false],
+      ] as const) {
+        const { id } = await f.open(['--owner', author, '--tags', '["task","auto-close"]']);
+        const before = decodeTask(f.text(id));
+        before.tags = scalarTags ? '["task","auto-close"]' : ["task", "auto-close"];
+        fs.writeFileSync(path.join(f.dir, 'tasks', id + '.md'), encodeTask(before));
+        const receipt = await f.ok('report', args(id, kind), body);
+        const record = decodeTask(f.text(id));
+        expect(record.status).toBe(closes ? 'closed' : 'open');
+        if (closes) {
+          expect(record).toMatchObject({ closed_by: 'confirmed', closed_actor: author });
+          expect(settleReportDelivery(f.dir, id, receipt.report, 'sent')).toBe(true);
+        } else {
+          if (kind === 'result') expect(record.waiting_on).toBe('discord:u1');
+          await f.ok('cancel', [id, '--actor', 'operator', '--reason-stdin'], 'Next case');
+        }
+      }
+    } finally { f.cleanup(); }
+  });
+}
+
+test('an empty procedure does not create a file and a missing delimiter preserves the whole body', async () => {
+  const f = taskFixture(); try {
+    const { id } = await f.open(['--owner', author]);
+    for (const body of ['Verdict\n  --- procedure ---  \n \n', 'Verdict\n--- procedure --- unmatched\n']) {
+      const { report } = await f.ok('report', args(id), body);
+      expect(fs.readFileSync(path.join(f.dir, 'helper-reports', report + '.md'), 'utf8')).toBe(body.includes('unmatched') ? body : 'Verdict\n');
+      expect(files(f.dir)).not.toContain(report + '.procedure.md');
+    }
+    expect((await f.run('report', ['--no-task', '--as', author], 'Verdict')).exitCode).toBe(1);
+  } finally { f.cleanup(); }
+});
+
+test('a report killed during delivery leaves a pending receipt without resending', async () => {
+  const f = taskFixture();
+  const post = Promise.withResolvers<void>();
+  const server = Bun.serve({ port: 0, fetch(req) {
+    if (req.method === 'GET') return Response.json({ type: 1 });
+    post.resolve();
+    return new Promise<Response>(() => {});
+  } });
+  try {
+    const state = path.join(f.dir, 'channel');
+    fs.mkdirSync(state);
+    fs.writeFileSync(path.join(state, '.env'), 'DISCORD_BOT_TOKEN=test\n');
+    f.put('config.json', { channels: { discord: { enabled: true, state_dir: state, default_chat_id: 'CHAT' } } });
+    const { id } = await f.open(['--owner', author, '--conversation', 'discord:CHAT']);
+    const proc = Bun.spawn([process.execPath, path.join(PLUGIN_ROOT, 'scripts/task.ts'), 'report', f.dir, ...args(id)], {
+      cwd: path.dirname(f.dir), env: { ...process.env, AGENT_DIR: f.dir, HERMIT_DISCORD_API_URL: server.url.origin },
+      stdin: new Blob(['Result']), stdout: 'ignore', stderr: 'ignore',
+    });
+    try {
+      await Promise.race([post.promise, proc.exited.then(code => { throw new Error(`Report exited before delivery: ${code}`); })]);
+      proc.kill('SIGKILL');
+      await proc.exited;
+      const record = decodeTask(f.text(id));
+      expect(record).toMatchObject({ delivery: 'pending', report_kind: 'result' });
+      expect(files(f.dir)).toContain(record.report_id + '.md');
+    } finally { proc.kill(); }
+  } finally { server.stop(true); f.cleanup(); }
 });

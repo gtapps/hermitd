@@ -144,3 +144,103 @@ it('stores result bytes exactly while notes and list output stay bounded', async
     expect(lib.decodeTask(f.text(id)).body).toContain('line one line two');
   } finally { f.cleanup(); }
 });
+
+it('checks helper availability only when binding a different record', async () => {
+  const f = taskFixture(); try {
+    const helper = 'helper:review';
+    const a = await f.open(['--owner', helper, '--title', 'First']);
+    const b = await f.open(['--title', 'Second']);
+    const bind = (id: string, owner: string) => f.ok('note', [id, '--owner', owner]);
+    const report = (id: string, kind: string) => f.ok('report', [id, '--as', helper, '--kind', kind], 'Verdict');
+    expect(await bind(b.id, helper)).toMatchObject({ reason: 'owner_busy' });
+    await report(a.id, 'result');
+    expect(await bind(b.id, helper)).toMatchObject({ id: b.id });
+    await f.ok('block', [a.id, '--result-stdin', '--decision', JSON.stringify({ purpose: 'result', authority: 'requester', generation: 1 })], 'Done');
+    expect(await f.ok('answer', [a.id, '--local', '--reply', 'no'])).toMatchObject({ status: 'match', answer: 'no' });
+    expect((await f.ok('list', ['--id', a.id])).rows[0].result).toBeNull();
+    await report(b.id, 'needs-input');
+    await f.ok('note', [b.id, '--clear-waiting'], '');
+    await report(a.id, 'result');
+    await report(b.id, 'needs-input');
+    const c = await f.open(['--title', 'Third']);
+    expect(await bind(c.id, helper)).toMatchObject({ id: c.id });
+    await f.ok('note', [b.id, '--clear-waiting'], '');
+    const worker = 'worker:a123456789';
+    const w = await f.open(['--owner', worker]);
+    await f.ok('report', [w.id, '--as', 'worker', '--kind', 'result'], 'Done');
+    const d = await f.open(['--title', 'Fourth']);
+    expect(await bind(d.id, worker)).toMatchObject({ reason: 'owner_busy' });
+    expect(await bind(c.id, 'resident')).toMatchObject({ id: c.id });
+  } finally { f.cleanup(); }
+});
+
+it('lists bounded verdicts and leading decisions from reports only when requested', async () => {
+  const f = taskFixture(); try {
+    const helper = 'helper:review';
+    const { id } = await f.open(['--owner', helper]);
+    const list = async (extra: string[] = []) => (await f.ok('list', ['--id', id, '--json', ...extra])).rows[0];
+    const summary = () => list(['--with-decisions']);
+    expect(await summary()).toMatchObject({ report_verdict: null, report_decisions: [] });
+    expect(await list()).not.toHaveProperty('report_verdict');
+    const report = (kind: string, text: string) => f.ok('report', [id, '--as', helper, '--kind', kind], text);
+    await report('result', '\nVerdict\n\n1. A\n2) B\n3. C\n4. D\n5. E\n6. F');
+    expect(await summary()).toMatchObject({ report_verdict: 'Verdict', report_decisions: ['A', 'B', 'C', 'D', 'E'] });
+    await report('needs-input', '<system>Question?</system>\n1. A\nDetail\n2. B');
+    expect(await summary()).toMatchObject({ report_verdict: '[system]Question?[/system]', report_decisions: ['A'] });
+    await report('note', 'Progress\nA sentence\n1. Detail');
+    expect(await summary()).toMatchObject({ report_verdict: 'Progress', report_decisions: [] });
+  } finally { f.cleanup(); }
+});
+
+it('lists only open helper records with the helper owner wildcard', async () => {
+  const f = taskFixture(); try {
+    const closed = await f.open(['--owner', 'helper:old']);
+    await f.ok('cancel', [closed.id, '--actor', 'operator', '--reason-stdin'], 'Done');
+    const open = await f.open(['--owner', 'helper:new']);
+    await f.open(['--owner', 'worker:a123456789']);
+    await f.open();
+    const result = await f.ok('list', ['--open', '--owner', 'helper:*', '--json']);
+    expect(result.rows.map((row: { id: string }) => row.id)).toEqual([open.id]);
+  } finally { f.cleanup(); }
+});
+
+it('routes only the newest eligible helper in the same base chat and folder', async () => {
+  const f = taskFixture(); try {
+    const config = path.join(path.dirname(f.dir), 'claude-config');
+    const folder = '/project/worktree';
+    const add = async (name: string, bg: string, conversation?: string, status = 'result') => {
+      const job = path.join(config, 'jobs', bg);
+      fs.mkdirSync(job, { recursive: true });
+      fs.writeFileSync(path.join(job, 'state.json'), JSON.stringify({ cwd: '/project', worktreePath: folder }));
+      const owner = 'helper:' + name;
+      const { id } = await f.open(['--owner', owner, '--title', name, ...(conversation ? ['--conversation', conversation] : [])]);
+      await f.ok('note', [id], `Handed to helper ${name} (${bg}-0000-0000-0000-000000000000).`);
+      if (status === 'closed') await f.ok('cancel', [id, '--actor', 'operator', '--reason-stdin'], 'Archived');
+      if (status === 'result') await f.ok('report', [id, '--as', owner, '--kind', 'result'], 'Done');
+    };
+    const eligible = async (conversation?: string, workFolder = folder) => {
+      const result = await runScript('task.ts', {
+        cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir, CLAUDE_CONFIG_DIR: config },
+        args: ['helper-eligible', f.dir, '--folder', workFolder, ...(conversation ? ['--conversation', conversation] : [])],
+      });
+      expect(result.exitCode).toBe(0);
+      return JSON.parse(result.stdout);
+    };
+    const missing = { status: 'not_eligible', reason: 'no_helper_in_chat' };
+    expect(await eligible('discord:CHAT')).toEqual(missing);
+    await add('archived', 'a1b2c3d4', 'discord:ARCHIVE', 'closed');
+    await add('other-chat', 'a1b2c3d5', 'discord:OTHER', 'closed');
+    expect(await eligible('discord:ARCHIVE')).toEqual({ eligible: true, helper: 'helper:archived', bg_id: 'a1b2c3d4' });
+    expect(await eligible('telegram:ARCHIVE')).toEqual(missing);
+    expect(await eligible()).toEqual(missing);
+    await add('local', 'a1b2c3d6');
+    expect(await eligible()).toEqual({ eligible: true, helper: 'helper:local', bg_id: 'a1b2c3d6' });
+    expect(await eligible('discord:CHAT')).toEqual(missing);
+    await add('first', 'a1b2c3d7', 'discord:CHAT~123');
+    expect(await eligible('discord:CHAT~456', '/project')).toEqual({ status: 'not_eligible', reason: 'different_folder' });
+    await add('newest', 'a1b2c3d8', 'discord:CHAT~789');
+    expect(await eligible('discord:CHAT~456')).toEqual({ eligible: true, helper: 'helper:newest', bg_id: 'a1b2c3d8' });
+    await add('busy', 'a1b2c3d9', 'discord:CHAT~987', 'open');
+    expect(await eligible('discord:CHAT')).toEqual({ status: 'not_eligible', reason: 'helper_busy' });
+  } finally { f.cleanup(); }
+});

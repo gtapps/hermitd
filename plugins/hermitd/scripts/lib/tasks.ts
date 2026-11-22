@@ -19,6 +19,8 @@ import { isPrimaryOperator, isAllowedSender } from './channel-auth';
 import { appendEvent, respondedEvent } from './proposals/event';
 import { REVIEW_CALLS } from './learned-skills';
 import { readDeliveryBudget } from './decisions';
+import { readHelperJob } from './helper-job';
+import { reportSummary, type ReportDelivery } from './helper-reports';
 import { TASK_ID } from './task-decide-args';
 
 export { TASK_ID } from './task-decide-args';
@@ -34,7 +36,7 @@ const HOUR = 3600000;
 // Absolute, because a close outside the task skill has no plugin root to resolve against.
 const LEARN_GUIDE = path.resolve(import.meta.dirname, '../../skills/task/learn.md');
 const requiredStrings = ['id', 'type', 'title', 'created', 'summary', 'audience', 'status', 'opened_at', 'requester', 'handle', 'owner'] as const;
-const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'last_worker', 'kind', 'decision', 'approved_rev', 'approved_by', 'source', 'category'] as const;
+const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'last_worker', 'kind', 'decision', 'approved_rev', 'approved_by', 'source', 'category', 'report_id', 'report_kind', 'delivery'] as const;
 const booleans = ['muted', 'delegated'] as const;
 const nullableDefaults = () => Object.fromEntries(nullableStrings.map(key => [key, null])) as Record<typeof nullableStrings[number], string | null>;
 export type Task = Record<typeof requiredStrings[number], string> & Record<typeof nullableStrings[number], string | null> & Record<typeof booleans[number], boolean> & { tags: string[] | string | null; claims: string[]; result_rev: number; body: string };
@@ -69,6 +71,9 @@ export function validateTask(record: Task): void {
     const tags = JSON.parse(record.tags);
     if (!Array.isArray(tags) || tags.some(x => typeof x !== 'string')) fail();
   }
+  if (record.report_id !== null && !/^[a-z0-9]{10}$/.test(record.report_id)) fail();
+  if (![null, 'result', 'needs-input', 'note'].includes(record.report_kind)) fail();
+  if (![null, 'pending', 'sent', 'partial', 'failed', 'relay', 'no_channel'].includes(record.delivery)) fail();
   if (record.kind !== null && record.kind !== 'proposal') fail();
   if (record.approved_rev !== null && !/^\d+$/.test(record.approved_rev)) fail();
   if (record.decision !== null) decodeDecision(record.decision);
@@ -268,7 +273,8 @@ function ownerFlag(flags: TaskFlags): string {
   return value;
 }
 function checkOwnerAvailable(records: Task[], owner: string, id?: string): void {
-  if (owner !== 'resident' && records.some(record => record.status === 'open' && record.owner === owner && record.id !== id)) throw new Error('owner_busy');
+  if (owner !== 'resident' && records.some(record => record.owner === owner && record.id !== id
+    && (HELPER_OWNER.test(owner) ? isInProgress(record) : record.status === 'open'))) throw new Error('owner_busy');
 }
 function mutedFlag(flags: TaskFlags): boolean {
   const value = flag(flags, 'muted');
@@ -448,7 +454,7 @@ function closeLearning(dir: string, record: Task): { next?: string } {
   return {};
 }
 
-export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string, threadConversation = false, senderParent: string | null = null, report?: { author: string; store: (record: Task) => void }): unknown {
+export function mutateTask(dir: string, verb: string, id: string | undefined, flags: TaskFlags, input: string, threadConversation = false, senderParent: string | null = null, report?: { author: string; autoClose: boolean; store: (record: Task) => void }): unknown {
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   const lock = path.join(dir, 'state', 'tasks.lock');
   fs.mkdirSync(path.dirname(lock), { recursive: true });
@@ -711,13 +717,32 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
     if (verb === 'close' || verb === 'check-result') {
       digest = { ...(digest as object), ...closeLearning(dir, record) };
     }
-    const encoded = encodeTask(record);
-    report?.store(record);
+    if (report?.autoClose && HELPER_OWNER.test(report.author)) {
+      const tags = typeof record.tags === 'string' ? JSON.parse(record.tags) as string[] : record.tags;
+      if (tags?.includes('auto-close')) finish(record, 'confirmed', report.author, 'Decision-free helper result', now);
+    }
+    let encoded = encodeTask(record);
+    if (report) {
+      report.store(record);
+      encoded = encodeTask(record);
+    }
     fs.mkdirSync(path.join(dir, 'tasks'), { recursive: true });
     writeFileAtomic(path.join(dir, 'tasks', record.id + '.md'), encoded);
     if (progress && !report?.author.startsWith('helper:')) bindTaskTurn(dir, record.id);
     if (event && appendEvent(dir, event)) digest = { ...(digest as object), warnings: ['metrics_append_failed'] };
     return digest;
+  } finally { releaseLock(lock); }
+}
+
+export function settleReportDelivery(dir: string, id: string, reportId: string, delivery: ReportDelivery): boolean {
+  const lock = path.join(dir, 'state', 'tasks.lock');
+  if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');
+  try {
+    const record = readTasks(dir).find(task => task.id === id);
+    if (!record || record.report_id !== reportId) return false;
+    record.delivery = delivery;
+    writeFileAtomic(path.join(dir, 'tasks', id + '.md'), encodeTask(record));
+    return true;
   } finally { releaseLock(lock); }
 }
 
@@ -762,16 +787,43 @@ function checkFlag(flags: TaskFlags): string | null {
   return !value || ['null', 'none', 'clear'].includes(value) ? null : value;
 }
 
+export function eligibleHelper(dir: string, conversation: string | null, folder: string) {
+  if (conversation !== null) checkKey(conversation);
+  const baseChat = (key: string | null) => key === null ? null : key.split('~', 1)[0];
+  const chat = baseChat(conversation);
+  const records = readTasks(dir);
+  const newestFirst = (a: Task, b: Task) =>
+    Date.parse(b.closed_at ?? b.opened_at) - Date.parse(a.closed_at ?? a.opened_at) || b.id.localeCompare(a.id);
+  let candidate: Task | undefined;
+  for (const record of records) {
+    if (!HELPER_OWNER.test(record.owner) || baseChat(record.conversation) !== chat) continue;
+    if (!candidate || newestFirst(record, candidate) < 0) candidate = record;
+  }
+  const refused = (reason: string) => ({ status: 'not_eligible', reason });
+  if (!candidate) return refused('no_helper_in_chat');
+  const progress = candidate.body.match(/^## Progress\n([\s\S]*?)(?=^## |(?![\s\S]))/m)?.[1] ?? '';
+  const handoffs = [...progress.matchAll(/\bHanded to helper ([A-Za-z0-9._-]+) \(([A-Za-z0-9-]{8,})\)/g)];
+  const handoff = handoffs.at(-1);
+  if (!handoff || 'helper:' + handoff[1] !== candidate.owner) return refused('missing_handoff');
+  const bgId = handoff[2].slice(0, 8);
+  const state = readHelperJob(bgId);
+  if (!state) return refused('job_state_unreadable');
+  if ((state.worktreePath ?? state.cwd) !== folder) return refused('different_folder');
+  if (records.some(record => record.owner === candidate.owner && isInProgress(record))) return refused('helper_busy');
+  return { eligible: true, helper: candidate.owner, bg_id: bgId };
+}
+
 export function listTasks(dir: string, flags: TaskFlags = {}, records = readTasks(dir)) {
   const owner = flag(flags, 'owner');
-  if (owner && owner !== 'worker:*' && !validOwner(owner)) throw new Error('invalid_owner');
+  const ownerPrefix = owner === 'worker:*' || owner === 'helper:*' ? owner.slice(0, -1) : null;
+  if (owner && !ownerPrefix && !validOwner(owner)) throw new Error('invalid_owner');
   const limit = flags.limit === undefined ? 20 : Number(flags.limit);
   if (!Number.isInteger(limit) || limit < 1) throw new Error('invalid_limit');
   const selected = records.filter(r => (!flags.all || flags.open ? r.status === 'open' : true)
-    && (!owner || (owner === 'worker:*' ? r.owner.startsWith('worker:') : r.owner === owner))
+    && (!owner || (ownerPrefix ? r.owner.startsWith(ownerPrefix) : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : clip(r.result.split(/\r?\n/).find(line => line.trim()) ?? '', 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, report_id: r.report_id, report_kind: r.report_kind, delivery: r.delivery, ...(flags['with-decisions'] ? reportSummary(dir, r.report_id) : {}), owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : clip(r.result.split(/\r?\n/).find(line => line.trim()) ?? '', 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

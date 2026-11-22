@@ -5,7 +5,7 @@ import { classifyChat, needsThread, threadParent } from './lib/channel-chats';
 import { isKey } from './lib/conversation-key';
 import { readSettledConfig } from './lib/config-read';
 import { exitError } from './lib/cli';
-import { listTasks, mutateTask, reportTaskError, taskStandup, TASK_ID, type TaskFlags } from './lib/tasks';
+import { eligibleHelper, listTasks, mutateTask, reportTaskError, taskStandup, TASK_ID, type TaskFlags } from './lib/tasks';
 
 async function main(): Promise<void> {
   const [verb, dirArg, ...args] = process.argv.slice(2);
@@ -19,21 +19,22 @@ async function main(): Promise<void> {
     return;
   }
   const allowed: Record<string, string[]> = {
-    report: ['as', 'kind', 'no-task'],
+    report: ['as', 'kind'],
     open: ['source', 'category', 'tags', 'waiting-on', 'decision', 'body-stdin', 'kind', 'note-stdin', 'title', 'requester', 'done', 'requester-name', 'origin-message-id', 'due', 'conversation', 'card', 'owner', 'muted', 'approver', 'dedupe-key', 'claim', 'check'],
     answer: ['local', 'chat', 'user', 'reply', 'generation', 'result-rev'],
     note: ['chat', 'user', 'actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'if-waiting-since', 'check', 'owner', 'muted'],
     lesson: ['actor'], 'check-snapshot': [],
     block: ['decision', 'waiting-on', 'result-stdin', 'status-line', 'next'],
     close: ['local', 'chat', 'user', 'by', 'actor', 'result-rev', 'reason-stdin', 'claim'], cancel: ['chat', 'user', 'actor', 'reason-stdin'], dismiss: ['reason-stdin'],
-    list: ['open', 'all', 'conversation', 'requester', 'handle', 'id', 'dedupe-key', 'json', 'owner', 'with-check', 'limit'], standup: ['json', 'days'],
+    'helper-eligible': ['conversation', 'folder'],
+    list: ['open', 'all', 'conversation', 'requester', 'handle', 'id', 'dedupe-key', 'json', 'owner', 'with-check', 'with-decisions', 'limit'], standup: ['json', 'days'],
   };
   if (!allowed[verb]) throw new Error('invalid_verb');
   const requiresId = ['note', 'block', 'close', 'cancel', 'dismiss', 'lesson', 'check-snapshot'].includes(verb);
   const id = requiresId || (['answer', 'report'].includes(verb) && args[0] !== undefined && !args[0].startsWith('--')) ? args.shift() : undefined;
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   if (requiresId && (!id || !TASK_ID.test(id))) throw new Error('invalid_id');
-  const booleans = new Set(['local', 'note-stdin', 'body-stdin', 'clear-waiting', 'result-stdin', 'reason-stdin', 'open', 'all', 'json', 'with-check', 'no-task']);
+  const booleans = new Set(['local', 'note-stdin', 'body-stdin', 'clear-waiting', 'result-stdin', 'reason-stdin', 'open', 'all', 'json', 'with-check', 'with-decisions']);
   const flags: TaskFlags = {};
   while (args.length) {
     const token = args.shift()!;
@@ -53,6 +54,9 @@ async function main(): Promise<void> {
   let result: unknown;
   if (verb === 'report') {
     result = await submitHelperReport(dir, id, flags, await Bun.stdin.text());
+  } else if (verb === 'helper-eligible') {
+    if (typeof flags.folder !== 'string' || !flags.folder) throw new Error('missing_folder');
+    result = eligibleHelper(dir, typeof flags.conversation === 'string' ? flags.conversation : null, flags.folder);
   } else if (verb === 'list') result = listTasks(dir, flags);
   else if (verb === 'standup') {
     const days = flags.days === undefined ? 7 : Number(flags.days);

@@ -1,6 +1,5 @@
-import path from 'node:path';
-import { emitJson, flagValue, readJson } from './lib/cli';
-import { defaultConfigDir } from './lib/setup-token';
+import { emitJson, flagValue } from './lib/cli';
+import { isHelperBackgroundId, readHelperJob } from './lib/helper-job';
 import { EFFORT, HELPER_MODEL } from './lib/settings/enums';
 
 const [bgId, ...args] = process.argv.slice(2);
@@ -10,8 +9,8 @@ const effort = flagValue(args, '--effort');
 if (!model && !effort) refuse('missing_model_or_effort');
 if (args.includes('--model') && (!model || !HELPER_MODEL.test(model))) refuse('invalid_model');
 if (args.includes('--effort') && !EFFORT.includes(effort as typeof EFFORT[number])) refuse('invalid_effort');
-if (!bgId || !/^[A-Za-z0-9-]+$/.test(bgId)) refuse('invalid_background_id');
-const state = readJson(path.join(defaultConfigDir(), 'jobs', bgId, 'state.json'));
+if (!bgId || !isHelperBackgroundId(bgId)) refuse('invalid_background_id');
+const state = readHelperJob(bgId);
 if (!state) refuse('job_state_unreadable');
 if (!Array.isArray(state.respawnFlags) || !state.respawnFlags.every((flag: unknown) => typeof flag === 'string')) {
   refuse('invalid_respawn_flags');
