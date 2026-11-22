@@ -44,7 +44,7 @@ jobs:
       # contention. Bare --parallel self-tunes to whatever the runner
       # actually has instead of repeating that assumption; --timeout is the
       # headroom that actually fixes the contention. Kept in step with the
-      # core suite's value. Local `bun test` stays on the 5s default so
-      # genuine slowness still surfaces in dev.
+      # core suite's value. Per-plugin `bun test` stays on the 5s default so
+      # genuine slowness still surfaces in dev; scripts/test-all.sh matches this value.
       - run: bun test --parallel --timeout=45000
         working-directory: plugins/hermitd-homeassistant

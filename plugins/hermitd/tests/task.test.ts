@@ -244,3 +244,11 @@ it('routes only the newest eligible helper in the same base chat and folder', as
     expect(await eligible('discord:CHAT')).toEqual({ status: 'not_eligible', reason: 'helper_busy' });
   } finally { f.cleanup(); }
 });
+
+it('open prints the configured delegation defaults', async () => {
+  const f = taskFixture(); try {
+    expect((await f.open()).delegation).toEqual({ model: null, effort: null });
+    f.put('config.json', { delegation: { model: 'opus', effort: 'medium' } });
+    expect((await f.open()).delegation).toEqual({ model: 'opus', effort: 'medium' });
+  } finally { f.cleanup(); }
+});

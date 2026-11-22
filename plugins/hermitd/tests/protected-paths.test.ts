@@ -52,6 +52,10 @@ describe('protected settings paths', () => {
     expect(askPathRegex().test('transcription.enabled')).toBe(true);
     expect(askPathRegex().test('transcription.echo')).toBe(true);
   });
+  test('browser launch settings require the settings gate', () => {
+    expect(askPathRegex().test('browser.software_webgl')).toBe(true);
+    expect(askPathRegex().test('browser.chrome_args')).toBe(true);
+  });
   test('the protected surface stays complete', () => {
     expect(PROTECTED_PATHS).toEqual(EXPECTED_PATHS);
   });

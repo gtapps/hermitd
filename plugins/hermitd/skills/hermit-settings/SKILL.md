@@ -34,13 +34,16 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings channels       — configure channels
 /hermitd:hermit-settings remote          — toggle remote control
 /hermitd:hermit-settings model           — set Claude model
+/hermitd:hermit-settings delegation-model — model for background helpers and task workers
+/hermitd:hermit-settings delegation-effort — effort for background helpers and task workers
 /hermitd:hermit-settings brief          — configure morning brief
 /hermitd:hermit-settings permissions    — configure unattended mode
-/hermitd:hermit-settings heartbeat      — enable/disable, interval, quiet mode, active hours
+/hermitd:hermit-settings heartbeat      — enable/disable, interval, quiet mode, active hours, check model and effort
 /hermitd:hermit-settings watchdog       — scheduler_enabled, enable/disable, stale_factor, wedge_floor, escalate_after, operator_grace, context hygiene compaction
 /hermitd:hermit-settings routines        — manage scheduled routines (add/edit/remove/enable/disable)
 /hermitd:hermit-settings env              — view/edit environment variables
 /hermitd:hermit-settings docker           — add/remove Docker packages; edit recommended plugins
+/hermitd:hermit-settings browser-chrome-args — view/add/remove extra Chrome flags for the agent's browser
 /hermitd:hermit-settings scheduled-checks    — manage scheduled plugin skill checks
 /hermitd:hermit-settings boot-skill       — view/clear/change the operator’s replacement startup skill
 /hermitd:hermit-settings quality-gate     — set post-implementation /simplify gate tier (budget|balanced|quality)
@@ -109,10 +112,13 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `browser-default` | `browser.default` | enum | agent-browser / chrome; agent-browser or chrome (requires chrome enabled) | immediately |
 | `browser-inactivity-timeout` | `browser.inactivity_timeout` | integer | any; seconds before an unused signed-in browser closes; 0 turns it off | within a minute |
 | `browser-saved-logins` | `browser.saved_logins` | boolean | yes / no; off stops the agent from saving or using saved logins; existing saved logins stay on disk until deleted | next start of the agent's browser |
+| `browser-software-webgl` | `browser.software_webgl` | boolean | yes / no; render WebGL in software when no GPU is usable; off leaves WebGL sites broken on GPU-less machines | next start of the agent's browser |
 | `transcription` | `transcription.enabled` | boolean | yes / no; transcribe inbound voice notes | next voice note (Docker image: next hermitd update) |
 | `transcription-echo` | `transcription.echo` | boolean | yes / no; echo transcripts in the same chat | next voice note |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |
 | `model` | `model` | string, nullable | any; model name passed straight to --model, or 'none' for the Claude Code default | next hermitd-start |
+| `delegation-model` | `delegation.model` | enum, nullable | opus / sonnet / haiku; model for work handed to background helpers and task workers, or 'none' for the built-in default | next helper or worker dispatch |
+| `delegation-effort` | `delegation.effort` | enum, nullable | low / medium / high / xhigh / max; effort for work handed to background helpers and task workers, or 'none' for the built-in default | next helper or worker dispatch |
 | `boot-skill` | `boot_skill` | string, nullable | any; operator-selected replacement startup skill; core startup does not run first; 'none' restores /hermitd:resident-start | next hermitd-start |
 | `permissions` | `permission_mode` | enum | auto / acceptEdits / default / plan / dontAsk / bypassPermissions; how much Claude Code asks before acting | next hermitd-start (Docker, to or from bypassPermissions: hermitd restart --build) |
 | `push-notifications` | `push_notifications` | boolean | yes / no; doorbell when no channel is reachable | immediately |
@@ -236,7 +242,8 @@ Note: "Channel changes take effect on next `hermitd-start` run (type `/hermitd:h
     stale     — alert if no session progress for (e.g. 2h, 30m) [current]
   ```
   Then ask each field in sequence.
-- Write each changed field through `settings-edit ... set heartbeat.<field> <value>` (`heartbeat.enabled`, `heartbeat.every`, `heartbeat.active_hours.start`, `heartbeat.active_hours.end`, `heartbeat.stale_threshold`). Per-field dotted sets preserve the untouched siblings (`waiting_timeout`, `clean_recheck_cooldown`, `model`, `effort`).
+- The check's model and effort (`heartbeat.model`: `opus` / `sonnet` / `haiku`, or `none` for the session model; `heartbeat.effort`: `low` / `medium` / `high` / `xhigh` / `max`, or `none` for the subagent's own effort) are shown with the current config and changed only when the operator asks for them.
+- Write each changed field through `settings-edit ... set heartbeat.<field> <value>` (`heartbeat.enabled`, `heartbeat.every`, `heartbeat.active_hours.start`, `heartbeat.active_hours.end`, `heartbeat.stale_threshold`, `heartbeat.model`, `heartbeat.effort`). Per-field dotted sets preserve the untouched siblings (`waiting_timeout`, `clean_recheck_cooldown`).
 - **After the change is written**, reconcile the live Monitor with the new state via the Skill tool. The monitor's poll interval is baked in at `start` time from `heartbeat.every`, so a config-only change otherwise leaves the running monitor on the old cadence (and `/hermit-doctor` would flag the mismatch). Surface the result inline:
   - If heartbeat is now **enabled**: invoke `/hermitd:heartbeat start` (idempotent — stops the old monitor and re-registers at the new interval). Success: "Heartbeat monitor restarted at new interval (`<every>`). Active immediately."
   - If heartbeat is now **disabled**: invoke `/hermitd:heartbeat stop`. Success: "Heartbeat monitor stopped."
@@ -393,6 +400,11 @@ Note: "Channel changes take effect on next `hermitd-start` run (type `/hermitd:h
   - `add <PLUGIN> [<MARKETPLACE>]`: append an entry with `scope: "project"`, `enabled: true` and write the whole list back with `set docker.recommended_plugins '<array>'`. `<MARKETPLACE>` is an `org/repo` (e.g. `obra/superpowers-marketplace`) or omitted (defaults to `anthropics/claude-plugins-official`). The marketplace need not be registered locally: the container entrypoint adds it on first boot. **Dedupe rule:** refuse the add if an existing entry has the same `(plugin, marketplace)` pair (scope is NOT part of the key) — operator should `enable` or `remove` first.
   - If input is just a plugin name without a verb: treat as `enable` if it exists, `add` if it doesn't
 - After changes, note: "Restart container to install new plugins: `hermitd restart`"
+
+**If argument is "browser-chrome-args":**
+- Show the current `browser.chrome_args` list (or "No extra Chrome flags" if empty). These flags are appended to every launch of the agent's browser, after its own; WebGL is the separate `browser-software-webgl` setting.
+- Ask which flags to add or remove. Each entry is one flag starting with `--`, with its value after `=` (`--lang=pt-PT`). Apply the complete array with `settings-edit set browser.chrome_args '<JSON array>'`; it takes effect at the next start of the agent's browser.
+- A refused flag stops the browser with `browser_arg_refused:<flag>` (the list is in `${CLAUDE_PLUGIN_ROOT}/docs/config-reference.md` under `browser`); tell the operator which flag to remove.
 
 **If argument is "scheduled-checks":**
 - Read `state/reflection-state.json` for last run dates. If missing, show "(no runs yet)".

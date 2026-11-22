@@ -9,7 +9,7 @@
 //
 // Deliberately NOT in here: the arguments whose work is not "write one leaf" —
 // `channels`, `routines`, `env`, `compact`, `docker`, `scheduled-checks` (session checks),
-// `brief`, `heartbeat`, `watchdog` (arrays, key deletes, multi-field wizards),
+// `brief`, `heartbeat`, `watchdog`, `browser-chrome-args` (arrays, key deletes, multi-field wizards),
 // and `quality-gate` / `artifact-authorization` (bounded asks with a channel
 // re-entry path). Those keep their prose in the skill. `language` has a row
 // because `show` must render it, but the skill keeps its prose too — changing it
@@ -78,6 +78,9 @@ const ROWS: readonly SettingRow[] = [
   { arg: 'browser-saved-logins', path: 'browser.saved_logins', group: 'Operational',
     label: 'Browser saved logins', hint: 'off stops the agent from saving or using saved logins; existing saved logins stay on disk until deleted',
     applies: "next start of the agent's browser" },
+  { arg: 'browser-software-webgl', path: 'browser.software_webgl', group: 'Operational',
+    label: 'Browser software WebGL', hint: 'render WebGL in software when no GPU is usable; off leaves WebGL sites broken on GPU-less machines',
+    applies: "next start of the agent's browser" },
   { arg: 'transcription', path: 'transcription.enabled', group: 'Operational',
     label: 'Voice-note transcription', hint: 'transcribe inbound voice notes',
     applies: 'next voice note (Docker image: next hermitd update)' },
@@ -91,6 +94,12 @@ const ROWS: readonly SettingRow[] = [
   { arg: 'model', path: 'model', group: 'Operational',
     label: 'Model', hint: "model name passed straight to --model, or 'none' for the Claude Code default",
     applies: 'next hermitd-start' },
+  { arg: 'delegation-model', path: 'delegation.model', group: 'Operational',
+    label: 'Delegation model', hint: "model for work handed to background helpers and task workers, or 'none' for the built-in default",
+    applies: 'next helper or worker dispatch' },
+  { arg: 'delegation-effort', path: 'delegation.effort', group: 'Operational',
+    label: 'Delegation effort', hint: "effort for work handed to background helpers and task workers, or 'none' for the built-in default",
+    applies: 'next helper or worker dispatch' },
   { arg: 'boot-skill', path: 'boot_skill', group: 'Operational',
     label: 'Boot skill', hint: "operator-selected replacement startup skill; core startup does not run first; 'none' restores /hermitd:resident-start",
     applies: 'next hermitd-start' },

@@ -14,6 +14,10 @@
   "auth_mode": null,
   "model": "sonnet",
   "effort": null,
+  "delegation": {
+    "model": null,
+    "effort": null
+  },
   "permission_mode": "auto",
   "tmux_session_name": "hermit-{project_name}",
   "auto_session": true,
@@ -26,7 +30,9 @@
     "port": null,
     "host": null,
     "inactivity_timeout": 900,
-    "saved_logins": true
+    "saved_logins": true,
+    "software_webgl": true,
+    "chrome_args": []
   },
   "transcription": {
     "enabled": true,

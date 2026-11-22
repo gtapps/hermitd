@@ -27,7 +27,8 @@ claude --bg --name <n> [--worktree <n>] [--permission-mode <p>] [--no-chrome] [-
 `--worktree <n>` is present only when the operator passed `--worktree`, and
 gives the helper its own worktree of `<dir>` from the start.
 `--remote-control <n>` is present when `config.json`'s `remote` is `true` and
-absent otherwise; `--model` and `--effort` only when the operator passed them.
+absent otherwise; `--model <m>` and `--effort <e>` each when the invocation or
+`config.json`'s `delegation` names a value (step 2).
 `--mcp-config <dir>/.mcp.json` and `--strict-mcp-config` only when the operator
 passed `--strict-mcp-config`: both flags when `<dir>/.mcp.json` exists, and
 `--strict-mcp-config` alone when it does not. Strict mode drops plugin and
@@ -114,8 +115,7 @@ alternate invocation, or weaker permission mode. The exceptions are
      makes the fallback `session-<epoch>`.
      Example: `/tackle-issue PROP #220` becomes
      `tackle-issue-prop-220-1788889689`.
-   - `<m>` / `<e>` are omitted when the operator does not name them, so the
-     helper takes the box defaults.
+   - `<m>` / `<e>` the invocation does not name are filled in step 2.
 
 2. Resolve `<abs>` with `git rev-parse --show-toplevel` rather than reading the
    Bash tool's working directory, which persists across calls and can sit in a
@@ -131,7 +131,10 @@ alternate invocation, or weaker permission mode. The exceptions are
    every other value through unchanged. Read `remote` from the same config
    and include `--remote-control <n>` only when the key is present and
    `true`; `false`, `null` and an absent key all leave the flag off, which
-   is the resident session's own answer for that config. When the operator
+   is the resident session's own answer for that config. Read
+   `delegation.model` and `delegation.effort` from the same config to fill
+   any `<m>` / `<e>` the invocation did not name; a `null` or absent value
+   omits that flag, so the helper takes the box default. When the operator
    passed `--strict-mcp-config`, include `--mcp-config <dir>/.mcp.json
    --strict-mcp-config` if `<dir>/.mcp.json` exists, and `--strict-mcp-config`
    alone if it does not. Check that

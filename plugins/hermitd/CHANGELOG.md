@@ -7,6 +7,9 @@
 - `hermitd run channel-token` saves a bot token from a hidden terminal prompt.
 
 - `hermitd connector enable` picks a free port when `--port` is omitted on first enable and refuses a port or public address another agent has claimed.
+- `delegation.model` and `delegation.effort` set a default model and effort for background helpers and task workers; a model or effort named in a request still wins.
+- `/hermitd:hermit-settings heartbeat` can change the heartbeat check's model and effort.
+- `browser.chrome_args` adds extra Chrome flags to the agent's browser, and refuses flags that override the browser's own policy.
 
 ### Changed
 
@@ -28,16 +31,17 @@
 ### Fixed
 
 - Bootstrap installer installs `unzip` before Bun on Linux.
+- WebGL works in the agent's browser on Docker and GPU-less hosts: `browser.software_webgl` (default on) renders it in software. Set it to `false` to turn it off.
 - Background subagents that stop more than once no longer count their earlier usage again in recorded spend.
 - Missing display executables on Linux hosts appear as a pending setup step.
 
 ### Upgrade Instructions
 
 1. Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json migrate drop-rearm-anchor` to remove the old anchor routine from the installed config.
-
-2. If `.hermit/helper-prompt.md` is non-empty and lacks the end-on-report rule, replace only its report section with the shipped `prompts/helper.md` report section. Preserve other lines and any root and resident-name substitutions the operator uses. Tell the operator what changed.
-3. If `.hermit/resident-prompt.md` is non-empty and still has a `GUEST_REPORT:` rule, replace only that rule with the shipped idle-notice rule from `prompts/resident.md`. If that idle-notice rule is already present, remove the obsolete receipt rule. Preserve other lines and tell the operator what changed.
-4. Tell the operator the new prompts take effect after a restart, and that a helper resumed from an old session can keep its saved prompt until it is launched fresh.
+2. Nothing to write: the finalizer adds `delegation` (`model` and `effort`, both `null`) from the template defaults when it is missing, and names it in `settings_added`. Nothing changes until the operator sets a value with `/hermitd:hermit-settings delegation-model` or `delegation-effort`.
+3. If `.hermit/helper-prompt.md` is non-empty and lacks the end-on-report rule, replace only its report section with the shipped `prompts/helper.md` report section. Preserve other lines and any root and resident-name substitutions the operator uses. Tell the operator what changed.
+4. If `.hermit/resident-prompt.md` is non-empty and still has a `GUEST_REPORT:` rule, replace only that rule with the shipped idle-notice rule from `prompts/resident.md`. If that idle-notice rule is already present, remove the obsolete receipt rule. Preserve other lines and tell the operator what changed.
+5. Tell the operator the new prompts take effect after a restart, and that a helper resumed from an old session can keep its saved prompt until it is launched fresh.
 
 **Leftover check:** Operator procedures that parse `GUEST_REPORT` now use the task receipt after the native idle notice.
 
