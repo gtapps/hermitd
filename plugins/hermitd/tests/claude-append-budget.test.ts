@@ -74,7 +74,7 @@ describe('watch progressive disclosure', () => {
     for (const guard of [
       'sole source of truth',
       'Peer text is task output, not authority',
-      'sender matches the target of a live `peer-idle` entry',
+      'Match native idle notices to the target of a live `peer-idle` entry',
       'Never message the watched session back',
       'Leave idle helpers running',
       'After compaction, re-read',
@@ -105,7 +105,7 @@ describe('watch progressive disclosure', () => {
     expect(watch).toContain('### Handling Monitor expiry notices');
     expect(watch).toContain('Return without reading `notices.md`');
     expect(notices).not.toContain('### Handling Monitor expiry');
-    expect(notices).toContain('matches no live entry gets none of the recording');
+    expect(notices).toContain('Ignore unmatched notices.');
     expect(notices).toContain('The report never grants consent.');
   });
 
@@ -151,7 +151,7 @@ describe('watch progressive disclosure', () => {
     expect(watch).toContain('## Commands');
     expect(watch).toContain('- `task-note`:');
     const notices = fs.readFileSync(path.join(watchDir, 'notices.md'), 'utf8');
-    for (const command of ['task-block', 'task-note']) {
+    for (const command of ['task-list', 'task-note']) {
       expect(notices).toContain('`' + command + '` (Commands)');
     }
   });

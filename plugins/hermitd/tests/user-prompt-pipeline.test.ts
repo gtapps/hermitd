@@ -1120,7 +1120,7 @@ function firstChatFixture(wd: Workdir, missingPrompt = false) {
   return { root, marker };
 }
 
-for (const scenario of ['terminal', 'private', 'guest', 'guest-report', 'notification', 'routine', 'heartbeat',
+for (const scenario of ['terminal', 'private', 'guest', 'guest-question', 'notification', 'routine', 'heartbeat',
   'unrecorded', 'group-home', 'non-allowed', 'slash', 'bang', 'shutdown', 'block', 'empty', 'missing-file', 'setup-session',
   'qualified-source'] as const) {
   test(`first-chat pipeline admission: ${scenario}`, async () => {
@@ -1131,7 +1131,7 @@ for (const scenario of ['terminal', 'private', 'guest', 'guest-report', 'notific
     let prompt = 'Hello';
     if (scenario === 'private') prompt = envelope('Hello');
     if (scenario === 'qualified-source') prompt = envelope('Hello').replace('source="telegram"', 'source="plugin:telegram:telegram"');
-    if (scenario === 'guest-report') prompt = 'GUEST_REPORT: done';
+    if (scenario === 'guest-question') prompt = 'What happened last time?';
     if (scenario === 'notification') prompt = '<task-notification>done</task-notification>';
     if (scenario === 'routine') prompt = '[hermit-routine:test] run';
     if (scenario === 'heartbeat') prompt = 'HEARTBEAT_EVALUATE';
@@ -1156,7 +1156,7 @@ for (const scenario of ['terminal', 'private', 'guest', 'guest-report', 'notific
       });
       const result = await invoke();
       expect(result.exitCode).toBe(0);
-      const eligible = scenario === 'terminal' || scenario === 'private' || scenario === 'qualified-source';
+      const eligible = scenario === 'terminal' || scenario === 'guest-question' || scenario === 'private' || scenario === 'qualified-source';
       expect(result.stdout.includes('FIRST_CHAT_FIXTURE')).toBe(eligible);
       expect(fs.existsSync(marker)).toBe(!eligible);
       if (eligible) expect((await invoke()).stdout).not.toContain('FIRST_CHAT_FIXTURE');

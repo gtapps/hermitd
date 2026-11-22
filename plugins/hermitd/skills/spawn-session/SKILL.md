@@ -34,7 +34,7 @@ passed `--strict-mcp-config`: both flags when `<dir>/.mcp.json` exists, and
 user-scope MCP servers from the helper. A background session cannot answer
 the project-server approval dialog, and a folder named by `--cwd` brings its
 own `.mcp.json` to that dialog.
-A helper report counts only when its sender's session name equals the `target` of a live `peer-idle` registry entry; the epoch-suffixed helper name is what distinguishes one spawn from a reused name. The helper never writes `tasks/`; the resident records progress and results after that sender check.
+The helper stores its report through `task report` and ends on that report as instructed by [the helper prompt](../../prompts/helper.md). Match the native idle notice to the live watch target before handling its receipt.
 
 Six limits sit on that command:
 
@@ -139,7 +139,7 @@ alternate invocation, or weaker permission mode. The exceptions are
    writes it. If it is missing, refuse with one line: restart with hermitd-start
    so boot writes the helper system-prompt file.
 
-   Before `claude --bg`, choose the report record. Without `--task`, bind the open record, when present, using `task.ts note <abs>/.hermit <T-id> --owner helper:<n>`. With `--task`, open or reuse the helper-work record with `--dedupe-key "helper:<task-id>"`, requester from this authorized turn, and a title naming the helper work, then bind it with `--owner helper:<n>`. This record holds the helper report, not the source proposal's implementation result. Refuse `invalid_owner` or `owner_busy` before launch. Include the report task id, `helper:<n>` for `--as`, and the operator language in the brief; without a record, require `--no-task`. Require a verdict line, numbered decisions for this round, then detail in standard markdown without tables or headings, submitted once through `task report` in a quoted heredoc. The helper returns only the receipt to the resident.
+   Before `claude --bg`, bind a record. With `--task`, open or reuse the named source task's helper-work record using `--dedupe-key "helper:<task-id>"` and the authorized requester. Otherwise bind the current open record or open a helper-work record with a title naming the work, requester and definition of done. If opening it without a source task and without a conversation, pass `--tags '["task","<requester>","auto-close"]'` with the actual requester. It closes on a decision-free result; a report with decisions waits for the operator. Bind with `task.ts note <abs>/.hermit <T-id> --owner helper:<n>` and honor any refusal before launch. Read the record's `report_id` via `task list --id <T-id> --json` as `prior_report`. Include the task id, `helper:<n>` and operator language in the brief. The helper submits once and ends on the same report per the helper prompt. Never reopen a closed record; route later work as a new record.
 
 3. `cd <dir>` as its own Bash call, then run the command in Usage as the next
    one, so the launch stands alone in the transcript and in any approval that
@@ -158,17 +158,16 @@ alternate invocation, or weaker permission mode. The exceptions are
    The printed bg id is only the first 8 characters of `<sid>` and is not a
    resume handle. An empty result means no `<sid>`: say so, write the lines
    below without `(<sid>)`,
-   and continue to step 4. Without `--task`, inside an open record's turn,
+   and continue to step 4. On the bound report record,
    append `Handed to helper <n> (<sid>).` as a progress note by piping it into
    `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <T-id>`,
    where `<T-id>` is that open record's id, not the bg id (the note is
    timestamped for you).
    Ownership was bound before launch. On a failed launch, return the bound record to `--owner resident`; do not leave it assigned to an absent helper. With `--task`, note `Handed to helper <n> (<sid>); helper record <helper-task-id>.` on the source task after launch.
 
-4. Invoke `/hermitd:watch session <n> "<first 40 chars of the operator prompt>" --id <bg-id>`.
+4. Invoke `/hermitd:watch session <n> "<first 40 chars of the operator prompt>" --id <bg-id> --fresh-launch --record <T-id> --prior-report <id|null>`. Use the baseline read by `task list --id <T-id> --json` before launch.
    When the watch reports the helper blocked on its `waitingFor`, add nothing:
    the watch's helper poll announces it in chat.
-   Whenever step 2 bound or opened a record, also pass `--record <T-id>`.
    That skill owns the subscription (`watch/session-watch.md` § Starting a session watch)
    and the idle-notice relay (`watch/notices.md` § Handling idle notices); do not re-implement either.
    When it declines the subscription, pass on the reason it gives rather than
@@ -179,16 +178,11 @@ alternate invocation, or weaker permission mode. The exceptions are
    id, run `claude logs <id>` and show the operator the last few
    ANSI-stripped lines; name the state those lines show (a boot dialog it
    cannot answer, a crash, a finished turn) rather than one they do not. A
-   declined subscription writes no registry entry, so no report can ever
-   reach the record selected in step 2: cancel it with the decline reason
-   (`task.ts cancel .hermit <T-id> --actor <requester> --reason-stdin`)
-   and say whether the tail leaves the helper running unwatched or stuck,
-   rather than leaving a commitment waiting on a report that cannot arrive.
+   declined subscription writes no registry entry. Check the record with `task list --all --id <T-id> --json --with-decisions`; if it already has a new report, handle its receipt. Otherwise say the helper is unwatched and whether the logs show it running, blocked or gone. Preserve the record for reconciliation.
 
 ## Follow-ups
 
-Send follow-ups by `SendMessage` with `notify_when_idle: true`, then read
-watch § Registering an existing idle subscription with the sent text. The watch relay
+Send follow-ups using [reuse-spawned-helper.md](reuse-spawned-helper.md). Capture `prior_report` before dispatch and include the task id, `helper:<n>` and operator language. The watch relay
 retries a blocked or declined follow-up once with that stored request.
 
 ### Resume with new instructions
@@ -208,7 +202,7 @@ the caller so it can handle a resume that could not start.
    Still listed at the deadline: end without resuming and report that outcome.
    Then call `TaskStop` on the old watch entry's `poll_task_id` when present;
    an error means it already exited.
-3. From the project root, run
+3. Read each affected record’s current `report_id` with `task list --id <T-id> --json` as its baseline. Include the task id, `helper:<n>` and operator language in the instructions. From the project root, run
    `claude --bg --resume <sessionId> '<instructions>'` with no other flag.
    Apply the launch limits' `'\''` quoting rule to every apostrophe in the
    instructions. The saved options include the helper system prompt; extra
@@ -217,7 +211,7 @@ the caller so it can handle a resume that could not start.
    what it printed and end with that outcome.
 4. Remove the helper's old watch entry if still live and write the registry,
    then invoke `/hermitd:watch session <name> "<note>" --id <bg-id>` plus the
-   given flags. Use the resumed session's bg id (the first 8 characters of its
+   given flags and `--prior-report <id|null>` for the record. Restore the other watched records with their own baselines. Use the resumed session's bg id (the first 8 characters of its
    session id). Do not store these prompt instructions as `followup`: they
    were delivered by resume, not by message. If the watch declines, return
    that the resumed helper runs unwatched; a launched resume counts as

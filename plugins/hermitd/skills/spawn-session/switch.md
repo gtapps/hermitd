@@ -10,7 +10,7 @@ Use the Commands from the parent skill. Never ask the operator a question.
    "Resume with new instructions" step 1 to a listed row. A listed helper
    that is not ready is queued: read `.hermit/state/monitors.runtime.json`
    and take the live `peer-idle` entry whose `target` is `<n>`. With none,
-   first run `/hermitd:watch session <n> "<note>" --id <bg-id> --record <T-id>`;
+   first read the record’s current `report_id` as `prior_report` via `task list --id <T-id> --json`, then run `/hermitd:watch session <n> "<note>" --id <bg-id> --record <T-id> --prior-report <id|null>`;
    if no live entry results, report that outcome and end. Set the entry's
    `switch` to an object containing `record: "<T-id>"` and the supplied
    `model` and/or `effort`, merging into any queued value so a newer value for
@@ -34,8 +34,8 @@ Use the Commands from the parent skill. Never ask the operator a question.
    helper's worktree when it has one) as its own Bash call. As the next call, run
    `claude --bg --resume <sid> <flags> '<continuation>'`, then `cd` back to
    the project root as the next call whatever the launch returned.
-   The continuation says the model or effort was switched, to reply only
-   `ok`, and to send no message or report. Apply the launch limits'
+   The continuation includes the task id, `helper:<n>` and operator language, says the model or effort was switched, to reply only
+   `ok` as a session-only switch acknowledgement, with no work request or report. Apply the launch limits'
    apostrophe quoting rule to the continuation and folder paths; the script's
    flags are already quoted. A "started a copy" note is the expected output.
    On launch failure, report it and end without retrying. Never type `/model`,

@@ -4,19 +4,19 @@ Follow the shared rules in [SKILL.md](SKILL.md). Start a new watch with the firs
 section; after a caller has already armed a subscription, use
 [Registering an existing idle subscription](#registering-an-existing-idle-subscription).
 
-### Starting a session watch (`/watch session <name|glob> [note] [--record <T-id>] [--record <task-id>] [--implement] [--retry] [--id <bg-id>]`)
+### Starting a session watch (`/watch session <name|glob> [note] [--record <T-id> --prior-report <id|null>] [--proposal <task-id>] [--fresh-launch] [--implement] [--retry] [--id <bg-id>]`)
 
-1. Parse optional `--record <T-id>`, `--record <task-id>`, `--implement`, `--retry` and `--id <bg-id>`
-   with the name and note. If `<name>` contains `*` or `?`, take the **glob branch** below instead of
+1. Parse optional `--record <T-id>`, `--prior-report <id|null>`, `--proposal <task-id>`, `--fresh-launch`, `--implement`, `--retry` and `--id <bg-id>`
+   with the name and note. A record requires its dispatch-time baseline, including explicit `null`. If `<name>` contains `*` or `?`, take the **glob branch** below instead of
    resolving an exact name. The glob branch ignores `--record`, `--implement`, `--retry` and `--id`.
 
    With `--id`, first poll the bg id in one Bash call every 2s for up to 30s.
-   A busy, blocked or done row is started; null or idle status with working
+   A busy, blocked, done or waiting-for-input row is started; null or idle status with working
    state is not. Output columns are status, state and waitingFor:
    ```bash
    deadline=$((SECONDS + 30))
    while (( SECONDS <= deadline )); do
-     row=$(claude agents --json | jq -r --arg id <bg-id> '.[] | select(.id==$id and (.status=="busy" or .state=="blocked" or .state=="done")) | [.status, .state, .waitingFor] | @tsv')
+     row=$(claude agents --json | jq -r --arg id <bg-id> '.[] | select(.id==$id and (.status=="busy" or .waitingFor!=null or .state=="blocked" or .state=="done")) | [.status, .state, .waitingFor] | @tsv')
      if [[ -n "$row" ]]; then
        printf '%s\n' "$row"
        break
@@ -27,8 +27,7 @@ section; after a caller has already armed a subscription, use
    ```
 
    If no row is printed, answer `No session named <name> is reachable from here.`
-   and stop. If its state is `done`, give step 2's "not working on anything"
-   decline and stop.
+   and stop. If its state is `done` and status is not busy and `waitingFor` is null, decline as in step 2 unless this is a fresh launch.
 
    Resolve `<name>` with `ListAgents`. The row must be a Claude Code
    session on this machine — `notify_when_idle` covers nothing else, so a
@@ -55,13 +54,13 @@ section; after a caller has already armed a subscription, use
    the others.
 2. With `--id`, decide from the polled row's status and state rather than the
    `ListAgents` status or a re-read: `busy` subscribes as below; `blocked`
-   subscribes and reports the polled `waitingFor` as below.
+   subscribes and reports an actual non-null `waitingFor`; any non-null `waitingFor` can also subscribe for resident-start recovery; `done` on a fresh launch also subscribes without a body. Only the fresh launch passes `--fresh-launch`.
    Without `--id`, apply the row checks below, including the one re-read.
    Call `SendMessage` with `to: <name>` and `notify_when_idle: true`. Omit
    `message`: this is a pure subscription and costs the watched session nothing.
    A target whose turn has already ended fires its notice at once for that same
    turn, so do not send a bodyless subscription to a row showing `idle` or
-   `waiting` (except the blocked case below), nor to a target you are sending work to: arm that one by passing
+   `waiting` (except the polled blocked case or the fresh launch above), nor to a target you are sending work to: arm that one by passing
    `notify_when_idle: true` on the same `SendMessage`, then use the registration section below. A session just launched or resumed with a prompt can take a
    moment to show busy, so without `--id`, re-read its row once before deciding. If it still
    shows `waiting`, read that name's row in `claude agents --json`. When its
@@ -86,21 +85,16 @@ only records that subscription; do not send another message or subscribe again.
    for approval, e.g. under `bypassPermissions`), no relay is possible — say so
    plainly instead of claiming the watch is live, and do not write the registry.
 2. Read `.hermit/state/monitors.runtime.json`; create it if missing
-   with `{"monitors": [], "last_cleared": null}`. A live `peer-idle` entry
-   for this name with `reportless` belongs to a finished turn: `TaskStop` its
-   `poll_task_id` when present, remove it, and continue. Any other live entry
-   for this name ends registration without writing a second entry;
-   if the send carried a message, first append that exact text to its `followup`
-   array (create the array if absent) and write the registry.
+   with `{"monitors": [], "last_cleared": null}`. For an already-live `peer-idle` entry for this helper, add the supplied `{record, prior_report}` to `records` unless the record is already listed. Keep the first baseline for the same record within the watched turn. Append the exact sent text to `followup` when present, associated with its record, then write the registry. Start no second poll.
 3. Generate id `session-<name>-<epoch>-<4char-random>` — same timestamp + random
    suffix convention as an ad-hoc id, so two watches on one name in the same
    second do not collide. Append:
    `{id: "session-<name>-<epoch>-<rand>", description: <note or "session <name>">, target: <name>, started_at, source: "adhoc", class: "peer-idle"}`.
-   Store a supplied record as `record`, implementation
+   Store `records: [{record, prior_report}]` when a record is supplied, along with any source `proposal`. Reject a supplied record without a baseline; store no pair for a general session watch. Implementation
    purpose (`--implement`) as `purpose: "implement"`, and `--retry` as `retry: true`.
    `switch` is an optional object with `record` and `model` and/or `effort`; only
    `/hermitd:spawn-session`'s switch procedure writes it.
-   When the send carried a message, store its exact text as `followup: ["<text>"]`.
+   When the send carried a message, store its exact text in `followup` with its associated record.
    Do not add `task_id` (`task_id` means a Monitor task and drives `TaskStop`).
    Write the registry back.
 4. Resolve the helper's bg id from the supplied `--id`, otherwise from the `id`

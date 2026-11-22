@@ -3613,6 +3613,12 @@ describe('task-worker agent contract', () => {
     for (const phrase of ["<<'REPORT'", 'operator language', 'verdict line', 'numbered for this round', 'no tables or headings', '--kind needs-input', 'Report: <id>', 'Delivery: <status>', 'Never resubmit', 'with no report body', 'edit_message']) expect(agent).toContain(phrase);
   });
 
+  test('the resident looks up bounded report receipts for worker completions', () => {
+    const skill = read(path.join(SKILLS, 'task', 'SKILL.md'));
+    expect(skill).toContain('task list --all --id <task-id> --json --with-decisions');
+    expect(skill).toContain('short report-back for relay and no channel');
+  });
+
   // The resident routes an `Unreachable:` note to the maintainer on needs-input.
   test('an unreachable dependency stops the worker and reaches the maintainer', () => {
     expect(agent).toContain('Unreachable:');
