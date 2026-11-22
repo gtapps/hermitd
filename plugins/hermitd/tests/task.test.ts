@@ -144,3 +144,10 @@ it('stores result bytes exactly while notes and list output stay bounded', async
     expect(lib.decodeTask(f.text(id)).body).toContain('line one line two');
   } finally { f.cleanup(); }
 });
+it('open prints the configured delegation defaults', async () => {
+  const f = taskFixture(); try {
+    expect((await f.open()).delegation).toEqual({ model: null, effort: null });
+    f.put('config.json', { delegation: { model: 'opus', effort: 'medium' } });
+    expect((await f.open()).delegation).toEqual({ model: 'opus', effort: 'medium' });
+  } finally { f.cleanup(); }
+});

@@ -34,9 +34,11 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings channels       — configure channels
 /hermitd:hermit-settings remote          — toggle remote control
 /hermitd:hermit-settings model           — set Claude model
+/hermitd:hermit-settings delegation-model — model for background helpers and task workers
+/hermitd:hermit-settings delegation-effort — effort for background helpers and task workers
 /hermitd:hermit-settings brief          — configure morning brief
 /hermitd:hermit-settings permissions    — configure unattended mode
-/hermitd:hermit-settings heartbeat      — enable/disable, interval, quiet mode, active hours
+/hermitd:hermit-settings heartbeat      — enable/disable, interval, quiet mode, active hours, check model and effort
 /hermitd:hermit-settings watchdog       — scheduler_enabled, enable/disable, stale_factor, wedge_floor, escalate_after, operator_grace, context hygiene compaction
 /hermitd:hermit-settings routines        — manage scheduled routines (add/edit/remove/enable/disable)
 /hermitd:hermit-settings env              — view/edit environment variables
@@ -115,6 +117,8 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `transcription-echo` | `transcription.echo` | boolean | yes / no; echo transcripts in the same chat | next voice note |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |
 | `model` | `model` | string, nullable | any; model name passed straight to --model, or 'none' for the Claude Code default | next hermitd-start |
+| `delegation-model` | `delegation.model` | enum, nullable | opus / sonnet / haiku; model for work handed to background helpers and task workers, or 'none' for the built-in default | next helper or worker dispatch |
+| `delegation-effort` | `delegation.effort` | enum, nullable | low / medium / high / xhigh / max; effort for work handed to background helpers and task workers, or 'none' for the built-in default | next helper or worker dispatch |
 | `boot-skill` | `boot_skill` | string, nullable | any; operator-selected replacement startup skill; core startup does not run first; 'none' restores /hermitd:resident-start | next hermitd-start |
 | `permissions` | `permission_mode` | enum | auto / acceptEdits / default / plan / dontAsk / bypassPermissions; how much Claude Code asks before acting | next hermitd-start (Docker, to or from bypassPermissions: hermitd restart --build) |
 | `push-notifications` | `push_notifications` | boolean | yes / no; doorbell when no channel is reachable | immediately |
@@ -238,7 +242,8 @@ Note: "Channel changes take effect on next `hermitd-start` run (type `/hermitd:h
     stale     — alert if no session progress for (e.g. 2h, 30m) [current]
   ```
   Then ask each field in sequence.
-- Write each changed field through `settings-edit ... set heartbeat.<field> <value>` (`heartbeat.enabled`, `heartbeat.every`, `heartbeat.active_hours.start`, `heartbeat.active_hours.end`, `heartbeat.stale_threshold`). Per-field dotted sets preserve the untouched siblings (`waiting_timeout`, `clean_recheck_cooldown`, `model`, `effort`).
+- The check's model and effort (`heartbeat.model`: `opus` / `sonnet` / `haiku`, or `none` for the session model; `heartbeat.effort`: `low` / `medium` / `high` / `xhigh` / `max`, or `none` for the subagent's own effort) are shown with the current config and changed only when the operator asks for them.
+- Write each changed field through `settings-edit ... set heartbeat.<field> <value>` (`heartbeat.enabled`, `heartbeat.every`, `heartbeat.active_hours.start`, `heartbeat.active_hours.end`, `heartbeat.stale_threshold`, `heartbeat.model`, `heartbeat.effort`). Per-field dotted sets preserve the untouched siblings (`waiting_timeout`, `clean_recheck_cooldown`).
 - **After the change is written**, reconcile the live Monitor with the new state via the Skill tool. The monitor's poll interval is baked in at `start` time from `heartbeat.every`, so a config-only change otherwise leaves the running monitor on the old cadence (and `/hermit-doctor` would flag the mismatch). Surface the result inline:
   - If heartbeat is now **enabled**: invoke `/hermitd:heartbeat start` (idempotent — stops the old monitor and re-registers at the new interval). Success: "Heartbeat monitor restarted at new interval (`<every>`). Active immediately."
   - If heartbeat is now **disabled**: invoke `/hermitd:heartbeat stop`. Success: "Heartbeat monitor stopped."
