@@ -16,6 +16,12 @@ import { privateEnvPath, upsertEnvVar } from './lib/env-file';
 import { readSettledConfig } from './lib/config-read';
 
 const REAL_BINARY = `/usr/lib/node_modules/agent-browser/bin/agent-browser-linux-${process.arch}`;
+// browser.chrome_args flags that would take over the wrapper's profile, debugging port, user agent
+// or headed mode, replace the metadata block, inject extension code, or disable same-origin checks.
+const REFUSED_CHROME_ARGS = new Set([
+  '--user-data-dir', '--profile-directory', '--remote-debugging-port', '--remote-debugging-address', '--remote-debugging-pipe', '--user-agent', '--headless',
+  '--host-resolver-rules', '--load-extension', '--disable-extensions-except', '--disable-web-security',
+]);
 
 /** Reserve admission while the CLI starts a daemon, without holding a long lock. */
 function sessionAdmission(socketDir: string, session: string, remove = false): boolean {
@@ -371,7 +377,16 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     chromeVersion = fs.readFileSync(marker, 'utf8').split('\n').find(line => line.startsWith('chrome='))?.slice('chrome='.length);
   }
   else delete env.AGENT_BROWSER_EXECUTABLE_PATH;
-  const baseArgs = [...host ? [] : ['--no-sandbox'], '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled'];
+  // Headed Chrome without a usable GPU blocklists WebGL unless SwiftShader is opted in; the
+  // ANGLE pair skips the failing hardware GPU probes in a container, which has no GPU.
+  const webglArgs = config.browser.software_webgl ? ['--enable-unsafe-swiftshader', ...host ? [] : ['--use-gl=angle', '--use-angle=swiftshader-webgl']] : [];
+  const chromeArgs: string[] = config.browser.chrome_args;
+  for (const arg of chromeArgs) {
+    const flag = typeof arg === 'string' ? arg.split(/[=\r\n]/)[0] : 'not_a_string';
+    const refused = !flag.startsWith('--') || /[\r\n]/.test(arg) || REFUSED_CHROME_ARGS.has(flag) || (host && flag === '--no-sandbox');
+    if (refused && argv.at(-1) !== 'close') { printJson({ error: `browser_arg_refused:${flag}` }); return 1; }
+  }
+  const baseArgs = [...host ? [] : ['--no-sandbox'], '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled', ...webglArgs, ...chromeArgs];
   const policyFlags = new Set(['--profile', '--args', '--executable-path', '--namespace', '--session-name', '--config', '--idle-timeout', '--task', '--user-agent', '--action-policy']);
   const args: string[] = [];
   for (let i = 0; i < argv.length; i++) {

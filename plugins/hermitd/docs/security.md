@@ -469,6 +469,8 @@ Beyond the always-on baseline above, `/hermitd:docker-security` is an opt-in adv
 - The metadata URL refusal and resolver guard reduce accidental access; they are not containment. Direct CDP or the real binary bypass the wrapper.
 - Tailnet peers were not tested, and `100.64.0.0/10` is not in netguard's drop list.
 - A hard kill within about 30 seconds of login can lose the browser sign-in.
+- `browser.software_webgl` (default on) lets pages reach Chrome's software WebGL renderer, SwiftShader, which Chromium does not intend for untrusted content. Anonymous headless sessions use it without the setting. On Docker, Chrome already runs without its sandbox, so this adds attack surface but no new boundary. Set it to `false` to turn it off.
+- The `browser.chrome_args` refusal list protects the wrapper's own flags on its normal path. It is not a boundary: code that runs the real binary chooses its own flags.
 - The browser wrapper coordinates supported commands. Calling the real npm binary by absolute path or using raw CDP bypasses its claim, session cap and prepared secret lock. It is not a boundary against hostile code or between chats.
 - Setup assist's stops for CAPTCHA, consent, payment, deletion, third-party grants and unlisted changes are skill rules. Auto mode still checks tool calls. Neither the wrapper nor an approval gate enforces what a click means.
 
