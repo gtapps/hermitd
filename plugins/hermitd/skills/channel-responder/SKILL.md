@@ -90,7 +90,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
   - If one of the six mod commands reaches you without a verdict, say chat harness commands are unavailable in this session. Do not promise delivery or attempt a tmux fallback. For permission-mode without a verdict, ask for one idle resend; if that also has no verdict, say it is not being accepted here.
   - For model, effort, permission-mode, advisor, doctor, or near-miss details, read `reference.md` § Harness command details.
 
-- **Typed-only command** (a request, as a slash command or in plain words, for what only a typed command does: updating, restarting or upgrading the agent, or any skill whose `Skill` call refuses with `disable-model-invocation`)
+- **Typed-only command** (a request, as a slash command or in plain words, for what only a typed command does: updating, restarting or upgrading the agent itself (not a task worker or a config setting), or any skill whose `Skill` call refuses with `disable-model-invocation`)
   - Say it must be typed in a terminal or the Claude app; an `act_surface` line in context decides who is told to do that. Nothing runs in its place: no look-alike skill, no subagent that does its job (such as `hermitd:evolve-runner`), no shell route.
 
 - **Slash command** (message starts with `/`, e.g. `/simplify`, `/plugin:command`)
