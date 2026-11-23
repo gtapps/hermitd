@@ -6,9 +6,9 @@ Use `/hermitd:hermit-settings transcription` to turn transcription off. Disabled
 
 ## Local transcription
 
-Hermit uses NeMo-Speech v0.3.0 with the Nemotron 3.5 ASR model and automatic language detection. Tmux and Docker deployments prepare the engine and model in the background at boot. Hatch starts the same preparation for interactive installs. A voice note can also trigger preparation if needed.
+The agent uses NeMo-Speech v0.3.0 with the Nemotron 3.5 ASR model and automatic language detection. Tmux and Docker deployments prepare the engine and model in the background at boot. Hatch starts the same preparation for interactive installs. A voice note can also trigger preparation if needed.
 
-Automatic installation supports Linux glibc x64 and arm64 and Apple Silicon macOS. A `nemo-speech` executable on PATH takes priority. Intel Mac users supply `nemo-speech` on PATH. The automatic install lives under `.claude.local/nemo-speech/<platform>-<arch>/<version>/`, and the model uses about 742 MB of disk per agent under `.claude.local/nemo-speech/models/`. Peak transcription memory measured at two CPUs was about 1 GiB. Engine archives come from GitHub and the engine pulls the model from Hugging Face. Both are checked against pinned SHA-256 hashes.
+Automatic installation supports Linux glibc x64 and arm64 and Apple Silicon macOS. A `nemo-speech` executable on PATH takes priority. Intel Mac users supply `nemo-speech` on PATH. The automatic install lives under `.claude.local/nemo-speech/<platform>-<arch>/<version>/`, and the model uses about 742 MB of disk per agent under `.claude.local/nemo-speech/models/`. Peak transcription memory measured at two CPUs was about 1 GiB. Engine archives come from GitHub and the engine pulls the model from Hugging Face with `curl` from PATH. Both are checked against pinned SHA-256 hashes.
 
 FFmpeg on PATH takes priority. Linux hosts download a pinned FFmpeg when it is missing. Docker images include FFmpeg by default through the `HERMIT_TRANSCRIPTION` build argument. Local transcription in Docker requires FFmpeg from the image or an existing installation. On macOS, install FFmpeg when it is missing:
 

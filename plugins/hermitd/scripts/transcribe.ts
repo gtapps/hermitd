@@ -128,10 +128,12 @@ export async function transcribe(argv: string[], options: Options = {}): Promise
         }
         await (options.models ?? ensureModels)(binary, run);
         remaining(deadline);
+        if (!ffmpeg) return finish({ status: 'unavailable', reason: localReason === 'local_engine_unavailable' ? 'ffmpeg_missing' : localReason, path: '' });
         return finish({ status: 'ready' });
       }
       if (binary && ffmpeg) {
-        await (options.models ?? ensureModels)(binary, run);
+        // A long pull leaves the cloud fallback its own 60-second window.
+        await (options.models ?? ensureModels)(binary, argv => run(argv, Math.max(1_000, deadline - Date.now() - 60_000)));
         const recognized = run([
           binary, '--quiet', 'transcribe', convert(ffmpeg), '--model', TRANSCRIPTION_MODEL, '--language', 'auto',
           '--device', 'cpu', '--asr.backend.threads', String(os.availableParallelism()), '--no-warmup',

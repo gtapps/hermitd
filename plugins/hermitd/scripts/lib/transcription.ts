@@ -99,7 +99,9 @@ export function readiness(options: ReadinessOptions): { status: 'disabled' | 're
 }
 
 function command(argv: string[], deadline: number): void {
-  const result = Bun.spawnSync(argv, { timeout: remaining(deadline), stdout: 'pipe', stderr: 'pipe' });
+  // Install children never see the boot environment's credentials.
+  const env = Object.fromEntries(['PATH', 'HOME', 'LANG'].flatMap(key => process.env[key] === undefined ? [] : [[key, process.env[key]!]]));
+  const result = Bun.spawnSync(argv, { env, timeout: remaining(deadline), stdout: 'pipe', stderr: 'pipe' });
   if (result.exitCode !== 0) throw new Error(`${argv[0]}:${result.stderr.toString().trim()}`);
 }
 async function download(pin: Pin, file: string, options: EngineOptions): Promise<void> {
