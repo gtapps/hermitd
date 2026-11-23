@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.41] - 2026-11-23
 
 ### Added
 
@@ -9,7 +9,6 @@
 ### Changed
 
 - The OpenAI voice-note fallback uses `gpt-transcribe` instead of `whisper-1`, which OpenAI removes on 2027-02-26.
-
 - The local voice-note engine uses NeMo-Speech with Nemotron 3.5 ASR, automatic language detection, and background preparation at boot.
 
 ### Fixed
