@@ -130,16 +130,16 @@ export async function transcribe(argv: string[], options: Options = {}): Promise
   if (transcript === undefined) {
     try {
       if (fs.statSync(file).size > 25 * 1024 * 1024) throw new Error('audio_over_25mb');
-      for (const [key, name, base, model] of [
-        ['GROQ_API_KEY', 'groq', 'https://api.groq.com/openai/v1', 'whisper-large-v3-turbo'],
-        ['OPENAI_API_KEY', 'openai', 'https://api.openai.com/v1', 'whisper-1'],
+      for (const [key, name, base, model, languageField] of [
+        ['GROQ_API_KEY', 'groq', 'https://api.groq.com/openai/v1', 'whisper-large-v3-turbo', 'language'],
+        ['OPENAI_API_KEY', 'openai', 'https://api.openai.com/v1', 'gpt-transcribe', 'languages[]'],
       ]) {
         if (!env[key]) continue;
         try {
           const body = new FormData();
           body.set('file', Bun.file(file), path.basename(file));
           body.set('model', model);
-          body.set('language', language);
+          body.set(languageField, language);
           const response = await (options.fetch ?? fetch)(`${base}/audio/transcriptions`, {
             method: 'POST', headers: { Authorization: `Bearer ${env[key]}` }, body,
             signal: AbortSignal.timeout(remaining(deadline, 60_000)),
