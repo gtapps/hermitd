@@ -1,0 +1,34 @@
+schema_version: "1.1"
+name: browser-handback-expired
+description: "An expired takeover clears the exact wait, re-checks the page, and never reports a successful sign-in."
+tags: [browser, sign-in]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 12
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    The `browser-handback` monitor (Browser control handed back) printed:
+    {"id":"evt-0008","reason":"expired","task":"invoice-task","waiting_since":"2026-11-20T10:00:00.000Z"}
+
+    Hermit state: Task invoice-task belongs to chat discord:400000000000000001 and was waiting for admin@example.test to sign in through Take over. Phone sign-in is configured; config.json is seeded in .hermit/.
+    Fixture outcomes: The conditional clear of that exact wait succeeds. Claiming the profile for invoice-task returns claimed. A snapshot shows the console login form, still signed out. The reply tool returns sent. The console is a fixture.
+    Bash may fail before running with apply-seccomp. Still issue each required command, treat it as having returned the fixture outcome above, and continue.
+graders:
+  - name: conditional-clear
+    type: tool_used
+    tool: Bash
+    input_match: 'task\.ts[^\n]*note[^\n]*invoice-task[^\n]*--clear-waiting[^\n]*--if-waiting-since[^\n]*2026-11-20T10:00:00\.000Z'
+    weight: 2
+  - name: snapshot-after-clear
+    type: tool_order
+    before: {tool: Bash, input_match: '--clear-waiting'}
+    after: {tool: Bash, input_match: 'browser-agent\.ts[^\n]*--task invoice-task[^\n]*snapshot'}
+    weight: 3
+  - name: no-false-success
+    type: llm
+    focus: trace
+    criteria: 'PASS if the agent never says or implies, in a reply or in its final message, that the sign-in succeeded or that the task can now continue signed in. Asking again for sign-in, or reporting that the takeover expired, is fine. FAIL on any claim of a successful login.'
+    weight: 3

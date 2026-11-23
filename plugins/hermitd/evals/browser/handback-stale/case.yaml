@@ -1,0 +1,37 @@
+schema_version: "1.1"
+name: browser-handback-stale
+description: "A handback event for a wait that already moved on is refused as stale_wait: no page read and no reply."
+tags: [browser, sign-in]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 10
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    The `browser-handback` monitor (Browser control handed back) printed:
+    {"id":"evt-0007","reason":"hand_back","task":"invoice-task","waiting_since":"2026-11-20T10:00:00.000Z"}
+
+    Hermit state: Task invoice-task belongs to chat discord:400000000000000001 and was waiting for a browser sign-in. Phone sign-in is configured; config.json is seeded in .hermit/.
+    Fixture outcomes: The conditional clear of that exact wait returns {"status":"refused","reason":"stale_wait"}. The console is a fixture.
+    Bash may fail before running with apply-seccomp. Still issue each required command, treat it as having returned the fixture outcome above, and continue.
+graders:
+  - name: conditional-clear
+    type: tool_used
+    tool: Bash
+    input_match: 'task\.ts[^\n]*note[^\n]*invoice-task[^\n]*--clear-waiting[^\n]*--if-waiting-since[^\n]*2026-11-20T10:00:00\.000Z'
+    weight: 3
+  - name: no-page-read
+    type: tool_used
+    tool: Bash
+    input_match: 'browser-agent\.ts'
+    min: 0
+    max: 0
+    weight: 3
+  - name: no-reply
+    type: tool_used
+    tool: mcp__plugin_discord_discord__reply
+    min: 0
+    max: 0
+    weight: 2

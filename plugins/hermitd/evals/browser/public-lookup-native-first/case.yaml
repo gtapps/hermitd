@@ -1,0 +1,26 @@
+schema_version: "1.1"
+name: browser-public-lookup-native-first
+description: "A fresh public lookup uses WebSearch or WebFetch, not the browser. Runs live web calls."
+tags: [browser, train, live-web]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, WebFetch, WebSearch]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    What is the latest released version of Bun right now? Check, don't guess.
+graders:
+  - name: no-browser-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?browser"'
+    min: 0
+    max: 0
+    weight: 3
+  - name: native-web-tool
+    type: llm
+    focus: trace
+    criteria: 'PASS if the agent calls WebSearch or WebFetch to answer. FAIL if it answers without either tool. Judge the tool calls only, not whether the version is correct.'
+    weight: 2
