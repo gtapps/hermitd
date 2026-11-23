@@ -273,13 +273,13 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-install.ts >/dev/null 2>&1 &
 
 Do not wait for downloads or run `sudo`. The final report names `hermitd run browser-host` when prerequisites are missing. For Docker, `/docker-setup` builds the browser into the image.
 
-**Start transcription preparation.** Beside the browser install, for `deployment: tmux` or `interactive` with `transcription.enabled` not false, launch once in the background:
+**Start transcription preparation.** Beside the browser install, for `deployment: interactive` with `transcription.enabled` not false, launch once in the background:
 
 ```bash
 bun ${CLAUDE_PLUGIN_ROOT}/scripts/transcribe.ts --prepare >/dev/null 2>&1 &
 ```
 
-Do not wait or run `sudo`. This installs missing binaries only; models download on the first voice note. Include the transcription line from `will_apply` in the preview and from the final report in the summary.
+Do not wait or run `sudo`. This installs the local engine and downloads the model. Tmux and Docker deployments prepare transcription at boot. Include the transcription line from `will_apply` in the preview and from the final report in the summary.
 
 **Persist hatch options.** After config.json is written, before any settings or CLAUDE write, run:
 

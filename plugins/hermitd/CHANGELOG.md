@@ -10,11 +10,21 @@
 
 - The OpenAI voice-note fallback uses `gpt-transcribe` instead of `whisper-1`, which OpenAI removes on 2027-02-26.
 
+- The local voice-note engine uses NeMo-Speech with Nemotron 3.5 ASR, automatic language detection, and background preparation at boot.
+
+### Fixed
+
+- Voice notes use automatic language detection when no language is configured.
+
 ### Upgrade Instructions
 
 1. Nothing to write: the finalizer adds `remote_environments` (`{}`) from the template defaults when it is missing, and permissions sync adds the `cloud-session lookup` allow entry.
 2. If `.hermit/resident-prompt.md` is non-empty and lacks the `CLOUD_REPORT_STORED` routing rule, add the shipped rule from `prompts/resident.md` after its cross-session idle notice rule. Preserve other lines and tell the operator what changed.
 3. **Operator action required:** restart the agent so the report hook stage and the resident prompt load.
+4. From the agent project root, remove the retired engine and its cached models if present: `if [ -d .claude.local/whisper.cpp ]; then rm -r -- .claude.local/whisper.cpp/; fi`.
+5. **Operator action required:** On macOS, run `brew install ffmpeg` if FFmpeg is missing.
+
+**Leftover check:** Operator-authored workflows that read local `transcribe` results may look for `provider: 'whisper.cpp'`. The local provider is now `nemo-speech`.
 
 ## [1.4.40] - 2026-11-22
 

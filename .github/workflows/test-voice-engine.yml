@@ -1,0 +1,33 @@
+name: Test voice engine
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'plugins/hermitd/scripts/lib/transcription-pins.ts'
+      - '.github/workflows/test-voice-engine.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  transcribe:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-26.04, ubuntu-26.04-arm, macos-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: plugins/hermitd
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.4.2'
+      - if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - run: bun test tests/transcribe.test.ts -t 'live voice engine'
+        env:
+          HERMIT_LIVE_TRANSCRIBE: '1'

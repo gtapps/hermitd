@@ -14,7 +14,7 @@ const CHANNEL_DOMAINS: Record<string, string[]> = {
 
 /** Voice-note engine and model downloads, plus the credential-enabled cloud fallback. */
 const TRANSCRIPTION_DOMAINS = [
-  'archive.ubuntu.com', 'ports.ubuntu.com', 'huggingface.co', 'hf.co', 'api.groq.com', 'api.openai.com',
+  'huggingface.co', 'hf.co', 'api.groq.com', 'api.openai.com',
 ];
 
 /** Every host a built-in feature can add, enabled or not. */

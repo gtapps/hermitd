@@ -17,7 +17,7 @@ import { ensureDisplay } from './browser-display';
 import { startConnector } from './lib/connector';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync, type SpawnOptions } from 'node:child_process';
 import { acquireLock, releaseLock } from './lib/lockfile';
 import { readConfigRaw } from './lib/config-read';
 import { readJson } from './lib/cli';
@@ -1468,6 +1468,26 @@ export function maybeInstallWatchdogScheduler(
   );
 }
 
+/** Prepare voice transcription without delaying or failing the boot. */
+export function maybePrepareTranscription(
+  enabled: unknown,
+  launch: (command: string, args: string[], options: SpawnOptions) => {
+    once(event: 'error', listener: (error: Error) => void): unknown;
+    unref(): void;
+  } = spawn,
+): void {
+  if (enabled === false) return;
+  try {
+    const child = launch(process.execPath, [path.join(import.meta.dir, 'transcribe.ts'), '--prepare'], {
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, AGENT_DIR: path.resolve(path.dirname(CONFIG_PATH)) },
+    });
+    child.once('error', () => {});
+    child.unref();
+  } catch {}
+}
+
 /**
  * Decide what to do when tmux reports the session already exists: refusal lines,
  * or null to report "already running" and exit 0. Pure of side effects so it's
@@ -1660,6 +1680,7 @@ async function main(): Promise<void> {
   seedChromeOnboarding(cmd);
   clearChannelFailureCache(cmd);
   startConnector(process.cwd(), sessionName, { container: isContainer() });
+  maybePrepareTranscription(config.transcription?.enabled);
 
   if (noTmuxFlag || !pyTruthy(tools.tmux)) {
     if (!noTmuxFlag && !pyTruthy(tools.tmux)) {

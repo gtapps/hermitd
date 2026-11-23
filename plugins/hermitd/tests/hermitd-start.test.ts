@@ -21,6 +21,7 @@
 // Usage: bun test tests/hermitd-start.test.ts   (from the plugin root)
 
 import { describe, test as bunTest, expect, beforeEach, afterEach } from 'bun:test';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -46,6 +47,7 @@ import {
   shouldRefuseBoot,
   shouldInstallWatchdogScheduler,
   maybeInstallWatchdogScheduler,
+  maybePrepareTranscription,
   dockerHermitRunning,
   duplicateSessionRefusal,
   checkForUpgrade,
@@ -402,6 +404,34 @@ describe.if(!IN_CONTAINER)('boot singleton guard', () => {
 // ============================================================
 // Watchdog scheduler auto-install (tmux always-on boot)
 // ============================================================
+
+describe('transcription boot preparation', () => {
+  test('each enabled boot detaches preparation for this project', () => {
+    const calls: unknown[][] = [];
+    let unrefs = 0;
+    const launch: NonNullable<Parameters<typeof maybePrepareTranscription>[1]> = (command, args, options) => {
+      calls.push([command, args, options]);
+      const child = Object.assign(new EventEmitter(), { unref: () => { unrefs++; } });
+      queueMicrotask(() => child.emit('error', new Error('fixture spawn error')));
+      return child;
+    };
+    maybePrepareTranscription(undefined, launch);
+    maybePrepareTranscription(true, launch);
+    maybePrepareTranscription(false, launch);
+    expect(calls).toHaveLength(2);
+    for (const call of calls) {
+      expect(call).toMatchObject([
+        process.execPath, [path.join(PLUGIN_ROOT, 'scripts/transcribe.ts'), '--prepare'],
+        { detached: true, stdio: 'ignore', env: { AGENT_DIR: path.join(tmpdir, '.hermit') } },
+      ]);
+    }
+    expect(unrefs).toBe(2);
+  });
+
+  test('a synchronous spawn failure does not abort boot', () => {
+    expect(() => maybePrepareTranscription(true, () => { throw new Error('fixture spawn error'); })).not.toThrow();
+  });
+});
 
 describe('watchdog scheduler auto-install', () => {
   const fakeSpawn = (record: string[][]) =>
