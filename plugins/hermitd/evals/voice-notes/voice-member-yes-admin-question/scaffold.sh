@@ -3,4 +3,4 @@
 set -e
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "$here/../../channel-routing/micro-member-yes-admin-question/scaffold.sh"
-exec bash "$here/../seed.sh" '{"status":"ok","transcript":"yes","provider":"local","recorded":true,"echo":"sent"}'
+exec bash "$here/../seed.sh" '{"status":"ok","transcript":"yes","provider":"nemo-speech","recorded":true,"echo":"sent"}'

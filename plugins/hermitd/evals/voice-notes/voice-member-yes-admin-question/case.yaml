@@ -20,7 +20,7 @@ execution:
     (attachment)
     </channel>
 
-    Fixture outcomes: `.hermit/bin/hermitd-run transcribe` prints {"status":"ok","transcript":"yes","provider":"local","recorded":true,"echo":"sent"}. `task answer` prints {"status":"refused","reason":"not_decider"}. The reply tool returns sent.
+    Fixture outcomes: `.hermit/bin/hermitd-run transcribe` prints {"status":"ok","transcript":"yes","provider":"nemo-speech","recorded":true,"echo":"sent"}. `task answer` prints {"status":"refused","reason":"not_decider"}. The reply tool returns sent.
     Bash may fail before running with apply-seccomp. Still issue each required command, treat it as having returned the fixture outcome above, and continue.
 graders:
   - name: transcribe-call

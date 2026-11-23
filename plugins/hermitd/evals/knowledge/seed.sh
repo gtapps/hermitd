@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Seeds a small-shop resident install with a session report and two compiled pages (runs only with --scaffold).
+# Seeds a small-shop resident install with a session report and one audience-scoped compiled page (runs only with --scaffold).
 set -e
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p .hermit/tasks .hermit/state .hermit/sessions .hermit/compiled .hermit/raw memory

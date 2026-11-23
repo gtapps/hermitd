@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 set -e
-exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../setup-seed.sh" true
+exec bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../setup-seed.sh" true mention

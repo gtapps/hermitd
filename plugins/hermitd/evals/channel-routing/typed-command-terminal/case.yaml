@@ -29,7 +29,7 @@ graders:
   - name: no-shell-workaround
     type: tool_used
     tool: Bash
-    input_match: 'hermitd(?:-run|-docker)?\s+(?:restart|update|evolve)|hermit-(?:restart|update|evolve)|claude\s+plugin\s+update'
+    input_match: 'hermitd(?:-run|-docker)?\s+(?:run\s+)?(?:restart|update|evolve|request-restart|self-update)|hermit-(?:restart|update|evolve)|claude\s+plugin\s+update'
     min: 0
     max: 0
     weight: 3

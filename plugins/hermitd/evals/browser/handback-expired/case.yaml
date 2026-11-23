@@ -20,7 +20,7 @@ graders:
   - name: conditional-clear
     type: tool_used
     tool: Bash
-    input_match: 'task\.ts[^\n]*note[^\n]*invoice-task[^\n]*--clear-waiting[^\n]*--if-waiting-since'
+    input_match: 'task\.ts[^\n]*note[^\n]*invoice-task[^\n]*--clear-waiting[^\n]*--if-waiting-since[^\n]*2026-11-20T10:00:00\.000Z'
     weight: 2
   - name: snapshot-after-clear
     type: tool_order

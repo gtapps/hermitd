@@ -19,7 +19,7 @@ execution:
     (attachment)
     </channel>
 
-    Fixture outcomes: `.hermit/bin/hermitd-run transcribe` prints {"status":"ok","transcript":"What time is it in Tokyo when it is nine in the morning here in Lisbon?","provider":"local","recorded":true,"echo":"sent"}. The reply tool returns sent.
+    Fixture outcomes: `.hermit/bin/hermitd-run transcribe` prints {"status":"ok","transcript":"What time is it in Tokyo when it is nine in the morning here in Lisbon?","provider":"nemo-speech","recorded":true,"echo":"sent"}. The reply tool returns sent.
     Bash may fail before running with apply-seccomp. Still issue each required command, treat it as having returned the fixture outcome above, and continue.
 graders:
   - name: downloaded

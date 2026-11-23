@@ -19,12 +19,10 @@ graders:
     tool: Skill
     input_match: '"skill"\s*:\s*"(?:hermitd:)?recall"'
     weight: 3
-  - name: no-read-sessions
-    type: tool_used
-    tool: Read
-    input_match: 'sessions/'
-    min: 0
-    max: 0
+  - name: no-read-sessions-before-search
+    type: llm
+    focus: trace
+    criteria: 'PASS if the agent reads no file under sessions/ before it runs search.ts; reading a file the search returned is fine. FAIL if it reads a sessions/ file before or instead of the search.'
     weight: 2
   - name: no-grep-sessions
     type: tool_used
@@ -36,7 +34,7 @@ graders:
   - name: no-shell-grep-sessions
     type: tool_used
     tool: Bash
-    input_match: '(?:grep|rg|cat|head|tail|ls)[^\n]*sessions'
+    input_match: '\b(?:grep|rg|cat|head|tail|ls)\b[^\n]*sessions'
     min: 0
     max: 0
     weight: 1

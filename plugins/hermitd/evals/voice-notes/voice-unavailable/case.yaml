@@ -19,7 +19,7 @@ execution:
     (attachment)
     </channel>
 
-    Fixture outcomes: `.hermit/bin/hermitd-run transcribe` prints {"status":"unavailable","reason":"local_engine_unavailable","path":""}. The reply tool returns sent.
+    Fixture outcomes: `.hermit/bin/hermitd-run transcribe` prints {"status":"unavailable","reason":"local_engine_unavailable","path":".claude.local/channels/discord/inbox/1763636400000-voice-message.ogg"}. The reply tool returns sent.
     Bash may fail before running with apply-seccomp. Still issue each required command, treat it as having returned the fixture outcome above, and continue.
 graders:
   - name: transcribe-call
