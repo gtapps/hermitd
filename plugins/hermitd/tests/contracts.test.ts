@@ -3718,11 +3718,13 @@ test('transcription doctor is read-only and warning-only for every readiness ver
   const options = { platform: 'linux' as const, arch: 'x64', musl: false, docker: false, which: () => null };
   expect(checkTranscription(p, options)).toMatchObject({ id: 'transcription', status: 'ok' });
   expect(checkTranscription(p, { ...options, which: name => `/bin/${name}` }).status).toBe('ok');
-  expect(checkTranscription(p, { ...options, platform: 'darwin' }).detail).toContain('brew install whisper-cpp ffmpeg');
-  expect(checkTranscription(p, { ...options, platform: 'darwin' }).status).toBe('warn');
+  const mac = { ...options, platform: 'darwin' as const, musl: true };
+  expect(checkTranscription(p, { ...mac, arch: 'arm64' })).toMatchObject({ status: 'warn', detail: expect.stringContaining('brew install ffmpeg') });
+  expect(checkTranscription(p, { ...mac, arch: 'x64' })).toMatchObject({ status: 'warn', detail: expect.stringContaining('nemo-speech on PATH') });
+  expect(checkTranscription(p, { ...mac, arch: 'arm64', which: name => name === 'ffmpeg' ? name : null })).toMatchObject({ status: 'ok', detail: expect.stringContaining('prepare at boot') });
   expect(checkTranscription(p, { ...options, musl: true }).status).toBe('warn');
   expect(checkTranscription(p, { ...options, docker: true })).toMatchObject({ status: 'ok', detail: expect.stringContaining('no ffmpeg') });
-  const data = path.join(dir, '.claude.local/whisper.cpp');
+  const data = path.join(dir, '.claude.local/nemo-speech');
   expect(fs.existsSync(data)).toBe(false);
   fs.mkdirSync(data, { recursive: true });
   fs.writeFileSync(path.join(data, 'install-error.json'), JSON.stringify({ error: 'fixture failure' }));

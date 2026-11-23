@@ -10,10 +10,10 @@ import { enrichInbound } from './lib/channel-log';
 import { sendToChannel } from './lib/channel-send';
 import { loadMessages } from './lib/messages';
 import { isContainer } from './lib/container';
-import { ensureModels, installedWhisper, installEngine, remaining, type EngineOptions } from './lib/transcription';
+import { ensureModels, installedEngine, installEngine, remaining, transcriptionDir, TRANSCRIPTION_MODEL, type EngineOptions } from './lib/transcription';
 
-export function normalizeLanguage(value?: string): string {
-  return value?.match(/^([a-z]{2})(?:[-_][a-z]{2})?$/i)?.[1].toLowerCase() ?? 'en';
+export function normalizeLanguage(value?: string): string | undefined {
+  return value?.match(/^([a-z]{2})(?:[-_][a-z]{2})?$/i)?.[1].toLowerCase();
 }
 interface Options {
   dir?: string;
@@ -21,7 +21,7 @@ interface Options {
   which?: (name: string) => string | null;
   fetch?: typeof fetch;
   env?: Record<string, string | undefined>;
-  run?: (argv: string[], options: { env: Record<string, string>; timeout: number }) => { exitCode: number; stderr: string };
+  run?: (argv: string[], options: { env: Record<string, string>; timeout: number }) => { exitCode: number; stdout: string; stderr: string };
   install?: typeof installEngine;
   models?: typeof ensureModels;
   send?: typeof sendToChannel;
@@ -83,76 +83,101 @@ export async function transcribe(argv: string[], options: Options = {}): Promise
   const engineOptions: EngineOptions = { projectRoot: path.dirname(dir), deadline, which, fetch: options.fetch };
   const env = options.env ?? process.env;
   const childEnv = Object.fromEntries(['PATH', 'HOME', 'LANG'].flatMap(key => env[key] === undefined ? [] : [[key, env[key]!]]));
-  const run = (command: string[]) => {
-    const timeout = remaining(deadline);
+  childEnv.NEMO_SPEECH_MODEL_DIR = path.join(transcriptionDir(engineOptions.projectRoot), 'models');
+  const run = (command: string[], limit?: number) => {
+    const timeout = remaining(deadline, limit);
     if (options.run) return options.run(command, { env: childEnv, timeout });
     const child = Bun.spawnSync(command, { env: childEnv, timeout, killSignal: 'SIGKILL', stdout: 'pipe', stderr: 'pipe' });
-    return { exitCode: child.exitCode, stderr: child.stderr.toString() };
+    return { exitCode: child.exitCode, stdout: child.stdout.toString(), stderr: child.stderr.toString() };
   };
   let localReason = 'local_engine_unavailable';
   let transcript: string | undefined;
-  let provider = 'whisper.cpp';
+  let provider = 'nemo-speech';
   let temp: string | undefined;
+  let wav: string | undefined;
+  const convert = (ffmpeg: string) => {
+    if (wav) return wav;
+    temp ??= fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-transcribe-'));
+    const target = path.join(temp, 'note.wav');
+    const converted = run([ffmpeg, '-nostdin', '-loglevel', 'error', '-y', '-i', file, '-ar', '16000', '-ac', '1', target]);
+    if (converted.exitCode !== 0) throw new Error(`ffmpeg_failed:${converted.stderr}`);
+    wav = target;
+    return wav;
+  };
+  let ffmpeg: string | null = null;
   try {
-    remaining(deadline);
-    let binary = which('whisper-cli');
-    let ffmpeg = which('ffmpeg');
-    if (!binary || !ffmpeg) {
-      let installed = installedWhisper(path.dirname(dir));
-      // A container gets ffmpeg from its image; the bundled download is for hosts only.
-      if (!ffmpeg && !installed?.ffmpeg && (options.container ?? isContainer())) localReason = 'image_has_no_ffmpeg';
-      else if (!installed || (!ffmpeg && !installed.ffmpeg)) {
-        const result = await (options.install ?? installEngine)(engineOptions);
-        if ('error' in result) localReason = result.error;
-        installed = installedWhisper(path.dirname(dir));
-      }
-      binary = installed?.binary ?? null;
-      ffmpeg = ffmpeg ?? installed?.ffmpeg ?? null;
-    }
-    if (args.prepare) return finish(binary && ffmpeg ? { status: 'ready' } : { status: 'unavailable', reason: localReason, path: '' });
-    if (binary && ffmpeg) {
-      const models = await (options.models ?? ensureModels)(engineOptions);
-      temp = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-transcribe-'));
-      const wav = path.join(temp, 'note.wav');
-      const output = path.join(temp, 'transcript');
-      const converted = run([ffmpeg, '-nostdin', '-loglevel', 'error', '-y', '-i', file, '-ar', '16000', '-ac', '1', wav]);
-      if (converted.exitCode !== 0) throw new Error(`ffmpeg_failed:${converted.stderr}`);
-      const recognized = run([binary, '-m', models.base, '-f', wav, '-l', language, '-t', '4', '-bs', '5', '-bo', '5', '-ng', '-nt', '-otxt', '-of', output, '--vad', '-vm', models.silero, '-vsd', '500']);
-      remaining(deadline);
-      if (recognized.exitCode !== 0) throw new Error(`whisper_failed:${recognized.stderr}`);
-      if (!fs.existsSync(`${output}.txt`)) throw new Error('local_transcript_missing');
-      transcript = fs.readFileSync(`${output}.txt`, 'utf8').trim();
-    }
-  } catch (error) {
-    localReason = error instanceof Error ? error.message : String(error);
-    if (args.prepare) return finish({ status: 'unavailable', reason: localReason, path: '' });
-  } finally { if (temp) fs.rmSync(temp, { recursive: true }); }
-  if (transcript === undefined) {
     try {
-      if (fs.statSync(file).size > 25 * 1024 * 1024) throw new Error('audio_over_25mb');
-      for (const [key, name, base, model, languageField] of [
-        ['GROQ_API_KEY', 'groq', 'https://api.groq.com/openai/v1', 'whisper-large-v3-turbo', 'language'],
-        ['OPENAI_API_KEY', 'openai', 'https://api.openai.com/v1', 'gpt-transcribe', 'languages[]'],
-      ]) {
-        if (!env[key]) continue;
-        try {
-          const body = new FormData();
-          body.set('file', Bun.file(file), path.basename(file));
-          body.set('model', model);
-          body.set(languageField, language);
-          const response = await (options.fetch ?? fetch)(`${base}/audio/transcriptions`, {
-            method: 'POST', headers: { Authorization: `Bearer ${env[key]}` }, body,
-            signal: AbortSignal.timeout(remaining(deadline, 60_000)),
-          });
-          if (!response.ok) throw new Error(`${name}_http_${response.status}`);
-          const data = await response.json() as { text?: unknown };
-          remaining(deadline);
-          if (typeof data.text !== 'string') throw new Error(`${name}_transcript_missing`);
-          transcript = data.text.trim(); provider = name; break;
-        } catch (error) { localReason = error instanceof Error ? error.message : String(error); }
+      remaining(deadline);
+      let binary = which('nemo-speech');
+      ffmpeg = which('ffmpeg');
+      if (!binary || !ffmpeg) {
+        let installed = installedEngine(engineOptions.projectRoot);
+        // A container gets ffmpeg from its image; the bundled download is for hosts only.
+        if (!ffmpeg && !installed?.ffmpeg && (options.container ?? isContainer())) localReason = 'image_has_no_ffmpeg';
+        else if ((!binary && !installed) || (process.platform === 'linux' && !ffmpeg && !installed?.ffmpeg)) {
+          const result = await (options.install ?? installEngine)(engineOptions);
+          if ('error' in result) localReason = result.error;
+          installed = installedEngine(engineOptions.projectRoot);
+        }
+        binary ??= installed?.binary ?? null;
+        ffmpeg = ffmpeg ?? installed?.ffmpeg ?? null;
       }
-    } catch (error) { localReason = error instanceof Error ? error.message : String(error); }
-  }
+      if (args.prepare) {
+        if (!binary || localReason === 'image_has_no_ffmpeg') {
+          return finish({ status: 'unavailable', reason: localReason, path: '' });
+        }
+        await (options.models ?? ensureModels)(binary, run);
+        remaining(deadline);
+        if (!ffmpeg) return finish({ status: 'unavailable', reason: localReason === 'local_engine_unavailable' ? 'ffmpeg_missing' : localReason, path: '' });
+        return finish({ status: 'ready' });
+      }
+      if (binary && ffmpeg) {
+        // A long pull leaves the cloud fallback its own 60-second window.
+        await (options.models ?? ensureModels)(binary, argv => run(argv, Math.max(1_000, deadline - Date.now() - 60_000)));
+        const recognized = run([
+          binary, '--quiet', 'transcribe', convert(ffmpeg), '--model', TRANSCRIPTION_MODEL, '--language', 'auto',
+          '--device', 'cpu', '--asr.backend.threads', String(os.availableParallelism()), '--no-warmup',
+        ]);
+        remaining(deadline);
+        if (recognized.exitCode !== 0) throw new Error(`nemo_speech_failed:${recognized.stderr}`);
+        transcript = recognized.stdout.trim();
+      }
+    } catch (error) {
+      localReason = error instanceof Error ? error.message : String(error);
+      if (args.prepare) return finish({ status: 'unavailable', reason: localReason, path: '' });
+    }
+    if (transcript === undefined) {
+      try {
+        const maxBytes = 25 * 1024 * 1024;
+        if (fs.statSync(file).size > maxBytes) throw new Error('audio_over_25mb');
+        const upload = (env.GROQ_API_KEY || env.OPENAI_API_KEY) && ffmpeg && path.extname(file).toLowerCase() === '.caf'
+          ? convert(ffmpeg)
+          : file;
+        if (upload !== file && fs.statSync(upload).size > maxBytes) throw new Error('audio_over_25mb');
+        for (const [key, name, base, model, languageField] of [
+          ['GROQ_API_KEY', 'groq', 'https://api.groq.com/openai/v1', 'whisper-large-v3-turbo', 'language'],
+          ['OPENAI_API_KEY', 'openai', 'https://api.openai.com/v1', 'gpt-transcribe', 'languages[]'],
+        ]) {
+          if (!env[key]) continue;
+          try {
+            const body = new FormData();
+            body.set('file', Bun.file(upload), path.basename(upload));
+            body.set('model', model);
+            if (language) body.set(languageField, language);
+            const response = await (options.fetch ?? fetch)(`${base}/audio/transcriptions`, {
+              method: 'POST', headers: { Authorization: `Bearer ${env[key]}` }, body,
+              signal: AbortSignal.timeout(remaining(deadline, 60_000)),
+            });
+            if (!response.ok) throw new Error(`${name}_http_${response.status}`);
+            const data = await response.json() as { text?: unknown };
+            remaining(deadline);
+            if (typeof data.text !== 'string') throw new Error(`${name}_transcript_missing`);
+            transcript = data.text.trim(); provider = name; break;
+          } catch (error) { localReason = error instanceof Error ? error.message : String(error); }
+        }
+      } catch (error) { localReason = error instanceof Error ? error.message : String(error); }
+    }
+  } finally { if (temp) fs.rmSync(temp, { recursive: true }); }
   if (transcript === undefined) return finish({ status: 'unavailable', reason: localReason, path: file });
   if (!transcript) return finish({ status: 'empty', path: file });
   const recorded = enrichInbound(dir, { source: channel, chat_id: chat, message_id: messageId, transcript }).ok;
