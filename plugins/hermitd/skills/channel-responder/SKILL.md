@@ -90,9 +90,12 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
   - If one of the six mod commands reaches you without a verdict, say chat harness commands are unavailable in this session. Do not promise delivery or attempt a tmux fallback. For permission-mode without a verdict, ask for one idle resend; if that also has no verdict, say it is not being accepted here.
   - For model, effort, permission-mode, advisor, doctor, or near-miss details, read `reference.md` § Harness command details.
 
+- **Typed-only command** (a request, as a slash command or in plain words, for what only a typed command does: updating, restarting or upgrading the agent, or any skill whose `Skill` call refuses with `disable-model-invocation`)
+  - Say it must be typed in a terminal or the Claude app; an `act_surface` line in context decides who is told to do that. Nothing runs in its place: no look-alike skill, no subagent that does its job (such as `hermitd:evolve-runner`), no shell route.
+
 - **Slash command** (message starts with `/`, e.g. `/simplify`, `/plugin:command`)
   - Invoke the matching skill, slash command, or subagent via the appropriate tool. Pass any remaining text as arguments/prompt.
-  - On a `Skill` refusal with `disable-model-invocation`, say the command must be typed in a terminal or the Claude app; never substitute a look-alike hermit skill. Trust the actual refusal, since flags change across releases. `/code-review` (alias `/review`) is invocable on the supported Claude Code version.
+  - A `Skill` refusal with `disable-model-invocation` makes it a **Typed-only command**. Trust the actual refusal, since flags change across releases. `/code-review` (alias `/review`) is invocable on the supported Claude Code version.
   - If nothing matches, say so briefly.
 
 - **Status request** ("what are you working on?", "how's it going", "progress", or a bare "status" — the deterministic reply needs `!status`, so anything short of that reaches you; a question that names routines, watches, or rules is **Standing work** below)
