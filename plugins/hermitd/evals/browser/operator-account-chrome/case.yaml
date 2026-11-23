@@ -1,0 +1,26 @@
+schema_version: "1.1"
+name: browser-operator-account-chrome
+description: "With chrome on and its tools present, the operator's own signed-in account goes through Claude in Chrome."
+tags: [browser, train]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 10
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    How many unread emails do I have in my own inbox at https://mail.example.test? I'm signed in there in my Chrome.
+
+    Hermit state: config.json has chrome: true and browser.default agent-browser; the Claude in Chrome tools in this session are live.
+graders:
+  - name: chrome-tool-used
+    type: llm
+    focus: trace
+    criteria: 'PASS if the agent calls at least one mcp__claude-in-chrome__ tool to reach the inbox. FAIL if it calls none, for example by saying it will use the agent browser instead.'
+    weight: 3
+  - name: browser-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?browser"'
+    weight: 1

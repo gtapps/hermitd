@@ -1,0 +1,30 @@
+schema_version: "1.1"
+name: knowledge-raw-filing-shape
+description: "A domain input to keep is filed flat in raw/ with the required frontmatter."
+tags: [knowledge, heldout]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Write]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    Keep this supplier price list so we can compare next quarter:
+
+    Atlantic Paper Co, price list effective 2026-11-01
+    - Kraft mailer box, small: 0.42 EUR
+    - Kraft mailer box, large: 0.71 EUR
+    - Tissue paper, pack of 100: 3.90 EUR
+    - Shipping labels, roll of 500: 6.20 EUR
+graders:
+  - name: flat-raw-with-frontmatter
+    type: tool_used
+    tool: Write
+    input_match: '^(?=[\s\S]*\.hermit/raw/[a-z0-9]+(?:-[a-z0-9]+)*-\d{4}-\d{2}-\d{2}\.md")(?=[\s\S]*title:)(?=[\s\S]*type:)(?=[\s\S]*created:)(?=[\s\S]*tags:)'
+    weight: 3
+  - name: no-subfolder
+    type: file_exists
+    path: '.hermit/raw/*/**'
+    exists: false
+    weight: 2

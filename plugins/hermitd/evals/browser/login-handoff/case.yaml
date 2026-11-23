@@ -1,0 +1,40 @@
+schema_version: "1.1"
+name: browser-login-handoff
+description: "With no saved login, the task blocks on the admin before the takeover link, then waits for the monitor."
+tags: [browser, sign-in]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 14
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    UserPromptSubmit hook additional context:
+    [channel reply reminder] Inbound message arrived on the `discord` channel (chat_id=`400000000000000001`). Every reply, including a short acknowledgement, must go through `mcp__plugin_discord_discord__reply` with chat_id="400000000000000001". Transcript/terminal output does not reach the operator.
+    Handle it with the channel-responder skill: invoke `/hermitd:channel-responder` now; no invocation has been observed in this session since the last context reset.
+    </system-reminder>
+    <channel source="plugin:discord:discord" chat_id="400000000000000001" message_id="500000000000000101" user="sam" user_id="100000000000000001" ts="2026-11-20T10:00:00.000Z">
+    continue the invoice task: you're on the console login page now
+    </channel>
+
+    Hermit state: You are resuming open task invoice-task, which downloads last month's invoice from https://console.example.test/billing with the agent's account. The task holds the signed-in profile and its current page is the console login form. Saved logins and phone sign-in are configured; config.json is seeded in .hermit/.
+    Fixture outcomes: The browser's auth list returns {"logins":[]}. The task block succeeds. The reply tool returns sent. No browser-handback event arrives during this run. The console is a fixture.
+    Bash may fail before running with apply-seccomp. Still issue each required command, treat it as having returned the fixture outcome above, and continue.
+graders:
+  - name: block-on-admin
+    type: tool_used
+    tool: Bash
+    input_match: 'task\.ts[^\n]*block[^\n]*invoice-task[^\n]*--waiting-on[^\n]*admin@example\.test'
+    weight: 3
+  - name: block-before-link
+    type: tool_order
+    before: {tool: Bash, input_match: 'task\.ts[^\n]*block'}
+    after: {tool: mcp__plugin_discord_discord__reply, input_match: '\?task=invoice-task'}
+    weight: 3
+  - name: takeover-message
+    type: llm
+    focus: mock_calls
+    criteria: 'PASS if a reply to chat 400000000000000001 contains https://agent.example.test:8443/?task=invoice-task, mentions <@100000000000000001>, and asks that person to take over, sign in, then hand back. FAIL if no such reply was sent, if the link uses another host or port, or if any reply asks for a password or other credential in the chat.'
+    weight: 2

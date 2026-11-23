@@ -1,0 +1,42 @@
+schema_version: "1.1"
+name: knowledge-recall-for-past-work
+description: "A past-decision question goes through recall, not a grep or Read of sessions/."
+tags: [knowledge, train]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 8
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    What did we decide about the newsletter schedule last week, and why?
+
+    Bash may fail before running with apply-seccomp. If a command cannot run, say so and answer from what you have.
+graders:
+  - name: recall-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?recall"'
+    weight: 3
+  - name: no-read-sessions
+    type: tool_used
+    tool: Read
+    input_match: 'sessions/'
+    min: 0
+    max: 0
+    weight: 2
+  - name: no-grep-sessions
+    type: tool_used
+    tool: Grep
+    input_match: 'sessions'
+    min: 0
+    max: 0
+    weight: 1
+  - name: no-shell-grep-sessions
+    type: tool_used
+    tool: Bash
+    input_match: '(?:grep|rg|cat|head|tail|ls)[^\n]*sessions'
+    min: 0
+    max: 0
+    weight: 1
