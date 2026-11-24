@@ -1,6 +1,6 @@
 ---
 name: capability-brainstorm
-description: Monthly routine plus on-demand hermit-voice brainstorm — synthesizes memory, capabilities, recent artifacts, and codebase shape into at most 2 capability ideas, each gated by proposal-triage before becoming a proposal task. Runs on the capability-brainstorm routine and when the operator asks to brainstorm capabilities or ideate, e.g. "brainstorm capabilities", "what could you be doing for me?", "any capability ideas?".
+description: Monthly routine plus on-demand hermit-voice brainstorm — synthesizes memory, capabilities, recent artifacts, and codebase shape into at most 2 capability ideas, each gated by proposal-triage before becoming a proposal task. Runs on the capability-brainstorm routine and when the operator asks to brainstorm capabilities or ideate, e.g. "brainstorm capabilities", "any capability ideas?".
 ---
 
 Record notes only inside an open record's turn, using `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <id>` with the note on stdin. Otherwise skip record notes. Never edit a task file directly.

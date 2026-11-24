@@ -370,9 +370,14 @@ function closeActor(flags: TaskFlags): string {
   return actor;
 }
 
-function startConsent(record: Task, now: string, generation = 0): void {
-  const previous = record.decision ? decodeDecision(record.decision) : null;
-  record.decision = JSON.stringify({ purpose: 'consent', authority: 'admin', generation: Math.max(previous?.generation ?? 0, generation) + 1 });
+function startConsent(record: Task, now: string, prior: Decision | null = null): void {
+  const current = record.decision ? decodeDecision(record.decision) : null;
+  const resume = (prior?.purpose === 'consent' ? prior.resume : undefined)
+    ?? (current?.purpose === 'consent' ? current.resume : undefined);
+  record.decision = JSON.stringify({
+    purpose: 'consent', authority: 'admin', generation: Math.max(current?.generation ?? 0, prior?.generation ?? 0) + 1,
+    ...(resume === undefined ? {} : { resume }),
+  });
   record.approved_rev = null;
   record.approved_by = null;
   record.approver = null;
@@ -398,7 +403,7 @@ function answerTask(dir: string, records: Task[], id: string | undefined, flags:
   if (id && !target) return { verdict: { status: 'none', reason: 'no_match' } };
   const permitted = local ? candidates : candidates.filter(record => canDecide(dir, record, flags, pendingDecision(record)!, senderParent));
   if (!permitted.length || (target && !permitted.includes(target))) return { verdict: { status: 'refused', reason: 'not_decider' } };
-  const ambiguous = (reason: string, choices: Task[]) => ({ verdict: { status: 'ambiguous', reason, choices: choices.map(record => ({ id: record.id, options: pendingDecision(record)!.options ?? ['yes', 'no'] })) } });
+  const ambiguous = (reason: string, choices: Task[]) => ({ verdict: { status: 'ambiguous', reason, choices: choices.map(record => ({ id: record.id, title: record.title, options: pendingDecision(record)!.options ?? ['yes', 'no'] })) } });
   if (!id && permitted.length > 1) return ambiguous('multiple_pending', permitted);
   const record = target ?? permitted[0];
   const decision = pendingDecision(record)!;
@@ -644,13 +649,16 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
         } else append(record, 'Progress', 'hermit', `check:exit-${exit} ${line}`, now);
         digest = { id, closed_by: record.closed_by, result_rev: record.result_rev };
       } else if (verb === 'block') {
-        const previousGeneration = record.decision ? decodeDecision(record.decision).generation : 0;
-        if (record.kind === 'proposal' && decision?.purpose === 'consent' && (!flag(flags, 'decision') || decodeDecision(flag(flags, 'decision')!).purpose !== 'consent')) throw new Error('consent_required');
-        record.decision = flag(flags, 'decision') ?? null;
-        if (record.decision !== null) decodeDecision(record.decision);
+        const previous = decision ?? (record.decision ? decodeDecision(record.decision) : null);
+        const previousGeneration = previous?.generation ?? 0;
+        const decisionFlag = flag(flags, 'decision');
+        const awaitingConsent = record.kind === 'proposal' && decision?.purpose === 'consent';
+        if (awaitingConsent && !decisionFlag) throw new Error('consent_required');
+        const next = decisionFlag === undefined ? null : decodeDecision(decisionFlag);
+        if (awaitingConsent && next?.purpose !== 'consent') throw new Error('consent_required');
+        record.decision = decisionFlag ?? null;
         if (record.kind === 'proposal') {
-          const next = record.decision ? decodeDecision(record.decision) : null;
-          if (next?.purpose === 'consent') startConsent(record, now, previousGeneration);
+          if (next?.purpose === 'consent') startConsent(record, now, previous);
           else if (flags['result-stdin']) record.decision = JSON.stringify({ purpose: 'result', authority: 'admin', generation: previousGeneration + 1 });
           else if (!next && flag(flags, 'waiting-on') === 'agent') throw new Error('invalid_waiting_on');
         }
@@ -818,6 +826,7 @@ export function eligibleHelper(dir: string, conversation: string | null, folder:
 
 export function listTasks(dir: string, flags: TaskFlags = {}, records = readTasks(dir)) {
   const owner = flag(flags, 'owner');
+  const dedupePrefix = flag(flags, 'dedupe-prefix');
   const ownerPrefix = owner === 'worker:*' || owner === 'helper:*' ? owner.slice(0, -1) : null;
   if (owner && !ownerPrefix && !validOwner(owner)) throw new Error('invalid_owner');
   const limit = flags.limit === undefined ? 20 : Number(flags.limit);
@@ -825,8 +834,9 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
   const selected = records.filter(r => (!flags.all || flags.open ? r.status === 'open' : true)
     && (!owner || (ownerPrefix ? r.owner.startsWith(ownerPrefix) : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
+    && (dedupePrefix === undefined || r.dedupe_key?.startsWith(dedupePrefix))
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, report_id: r.report_id, report_kind: r.report_kind, delivery: r.delivery, ...(flags['with-decisions'] ? { ...reportSummary(dir, r.report_id), ...reportAttachments(dir, r.report_id) } : {}), owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : clip(r.result.split(/\r?\n/).find(line => line.trim()) ?? '', 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, dedupe_key: r.dedupe_key, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, report_id: r.report_id, report_kind: r.report_kind, delivery: r.delivery, ...(flags['with-decisions'] ? { ...reportSummary(dir, r.report_id), ...reportAttachments(dir, r.report_id) } : {}), owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : clip(r.result.split(/\r?\n/).find(line => line.trim()) ?? '', 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

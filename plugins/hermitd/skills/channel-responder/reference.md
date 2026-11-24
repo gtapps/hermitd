@@ -83,6 +83,7 @@ Without an acceptance, leave the proposal pending and the target unchanged. Dire
 
 ## Harness command details
 
+  - For `!permission-mode` without a verdict, ask for one idle resend; if that also has no verdict, say it is not being accepted here.
   - `!model`, `!effort`, `!compact`, `!clear`, and `!advisor` run through the core mod without an agent turn or tmux keystroke. `/compact` still makes its summarization call. Replies report observed success, failure text, or an unknown outcome at the deadline; they are direct on Discord and Telegram and model-relayed elsewhere (or if a direct send fails).
   - Claude Code saves `model` and `advisorModel` in user settings, affecting sessions sharing that config directory. `!effort` is a resident-only override applied to each main-thread request, so the status line keeps the launch level; `!effort auto` clears it. Boot re-asserts configured model and effort overrides; with `config.effort: null`, the `!effort` override survives restart. Boot does not re-assert advisor. Permission mode lasts for the current session and resets to `config.permission_mode` at boot.
   - The mod approves only its dispatched `/model` target, after settings-level deny or ask decisions have had their say. A terminal `/model` still asks “Switch model?”. If the mod is unavailable, doctor reports “chat harness commands unavailable”; there is no tmux fallback for the six commands.

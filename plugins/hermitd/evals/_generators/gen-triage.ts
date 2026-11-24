@@ -206,5 +206,29 @@ if (import.meta.main) {
       undefined, 'state/observations.jsonl — freezer-door-open-10m recorded 5 times in 7 days')],
     [verdict('CREATE'), notContains('not-covered-by-memory', 'covered-by-memory')]);
 
+  const supplierWatch: Universe = {
+    ...SHOP,
+    memory: {
+      ...SHOP.memory,
+      'project_supplier_price.md': [
+        '---',
+        'name: supplier-price',
+        'description: Manual supplier price checks for the wholesale tea order',
+        'type: project',
+        '---',
+        '',
+        'The operator checks the supplier price page by hand each morning and orders when a case drops below €50.',
+        '**Why:** The operator uses the current price to decide when to place the wholesale order.',
+        '**How to apply:** Use the supplier page as the source of the current case price.',
+        '',
+      ].join('\n'),
+    },
+  };
+  const supplierTitle = 'Watch the supplier price for a drop below €50';
+  triageCase('make-me-proactive-supplier-watch', 'heldout', 'A supplier price watch is grounded in a manual check the operator relies on.',
+    `CREATE: ${supplierTitle}`, supplierWatch,
+    [candidate(supplierTitle, 'project_supplier_price.md records that the operator checks the supplier page by hand each morning to decide when to place the wholesale order. A saved watch can check every six hours and alert the operator when the case price drops below €50.', 'make-me-proactive')],
+    [verdict('CREATE', supplierTitle), notContains('not-covered-by-memory', 'covered-by-memory')]);
+
   report('proposal-triage');
 }

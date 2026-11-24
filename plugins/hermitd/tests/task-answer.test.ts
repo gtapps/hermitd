@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { decodeTask, mutateTask, isRunnable, type TaskFlags } from '../scripts/lib/tasks';
 import { pendingDecisions } from '../scripts/lib/decisions';
+import { verbCreate } from '../scripts/proposal';
+import { runPinnedScript } from './helpers/run';
 import { taskFixture } from './helpers/tasks';
 
 const chat = 'discord:home';
@@ -92,8 +94,12 @@ test('matching preserves all ambiguity reasons and supports numbers and labels',
     expect(f.answer(labelled.id, 'yes')).toMatchObject({ status: 'match', answer: 'Yes' });
     const prefixed = f.openRecord({ ...decision, options: ['Yes', 'Later', 'Later today'] }, { kind: false });
     expect(f.answer(prefixed.id, 'later')).toMatchObject({ status: 'match', answer: 'Later' });
-    f.openRecord(); f.openRecord();
-    expect(f.answer(undefined)).toMatchObject({ status: 'ambiguous', reason: 'multiple_pending' });
+    const price = f.openRecord(consent, { title: 'Watch supplier price' });
+    const reminder = f.openRecord(consent, { title: 'Remind me about renewal' });
+    expect(f.answer(undefined)).toEqual({ status: 'ambiguous', reason: 'multiple_pending', choices: [
+      { id: price.id, title: 'Watch supplier price', options: ['yes', 'no'] },
+      { id: reminder.id, title: 'Remind me about renewal', options: ['yes', 'no'] },
+    ] });
   } finally { f.cleanup(); }
 });
 
@@ -123,6 +129,32 @@ test('a changed definition resets consent, and a passing executable check closes
     mutateTask(f.dir, 'note', id, { check: 'true' }, '');
     expect(f.read(id).waiting_on).toBeNull();
     mutateTask(f.dir, 'check-result', id, { 'result-rev': String(f.read(id).result_rev), exit: '0', 'output-stdin': true }, 'Verified');
+    expect(f.read(id)).toMatchObject({ status: 'closed', closed_by: 'check' });
+  } finally { f.cleanup(); }
+});
+
+test('unbound proposal resumes after consent renewal and closes by check without sender flags', async () => {
+  const f = fixture(); try {
+    const resume = '/hermitd:make-me-proactive apply';
+    const { id } = verbCreate(f.dir, `Title: Watch supplier price\nResume: ${resume}\n---\nWatch the supplier price.`);
+    const answer = () => f.ok('answer', [id, '--chat', chat, '--user', 'admin', '--reply', 'yes']);
+    expect(f.read(id).conversation).toBeNull();
+    expect(await answer()).toEqual({ status: 'match', id, answer: 'yes', generation: 1, resume });
+
+    await f.ok('note', [id, '--done', 'Watch is present', '--actor', 'admin']);
+    expect(f.read(id)).toMatchObject({ approved_rev: null, waiting_on: 'admin' });
+    expect(await answer()).toEqual({ status: 'match', id, answer: 'yes', generation: 2, resume });
+
+    await f.ok('block', [id, '--decision', JSON.stringify({ ...consent, generation: 3 }), '--waiting-on', 'admin', '--status-line', 'Write denied', '--next', 'A new yes retries it']);
+    expect(f.read(id)).toMatchObject({ approved_rev: null, waiting_on: 'admin' });
+    expect(await answer()).toEqual({ status: 'match', id, answer: 'yes', generation: 4, resume });
+
+    await f.ok('note', [id, '--check', 'true']);
+    expect(f.read(id)).toMatchObject({ approved_rev: '1', waiting_on: null, check: 'true' });
+    expect(JSON.parse(f.read(id).decision!)).toMatchObject({ purpose: 'consent', resume });
+    const result = await runPinnedScript('task-check.ts', f.dir, [id], { cwd: path.dirname(f.dir) });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ id, closed_by: 'check' });
     expect(f.read(id)).toMatchObject({ status: 'closed', closed_by: 'check' });
   } finally { f.cleanup(); }
 });

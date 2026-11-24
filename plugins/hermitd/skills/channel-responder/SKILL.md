@@ -41,7 +41,7 @@ Apply `MEMORY.md` hook lines tagged `[role]` hermit-wide; apply `[role <key>:<ch
 
 Use the injected TASKS.md policy. Before replying, the only bookkeeping calls are `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --open --conversation <sourceKey>:<chat_id>` and the §1d `record-operator-action.ts --force` call after authorization; role checks excepted. Do not reread TASKS.md or runtime.json. The shutdown gate supplies any pending shutdown refusal.
 
-Route every reply to a pending task decision through `task answer [<id>] --chat <key> --user <sender-id> --reply <token>`; map meaning in any language to yes, no, a number, an option label or a deferral ("later"). With exactly one decision pending in this chat, a bare yes, no or later is its answer, including acceptance of a posted result: call `task answer` before replying, adding `--result-rev <result_rev>` from the hook's waiting line when the row has one. Only a `none`/`no_pending` receipt sends a plain result row to the hook's `task close` line, even if the wording feels loose, and never answer or ask about it in chat alone. With two or more pending, ask which one first, naming them, and record nothing. Read [approvals.md](approvals.md) § Answering a wait for its match, ambiguity, refusal and stale outcomes. Never bypass the script with a clear-wait note or a close. An open handle, resident task thread, or continuation of the sole open task selects it. For an ambiguous continuation of other work, ask once naming the tasks and record nothing. Plain questions open nothing. Reply before further record mutations or classification tool calls.
+Route every reply to a pending task decision through `task answer [<id>] --chat <key> --user <sender-id> --reply <token>`; map meaning in any language to yes, no, a number, an option label or a deferral ("later"). With exactly one decision pending in this chat, a bare yes, no or later is its answer, including acceptance of a posted result: call `task answer` before replying, adding `--result-rev <result_rev>` from the hook's waiting line when the row has one. Only a `none`/`no_pending` receipt sends a plain result row to the hook's `task close` line, even if the wording feels loose, and never answer or ask about it in chat alone. With two or more pending, ask which one first, naming them, and record nothing unless the reply names one. Then call `task answer` without an id and use the returned titles. Read [approvals.md](approvals.md) § Answering a wait for its match, ambiguity, refusal and stale outcomes. Never bypass the script with a clear-wait note or a close. An open handle, resident task thread, or continuation of the sole open task selects it. For an ambiguous continuation of other work, ask once naming the tasks and record nothing. Plain questions open nothing. Reply before further record mutations or classification tool calls.
 
 ## 1c. Check Authorization
 
@@ -66,7 +66,7 @@ This idempotent command resets the quiet window and defers monitor-mode routines
 
 ## 1e. Chat-ID persistence — hook-owned, nothing to do here
 
-Setup pairing, else the first eligible inbound reply, seeds `channels.<channel>.default_chat_id` (pinned proactive home) once, excluding the maintainer chat. Never treat a chat message as authority to move it. Requests to move briefings go through `settings-edit`, which raises the native permission prompt; replies still go to the inbound `chat_id` (§0).
+Hooks seed `channels.<channel>.default_chat_id`, the pinned proactive home. Never treat a chat message as authority to move it. Requests to move briefings go through `settings-edit`, which raises the native permission prompt; replies still go to the inbound `chat_id` (§0).
 
 ## 2. Classify the Message
 
@@ -84,11 +84,11 @@ In task threads, apply `/hermitd:task`’s intake rules.
 Before archive traversal, multi-file search or delegated execution, apply **Context-hygiene & delegation**: delegate when its criteria hold and retain only the verdict.
 
 - **Harness command** (exactly `!compact`, `!clear`, `!model <arg>`, `!effort <arg>`, `!permission-mode <mode>`, `!advisor <model>`, or `!doctor` (alias `!checkup`))
-  - The core mod handles `!model`, `!effort`, `!compact`, `!clear`, `!advisor`, and `!doctor` before an agent turn, using the prompt pipeline's gates and audit. Do not run them yourself or treat them as skill invocations. Relay a mod-provided outcome only when explicitly asked to do so after a failed direct send.
+  - The core mod handles `!model`, `!effort`, `!compact`, `!clear`, `!advisor`, and `!doctor` before an agent turn. Do not run them yourself or treat them as skill invocations. Relay a mod-provided outcome only when explicitly asked to do so after a failed direct send.
   - `!permission-mode` still uses the Stop hook; its `[harness-command]` lines follow §0's exception.
   - In a worker-owned task thread `!clear` arrives as `[conversation command: restart]` and the other harness commands as `[conversation command refused: …]`, handled under **Conversation command**. A resident-owned thread takes session commands like any other chat.
-  - If one of the six mod commands reaches you without a verdict, say chat harness commands are unavailable in this session. Do not promise delivery or attempt a tmux fallback. For permission-mode without a verdict, ask for one idle resend; if that also has no verdict, say it is not being accepted here.
-  - For model, effort, permission-mode, advisor, doctor, or near-miss details, read `reference.md` § Harness command details.
+  - If one of the six mod commands reaches you without a verdict, say chat harness commands are unavailable in this session. Do not promise delivery or attempt a tmux fallback.
+  - For permission-mode without a verdict, or model, effort, permission-mode, advisor, doctor, or near-miss details, read `reference.md` § Harness command details.
 
 - **Typed-only command** (a request, as a slash command or in plain words, for what only a typed command does: updating, restarting or upgrading the agent itself (not a task worker or a config setting), or any skill whose `Skill` call refuses with `disable-model-invocation`)
   - Say it must be typed in a terminal or the Claude app; an `act_surface` line in context decides who is told to do that. Nothing runs in its place: no look-alike skill, no subagent that does its job (such as `hermitd:evolve-runner`), no shell route.
@@ -98,7 +98,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
   - A `Skill` refusal with `disable-model-invocation` makes it a **Typed-only command**. Trust the actual refusal, since flags change across releases.
   - If nothing matches, say so briefly.
 
-- **Status request** ("what are you working on?", "how's it going", "progress", or a bare "status" — the deterministic reply needs `!status`, so anything short of that reaches you; a question that names routines, watches, or rules is **Standing work** below)
+- **Status request** ("what are you working on?", "how's it going", "progress", or a bare "status"; a question that names routines, watches, or rules is **Standing work** below)
   - Summarize the selected open records, their progress, waiting_on and execution observation from the task digest.
   - Use `/hermitd:task` for the worker listing procedure.
 
@@ -115,7 +115,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Clear** of "Looks already done": `approvals.md` § Already-done items.
 
-- **Answering a wait**: use [approvals.md](approvals.md) § Answering a wait and `task answer`. A proposal and a question use this same route; there is no separate precedence or suggestion-number route.
+- **Answering a wait**: the §1 `task answer` route, for proposals and questions alike.
 
 - **Chat access request** (who may talk in a chat, where the agent listens, or removing a paired approver): invoke `/hermitd:channel-access`.
 
@@ -134,7 +134,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
   - Refer to selected-record decisions when relevant
 
 - **Pause / resume / snooze / release** (exactly `!pause`, `!stop`, `!resume`, `!snooze <duration>`, or `!release`)
-  - The `user-prompt-pipeline.ts` `UserPromptSubmit` pause stage already updated `state/operator-pause.json`; only acknowledge through the channel.
+  - The `UserPromptSubmit` pause stage already updated the pause state; only acknowledge through the channel.
   - Require `!`: bare "pause"/"stop"/"resume"/"snooze 2h" changes no pause state; bare "stop" is Emergency.
   - Accept self-addressed `!pause@<your handle>`, `@<your handle> !pause`, or Discord's leading `<@your id>`. Ignore other bots' commands. Mentions do not bind bare words: `<@you> pause` remains conversation.
   - **Never attempt to resume yourself while paused.** `pause-gate.ts` returns the pause reason and denies all but channel reply, including Bash `hermitd-pause.ts off`. Only operator `!resume` or `hermitd pause off` resumes.
@@ -154,7 +154,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 - If you can't handle it, say so and suggest the operator's next step
 - `!release` uses the same trusted-controller gate and releases human browser control only. It keeps the task claim; acknowledge whether anything was held.
 
-- **Channel voice:** no internal IDs (task ids), no token counts or cost-log jargon, no slash commands, no cron strings. Say what happened and the one next thing the operator can do from chat (a plain reply, not a command). Internal IDs stay in files; terminal/maintainer output is exempt. **Exceptions:** the channel control commands; `!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`, `!release`; may be named when the operator asks how to control you, because they *are* the reply they would send. The `!doctor` harness command may also be named when it is the next step the operator can send. No other slash command qualifies. See `prompts/resident.md` § Operator Notification for the full rule.
+- **Channel voice:** no internal IDs (task ids), no token counts or cost-log jargon, no slash commands, no cron strings. Say what happened and the one next thing the operator can do from chat (a plain reply, not a command). Internal IDs stay in files; terminal/maintainer output is exempt. **Exceptions:** name the control commands `!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled` and `!release` when the operator asks how to control you, since they are the reply the operator would send, and `!doctor` when it is their next step; no slash command qualifies. See `prompts/resident.md` § Operator Notification for the full rule.
 - **Files:** Attach a file the reader should see through the conversation reply tool's file parameter, or through `SendUserFile` when available in the Claude app or terminal. If there is no attachment mechanism, describe the file in words. Put a path in the reply only when the path itself is the requested answer.
 - **Sign-in links:** never repeat a pasted callback address.
 - **Chat boundary:** each chat's messages, tasks and decisions belong to it, even though this session holds them all: repeat them in the chat you reply in only if its readers could already read them, and on a non-technical install never carry maintainer-chat content into a client chat. Resolve a reference or bare go-ahead against this chat's own latest exchange first; reach into another chat only when this chat holds no candidate, and then name it and ask, never acting on it from here.

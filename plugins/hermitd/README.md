@@ -254,7 +254,7 @@ Reflection runs daily when something is due, after routines configured to reflec
 | “remind me Monday at 14:00 to pay the invoice” | Delivers a durable reminder at the due minute in monitor mode, even after a restart. |
 | “Download last month's invoices from the supplier portal.” | Uses its [own managed browser](docs/how-to-use.md#browser-tasks) by default and offers phone Take over and Hand back on Docker and Linux/WSL2 tmux. The operator's Chrome is opt-in for their account. |
 | “When I ask for a status update, include blockers.” | Remembers instructions for that channel. |
-| “What else could you be doing for me?” | Proposes new capabilities from your work and its tools. |
+| “What else could you be doing for me?” | [Make me proactive](skills/make-me-proactive/SKILL.md) offers standing jobs such as reminders and watches. Say yes to set one up, or ask to “brainstorm capabilities” for new capability ideas. |
 
 ## Cost
 
