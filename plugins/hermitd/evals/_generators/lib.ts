@@ -131,7 +131,7 @@ export function withInstall<T>(files: Record<string, string>, fn: (install: Inst
 /** A valid proposal/input record shared by decision eval fixtures. */
 export function decisionFixture(id: string, title: string, overrides: Partial<Task> = {}): [string, string] {
   const at = '2026-10-01T09:00:00.000Z';
-  const nullable = Object.fromEntries(['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'card_chat_id', 'card_message_id', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'check', 'last_worker', 'approved_rev', 'approved_by', 'source', 'category', 'report_id', 'report_kind', 'delivery'].map(key => [key, null]));
+  const nullable = Object.fromEntries(['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'card_chat_id', 'card_message_id', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'check', 'last_worker', 'approved_rev', 'approved_by', 'source', 'category', 'report_id', 'report_kind', 'delivery', 'receipt_report_id'].map(key => [key, null]));
   const task = { ...nullable, id, type: 'task', title, created: at, summary: title, audience: 'operator', status: 'open', opened_at: at,
     requester: 'agent', handle: id.toLowerCase(), owner: 'resident', conversation: `discord:${CHAT}`, waiting_on: 'admin', waiting_since: at,
     kind: 'proposal', decision: JSON.stringify({purpose: 'consent', authority: 'admin', generation: 1}), dedupe_key: `proposal:${id}`,

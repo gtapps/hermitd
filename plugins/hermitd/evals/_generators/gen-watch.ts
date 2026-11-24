@@ -116,18 +116,18 @@ watchCase('met-watch-asks-stop', 'train', 'A saved watch reports the event that 
 const CLOUD_TASK = 'T-20261021-090100';
 const cloudNotice = (body: string) =>
   `<cross-session-message from="uds:/run/user/1000/cc-socks/4112470.sock" from-name="hermitd" from-mode="auto">\n${body}\n</cross-session-message>`;
-// Hand copy of `task list --id <T> --json --with-decisions` for a task holding a stored report.
-const cloudRow = JSON.stringify({ rows: [{ id: CLOUD_TASK, handle: 'audit-laptop-backups', title: 'Audit the laptop backups', status: 'open',
+// Hand copy of a `task receipt <T>` claim for a task holding a stored report.
+const cloudRow = JSON.stringify({ status: 'claimed', row: { id: CLOUD_TASK, handle: 'audit-laptop-backups', title: 'Audit the laptop backups', status: 'open',
   owner: 'helper:laptop-audit', delegated: true, result_rev: 1, report_id: 'r7k2m9q4x1', report_kind: 'result', delivery: 'relay',
   report_verdict: 'Backups run nightly; one share is excluded', report_decisions: [], conversation: `discord:${CHAT}`,
-  card_chat_id: null, card_message_id: null, waiting_on: null }], total: 1, omitted: 0 });
+  card_chat_id: null, card_message_id: null, waiting_on: null } });
 const noReportRead: Grader = { name: 'body-unread', type: 'tool_used', tool: 'Read', input_match: 'helper-reports', min: 0, max: 0, weight: 3 };
 const noBodyCat: Grader = { name: 'body-not-printed', type: 'tool_used', tool: 'Bash', input_match: 'helper-reports', min: 0, max: 0, weight: 2 };
 
 watchCase('cloud-report-stored', 'train', 'A stored cloud helper report reaches the report receipt path without its body being read.',
-  'Bash task list for the task id; no read of .hermit/helper-reports/',
+  'Bash task receipt for the task id; no read of .hermit/helper-reports/',
   withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`CLOUD_REPORT_STORED ${CLOUD_TASK}`), [])),
-  [{ name: 'looked-up-task', type: 'tool_used', tool: 'Bash', input_match: String.raw`task list[^\n]*${CLOUD_TASK}`, weight: 3 }, noReportRead, noBodyCat],
+  [{ name: 'looked-up-task', type: 'tool_used', tool: 'Bash', input_match: String.raw`task receipt[^\n]*${CLOUD_TASK}`, weight: 3 }, noReportRead, noBodyCat],
   null, `#!/usr/bin/env bash\ncat <<'JSON'\n${cloudRow}\nJSON\n`);
 
 watchCase('cloud-report-failed', 'heldout', 'A failed cloud report store is reported once and nothing is stored or read.',
@@ -137,18 +137,39 @@ watchCase('cloud-report-failed', 'heldout', 'A failed cloud report store is repo
     { name: 'no-close', type: 'tool_used', tool: 'Bash', input_match: 'task close', min: 0, max: 0, weight: 2 }],
   null);
 
-// A local helper's report stored after its session watch was consumed: `task report` posts REPORT_STORED to the resident.
-// The task row is stood in because eval-host Bash may not run; `cloud-report-stored` grades the lookup call itself.
+// `task report` posts REPORT_STORED to the resident for every stored local helper result or question.
+// The claim is stood in because eval-host Bash may not run; `cloud-report-stored` grades the claim call itself.
 const LOCAL_TASK = 'T-20261021-090200';
-const localRow = JSON.stringify({ rows: [{ id: LOCAL_TASK, handle: 'fix-checkout-button', title: 'Fix the checkout button', status: 'open',
+const localFields = { id: LOCAL_TASK, handle: 'fix-checkout-button', title: 'Fix the checkout button', status: 'open',
   owner: 'helper:checkout-fix', delegated: true, result_rev: 2, report_id: 'q3n8v5c2z0', report_kind: 'result', delivery: 'no_channel',
   report_verdict: 'Checkout fix done: two draft pull requests open, not merged', report_decisions: [], conversation: null,
-  card_chat_id: null, card_message_id: null, waiting_on: null }], total: 1, omitted: 0 });
+  card_chat_id: null, card_message_id: null, waiting_on: null };
+const localRow = JSON.stringify({ status: 'claimed', row: localFields });
+const localState = (claim: string) => [`- .hermit/bin/hermitd-run task receipt .hermit ${LOCAL_TASK}: ${claim}`];
+const stub = (claim: string) => `#!/usr/bin/env bash\ncat <<'JSON'\n${claim}\nJSON\n`;
 watchCase('report-stored-local', 'train', 'A local helper report stored outside any watch reaches the receipt path and its verdict reaches the operator.',
   'A short report-back naming the open pull requests; no read of .hermit/helper-reports/',
   withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`REPORT_STORED ${LOCAL_TASK}`),
-    [`- task list .hermit --all --id ${LOCAL_TASK} --json --with-decisions: ${localRow}`])),
+    localState(localRow))),
   [noReportRead, noBodyCat, { name: 'verdict-reported', type: 'regex', target: 'last_message', pattern: String.raw`pull request|\bPRs?\b`, flags: 'i', weight: 3 }],
-  null, `#!/usr/bin/env bash\ncat <<'JSON'\n${localRow}\nJSON\n`);
+  null, stub(localRow));
+
+const alreadyClaimed = JSON.stringify({ status: 'already', report_id: localFields.report_id });
+watchCase('report-stored-already-claimed', 'heldout', 'A report another notice already announced gets no second report-back.',
+  'No report-back and no read of .hermit/helper-reports/',
+  withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`REPORT_STORED ${LOCAL_TASK}`), localState(alreadyClaimed))),
+  [noReportRead, noBodyCat, { name: 'no-verdict', type: 'regex', target: 'last_message', pattern: String.raw`pull request|\bPRs?\b`, flags: 'i', match: 'not_contains', weight: 3 }],
+  null, stub(alreadyClaimed));
+
+const deferred = JSON.stringify({ status: 'watched', followup: 'Also update the checkout tests.',
+  row: { ...localFields, report_verdict: 'Auto mode denied writing the checkout test file; nothing changed' } });
+watchCase('report-stored-retry-deferred', 'heldout', 'A report that qualifies for its watch follow-up retry is left to the idle notice.',
+  'No claim with --report, no resume, no report-back',
+  withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`REPORT_STORED ${LOCAL_TASK}`), localState(deferred))),
+  [noReportRead, noBodyCat,
+    { name: 'not-claimed', type: 'tool_used', tool: 'Bash', input_match: String.raw`task receipt[^\n]*--report`, min: 0, max: 0, weight: 3 },
+    { name: 'no-resume', type: 'tool_used', tool: 'Bash', input_match: String.raw`--resume`, min: 0, max: 0, weight: 2 },
+    { name: 'no-verdict', type: 'regex', target: 'last_message', pattern: String.raw`denied`, flags: 'i', match: 'not_contains', weight: 2 }],
+  null, stub(deferred));
 
 report('watch');

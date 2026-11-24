@@ -16,7 +16,7 @@ const REFUSALS = new Set(['not_owner', 'closed', 'empty', 'report_too_long', 're
 type ReportKind = 'result' | 'needs-input' | 'note';
 export type ReportDelivery = 'sent' | 'partial' | 'failed' | 'relay' | 'no_channel';
 
-const REPORT_ID = /^[a-z0-9]{10}$/;
+export const REPORT_ID = /^[a-z0-9]{10}$/;
 const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK, O_WRONLY, O_CREAT, O_EXCL } = fs.constants;
 
 const numberedLine = /^\s*\d+[.)]\s+(.*)$/;

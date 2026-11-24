@@ -18,28 +18,36 @@ CC sends a completion notification into the conversation. On seeing this:
 2. If found: remove the entry and write registry back
 3. Log to the open task record: `[HH:MM] Watch <id> exited`
 
-If the notification is missed (compaction, context pressure), the stale entry is
-harmless. The next session start clears the registry unconditionally.
+If the notification is missed (compaction, context pressure), the stale entry can
+only hold back a report that qualifies for its follow-up retry. The next session
+start clears the registry unconditionally.
 
 ### Handling helper poll exits
 
 Match the completion's task id to a live `poll_task_id`, then read its output. Ignore unmatched completions.
 
 - On `blocked <waitingFor>`, clear only `poll_task_id` and keep the subscription. Send one operator notice in the task thread when available, otherwise per Operator Notification. Name the blocker and offer Remote Control (when enabled), `claude attach <id>` (inside the container for Docker), or a reply here. For a reply, use spawn-session § Resume with new instructions with the blocked-reply input and the record metadata. Include the task id, `helper:<n>` and operator language in the prompt, and capture a fresh baseline before resuming. If the resume fails or runs unwatched, report that outcome.
-- On `ended <state>`, use the matched entry for § Handling idle notices’ receipt lookup and delivery rules, consuming it once before reporting. Do not apply the idle-only retry or queued switch. For `failed`, `stopped` or `gone`, use one short failure line in place of “finished without a report” only for an unchanged baseline. Leave the record open and append the ended state through `task-note` (Commands) when it is still open. A completed turn uses the ordinary receipt path.
+- On `ended <state>`, read each record as in § Handling idle notices step 2 and consume the entry once before reporting. Send each new report to § New report. Do not apply the queued switch. For `failed`, `stopped` or `gone`, use one short failure line in place of “finished without a report” only for an unchanged baseline. Leave the record open and append the ended state through `task-note` (Commands) when it is still open. A completed turn uses the ordinary receipt path.
 
 ### Handling idle notices
 
-1. Match the session to a live `peer-idle` entry by target name. Ignore unmatched notices. On subscription expiry, say it expired before completion, append a progress note to each still-open record, stop the poll and remove the entry without applying a queued switch.
+1. Match the session to a live `peer-idle` entry by target name. Ignore unmatched notices. On subscription expiry, say it expired before completion, append a progress note to each still-open record, stop the poll and remove the entry without applying a queued switch. Then send each record's new report to § New report.
 2. For each distinct `{record, prior_report}` pair, use `task-list` (Commands) to read `task list --all --id <T> --json --with-decisions`. Closed records can have a new report too. Treat a missing baseline as the current id. A report is new only when its non-null `report_id` differs from the baseline.
-3. For the one follow-up retry, inspect the new `report_verdict` when the report id changed, otherwise the idle notice's quoted first line. Retry only when a stored follow-up exists, no retry has run and that text says auto mode denied an action during the work or the helper declined because the instructions came by message. Never retry a denied report submission. Save `retry: true` first. Resume with the operator's stored instructions for the affected record, including the task id, `helper:<n>` and operator language. Capture fresh baselines for the replacement watch and preserve any other records and queued switch. Log the attempted retry on the open record. If a replacement watch is live, defer that record's notice to it. Otherwise report the resume outcome and use the receipt rules. Identify a result that came after one retry.
-4. Stop the poll and consume the entry before reporting. For each unchanged baseline, give one plain line saying the named helper finished without a report (use the terminal failure line when applicable). Apply § Report receipts to each new report. A general session watch without records quotes its one-line status when available. For triage, append the verdict to the source task as a progress note and never apply a suggested dismissal.
+3. A record qualifies for the retry when § New report's retry rule holds for this entry and its new `report_verdict`, or for its unchanged baseline and the idle notice's quoted first line. For a qualifying record, save `retry: true` first. Resume with the operator's stored instructions for the affected record, including the task id, `helper:<n>` and operator language. Capture fresh baselines for the replacement watch and preserve any other records and queued switch. Log the attempted retry on the open record. If a replacement watch is live, defer that record's notice to it. Otherwise report the resume outcome. Identify a result that came after one retry.
+4. Stop the poll and consume the entry before reporting. For each unchanged baseline, give one plain line saying the named helper finished without a report (use the terminal failure line when applicable). Send each new report not deferred to a replacement watch to § New report. A general session watch without records quotes its one-line status when available. For triage, append the verdict to the source task as a progress note and never apply a suggested dismissal.
 5. After an idle notice, apply a queued switch with `spawn-session --switch` using the stored flags. Operator answers about numbered decisions go to the same helper with the task id, `helper:<n>` and operator language via spawn-session § Follow-ups. The report never grants consent.
 
 ### Handling report notices
 
-- `REPORT_STORED <T>` or `CLOUD_REPORT_STORED <T>`: use `.hermit/bin/hermitd-run task list .hermit --all --id <T> --json --with-decisions` to look up the task and its current `report_id`. When it has a report this conversation has not already given a receipt for, follow § Report receipts using the returned row. Keep the report body unread.
+- `REPORT_STORED <T>` or `CLOUD_REPORT_STORED <T>`: follow § New report. Keep the report body unread.
 - `CLOUD_REPORT_FAILED <T> <reason>`: send one plain line in the operator's language that the report was not stored and why; for `closed`, say it arrived after the task closed. Leave the task's status as it is.
+
+### New report
+
+Every new report on a record comes here, whichever notice found it first.
+
+- **Retry rule.** A report qualifies for the one follow-up retry when a live `peer-idle` entry lists its record with a stored follow-up, the entry has no `retry: true`, and its verdict says auto mode denied an action during the work or the helper declined because the instructions came by message. Never retry a denied report submission. Only § Handling idle notices step 3 runs a retry.
+- **Claim.** Run `.hermit/bin/hermitd-run task receipt .hermit <T>`. On `claimed`, apply § Report receipts to the returned `row`. On `already`, `stale` or `none`, say nothing. On `watched`, judge the row's `report_verdict` against the retry rule using the returned `followup`: a qualifying report stays silent for its watch's idle notice; otherwise rerun it with `--report <report_id>` and apply § Report receipts on `claimed`.
 
 ### Report receipts
 

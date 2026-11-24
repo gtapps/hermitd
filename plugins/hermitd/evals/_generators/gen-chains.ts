@@ -355,10 +355,10 @@ const HELPER = 'export-wholesale';
 const REPORT_FILE = `.hermit/helper-reports/${REPORT_ID}.md`;
 const reportFixture = { [REPORT_FILE]: REPORT_BODY };
 
-function registry(priorReport: string | null = null): string {
+function registry(priorReport: string | null = null, followup?: string): string {
   return JSON.stringify({ monitors: [{
     id: `session-${HELPER}-1793030000-a1b2`, description: 'wholesale stock export', target: HELPER,
-    records: [{ record: TASK, prior_report: priorReport }], source: 'adhoc', class: 'peer-idle',
+    records: [{ record: TASK, prior_report: priorReport }], source: 'adhoc', class: 'peer-idle', ...(followup ? { followup } : {}),
   }], last_cleared: null }, null, 2) + '\n';
 }
 function receiptRow(delivery: string, owner = `helper:${HELPER}`) {
@@ -367,9 +367,11 @@ function receiptRow(delivery: string, owner = `helper:${HELPER}`) {
     report_id: REPORT_ID, report_kind: 'result', report_verdict: REPORT_BODY.split('\n')[0],
     report_decisions: ['Rever a amostra.'], delivery, result_rev: 1, listing: ['unconfirmed'] };
 }
-const receiptState = (row: ReturnType<typeof receiptRow> & { attachments?: string[] }) =>
+// Idle-notice cases stand in the receipt claim (claimed by default), which answers every `task receipt` call for the task.
+const receiptState = (row: ReturnType<typeof receiptRow> & { attachments?: string[] }, claim: object | null = { status: 'claimed', row }) =>
   `<system-reminder>\n${NO_SHELL}\nOperator language: pt.\n`
   + `- task list --all --id ${TASK} --json --with-decisions: ${JSON.stringify({ rows: [row] })}\n`
+  + (claim ? `- .hermit/bin/hermitd-run task receipt .hermit ${TASK}: ${JSON.stringify(claim)}\n` : '')
   + '- Use the fixture reply tool to notify this task conversation when the receipt calls for a channel reply.\n</system-reminder>\n';
 const idle = (name = HELPER) => `[Cross-session idle notice] ${name} finished its turn and is idle.`;
 
@@ -390,6 +392,22 @@ for (const [name, delivery, action] of [
     }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, maxTurns: 16 });
   if (delivery !== 'no_channel') mock(name, CARD_MOCK);
 }
+
+chainCase('watch-already-claimed-shop', 'train', 'Native idle notice for a report another notice already announced.', 'The claim says already: no second receipt',
+  receiptState(receiptRow('relay'), { status: 'already', report_id: REPORT_ID }) + idle(),
+  [rubric('PASS if the resident matches the watch, finds the new report, gets `already` from the receipt claim and sends no report-back and no "finished without a report" line. FAIL if it relays the verdict again, reads the body, or records a result.', 'trace')],
+  residentScaffold({ ...RESIDENT_CONFIG, language: 'pt' }, { '.hermit/state/monitors.runtime.json': registry(), ...reportFixture }),
+  ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, maxTurns: 16 });
+mock('watch-already-claimed-shop', CARD_MOCK);
+
+const DENIED = 'O modo automático recusou escrever o ficheiro de exportação.';
+chainCase('watch-followup-retry-shop', 'train', 'Native idle notice for a follow-up whose report says auto mode denied an action.', 'The one retry resumes the helper before any receipt',
+  receiptState({ ...receiptRow('relay'), report_verdict: DENIED, report_decisions: [] }) + idle(),
+  [rubric(`PASS if the resident treats the report as qualifying for the one follow-up retry: it saves retry on the watch entry and resumes ${HELPER} with the stored follow-up instructions (running or describing the spawn-session resume), and gives the denied report no report-back. FAIL if it relays the denied verdict to the task chat before the retry, reads the body, or retries more than once.`, 'trace')],
+  residentScaffold({ ...RESIDENT_CONFIG, language: 'pt' }, {
+    '.hermit/state/monitors.runtime.json': registry(null, 'Exporta também a coluna de atacado.'), ...reportFixture,
+  }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, maxTurns: 16 });
+mock('watch-followup-retry-shop', CARD_MOCK);
 
 const REPLY_WITHOUT_FILES = {
   name: 'reply',
@@ -434,13 +452,13 @@ mock('watch-relay-unknown-sender-shop', CARD_MOCK);
 for (const delivery of ['relay', 'no_channel']) {
   const name = `worker-report-${delivery.replace('_', '-')}-shop`;
   chainCase(name, 'train', `Worker receipt with delivery ${delivery}.`, 'Use the receipt to give a short report-back',
-    receiptState(receiptRow(delivery, 'worker:a123456789')) + `<task-notification>\n<agent-id>a123456789</agent-id>\n<result>WORKER ${TASK} done ${REPORT_ID}</result>\n</task-notification>`,
+    receiptState(receiptRow(delivery, 'worker:a123456789'), null) + `<task-notification>\n<agent-id>a123456789</agent-id>\n<result>WORKER ${TASK} done ${REPORT_ID}</result>\n</task-notification>`,
     [rubric('PASS if the resident takes the named worker result, uses the bounded receipt for the verdict and decision title, names the task handle and offers the full report without reading or repeating the report body.', 'trace')],
     chainScaffold(reportFixture), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true });
   if (delivery === 'relay') mock(name, CARD_MOCK);
 }
 chainCase('task-full-report-shop', 'heldout', 'Operator asks for the report after a relay receipt.', 'Read the current stored body and return it verbatim',
-  receiptState(receiptRow('relay')) + `Authorized Discord requester in discord:${CHAT}: “Full report for wholesale-export, please.”`,
+  receiptState(receiptRow('relay'), null) + `Authorized Discord requester in discord:${CHAT}: “Full report for wholesale-export, please.”`,
   [{ name: 'reads-report', type: 'tool_used', tool: 'Read', input_match: `${REPORT_ID}\\.md`, weight: 3 },
     rubric('PASS if the resident replies verbatim with the stored body through the task conversation. FAIL if it summarizes or changes recipients.', 'trace')],
   chainScaffold(reportFixture), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true });

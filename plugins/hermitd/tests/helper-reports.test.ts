@@ -21,6 +21,7 @@ test('report passes repeatable file flags as an array in argv order', async () =
       import { mock } from 'bun:test';
       mock.module(${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/lib/helper-reports.ts'))}, () => ({
         noticeStoredReport: async () => {},
+        REPORT_ID: /^[a-z0-9]{10}$/,
         reportAttachments: () => ({}),
         reportSummary: () => ({}),
         submitHelperReport: (_dir, _id, flags) => flags.file,
@@ -419,6 +420,43 @@ test('a report killed during delivery leaves a pending receipt without resending
       expect(files(f.dir)).toContain(record.report_id + '.md');
     } finally { proc.kill(); }
   } finally { server.stop(true); f.cleanup(); }
+});
+
+test('a receipt claims each report once, on open and auto-closed records, and leaves a follow-up watch to its caller', async () => {
+  const f = taskFixture(); try {
+    const { id } = await f.open(['--owner', author, '--tags', '["task","auto-close"]']);
+    expect(await f.ok('receipt', [id])).toEqual({ status: 'none' });
+    const first = await f.ok('report', args(id, 'needs-input'), 'Which branch?');
+    const claimed = await f.ok('receipt', [id, '--report', first.report]);
+    expect(claimed).toMatchObject({ status: 'claimed', row: { id, report_id: first.report, receipt_report_id: first.report, report_verdict: 'Which branch?' } });
+    expect(await f.ok('receipt', [id])).toEqual({ status: 'already', report_id: first.report });
+    expect((await f.ok('list', ['--all', '--id', id, '--json'])).rows[0]).not.toHaveProperty('receipt_report_id');
+
+    const second = await f.ok('report', args(id), 'Done');
+    expect(decodeTask(f.text(id)).status).toBe('closed');
+    expect(await f.ok('receipt', [id, '--report', first.report])).toEqual({ status: 'stale', report_id: second.report });
+    expect(settleReportDelivery(f.dir, id, second.report, 'sent')).toBe(true);
+    expect(await f.ok('receipt', [id])).toMatchObject({ status: 'claimed', row: { receipt_report_id: second.report, delivery: 'sent' } });
+    expect(settleReportDelivery(f.dir, id, second.report, 'failed')).toBe(true);
+    expect(decodeTask(f.text(id)).receipt_report_id).toBe(second.report);
+
+    const watched = await f.open(['--owner', author]);
+    const report = await f.ok('report', args(watched.id), 'Denied by auto mode');
+    const entry = { id: 'session-review', class: 'peer-idle', target: 'review', records: [{ record: watched.id, prior_report: null }], followup: 'Fix the build' };
+    f.put('state/monitors.runtime.json', { monitors: [{ ...entry, followup: undefined }, { ...entry, retry: true }] });
+    expect(await f.ok('receipt', [watched.id])).toMatchObject({ status: 'claimed' });
+    const later = await f.ok('report', args(watched.id), 'Denied again');
+    f.put('state/monitors.runtime.json', { monitors: [entry] });
+    expect(await f.ok('receipt', [watched.id])).toMatchObject({ status: 'watched', followup: 'Fix the build', row: { report_id: later.report, report_verdict: 'Denied again' } });
+    expect(decodeTask(f.text(watched.id)).receipt_report_id).toBe(report.report);
+    expect(await f.ok('receipt', [watched.id, '--report', later.report])).toMatchObject({ status: 'claimed' });
+
+    expect(await f.ok('receipt', ['T-20260101-000000'])).toEqual({ status: 'refused', reason: 'not_found' });
+    const bad = await f.run('receipt', [id, '--report', 'NOT-AN-ID']);
+    expect(bad.exitCode).toBe(1);
+    expect(bad.stdout).toContain('invalid_report_id');
+    expect(() => decodeTask(f.text(id).replace(`receipt_report_id: ${second.report}`, 'receipt_report_id: bad'))).toThrow('invalid_record');
+  } finally { f.cleanup(); }
 });
 
 test('a stored helper result or question reaches the resident even while a session watch lists the record', async () => {

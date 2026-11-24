@@ -2,7 +2,7 @@ schema_version: "1.1"
 name: cloud-report-stored
 description: 'A stored cloud helper report reaches the report receipt path without its body being read.'
 tags: [watch, train]
-expected_outcome: 'Bash task list for the task id; no read of .hermit/helper-reports/'
+expected_outcome: 'Bash task receipt for the task id; no read of .hermit/helper-reports/'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -89,6 +89,6 @@ execution:
     CLOUD_REPORT_STORED T-20261021-090100
     </cross-session-message>
 graders:
-  - {"name":"looked-up-task","type":"tool_used","tool":"Bash","input_match":"task list[^\\n]*T-20261021-090100","weight":3}
+  - {"name":"looked-up-task","type":"tool_used","tool":"Bash","input_match":"task receipt[^\\n]*T-20261021-090100","weight":3}
   - {"name":"body-unread","type":"tool_used","tool":"Read","input_match":"helper-reports","min":0,"max":0,"weight":3}
   - {"name":"body-not-printed","type":"tool_used","tool":"Bash","input_match":"helper-reports","min":0,"max":0,"weight":2}

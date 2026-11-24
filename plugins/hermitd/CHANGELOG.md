@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- A helper result or question under a session watch reaches the agent only once, with any follow-up retry before the report, including after compaction or `/clear`.
+
 ## [1.4.42] - 2026-11-24
 
 ### Added

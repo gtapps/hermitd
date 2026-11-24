@@ -183,7 +183,7 @@ alternate invocation, or weaker permission mode. The exceptions are
    id, run `claude logs <id>` and show the operator the last few
    ANSI-stripped lines; name the state those lines show (a boot dialog it
    cannot answer, a crash, a finished turn) rather than one they do not. A
-   declined subscription writes no registry entry. Check the record with `task list --all --id <T-id> --json --with-decisions`; if it already has a new report, handle its receipt. Otherwise say the helper is unwatched and whether the logs show it running, blocked or gone. Preserve the record for reconciliation.
+   declined subscription writes no registry entry. Check the record with `task list --all --id <T-id> --json --with-decisions`; if it already has a new report, handle it per `watch/notices.md` § New report. Otherwise say the helper is unwatched and whether the logs show it running, blocked or gone. Preserve the record for reconciliation.
 
 ## Follow-ups
 

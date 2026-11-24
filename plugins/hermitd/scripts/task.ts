@@ -5,7 +5,7 @@ import { classifyChat, needsThread, threadParent } from './lib/channel-chats';
 import { isKey } from './lib/conversation-key';
 import { readSettledConfig } from './lib/config-read';
 import { exitError } from './lib/cli';
-import { eligibleHelper, listTasks, mutateTask, reportTaskError, taskStandup, TASK_ID, type TaskFlags } from './lib/tasks';
+import { claimReportReceipt, eligibleHelper, listTasks, mutateTask, reportTaskError, taskStandup, TASK_ID, type TaskFlags } from './lib/tasks';
 
 async function main(): Promise<void> {
   const [verb, dirArg, ...args] = process.argv.slice(2);
@@ -26,11 +26,11 @@ async function main(): Promise<void> {
     lesson: ['actor'], 'check-snapshot': [],
     block: ['decision', 'waiting-on', 'result-stdin', 'status-line', 'next'],
     close: ['local', 'chat', 'user', 'by', 'actor', 'result-rev', 'reason-stdin', 'claim'], cancel: ['chat', 'user', 'actor', 'reason-stdin'], dismiss: ['reason-stdin'],
-    'helper-eligible': ['conversation', 'folder'],
+    'helper-eligible': ['conversation', 'folder'], receipt: ['report'],
     list: ['open', 'all', 'conversation', 'requester', 'handle', 'id', 'dedupe-key', 'dedupe-prefix', 'json', 'owner', 'with-check', 'with-decisions', 'limit'], standup: ['json', 'days'],
   };
   if (!allowed[verb]) throw new Error('invalid_verb');
-  const requiresId = ['note', 'block', 'close', 'cancel', 'dismiss', 'lesson', 'check-snapshot'].includes(verb);
+  const requiresId = ['note', 'block', 'close', 'cancel', 'dismiss', 'lesson', 'check-snapshot', 'receipt'].includes(verb);
   const id = requiresId || (['answer', 'report'].includes(verb) && args[0] !== undefined && !args[0].startsWith('--')) ? args.shift() : undefined;
   if (id !== undefined && !TASK_ID.test(id)) throw new Error('invalid_id');
   if (requiresId && (!id || !TASK_ID.test(id))) throw new Error('invalid_id');
@@ -58,7 +58,8 @@ async function main(): Promise<void> {
   } else if (verb === 'helper-eligible') {
     if (typeof flags.folder !== 'string' || !flags.folder) throw new Error('missing_folder');
     result = eligibleHelper(dir, typeof flags.conversation === 'string' ? flags.conversation : null, flags.folder);
-  } else if (verb === 'list') result = listTasks(dir, flags);
+  } else if (verb === 'receipt') result = claimReportReceipt(dir, id!, typeof flags.report === 'string' ? flags.report : undefined);
+  else if (verb === 'list') result = listTasks(dir, flags);
   else if (verb === 'standup') {
     const days = flags.days === undefined ? 7 : Number(flags.days);
     if (!Number.isFinite(days) || days <= 0) throw new Error('invalid_days');
