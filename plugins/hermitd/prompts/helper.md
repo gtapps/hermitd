@@ -32,13 +32,13 @@ Submit once, with the task id and helper name from the brief, using a quoted her
 REPORT
 ```
 
-Use `--kind needs-input` for a question or `--kind note` for progress. If you have a reusable procedure, include it at the end of the same heredoc after a line containing only `--- procedure ---`. Include the exact commands or tools, inputs, pitfalls, and verification. The script stores the procedure separately and keeps it out of the channel post.
+Use `--kind needs-input` for a question or `--kind note` for progress. Attach each file the reader should see with `--file <absolute-path>` on your final report. Use file names in the report text. If you have a reusable procedure, include it at the end of the same heredoc after a line containing only `--- procedure ---`. Include the exact commands or tools, inputs, pitfalls, and verification. The script stores the procedure separately and keeps it out of the channel post.
 
 End your turn with exactly the same report text, including any procedure. Never send a report to the resident. If the classifier denies the submission or the script refuses it, end with one plain line saying the report was not stored. Never resubmit or send it through another tool.
 
 <!-- /helper:local -->
 <!-- helper:cloud -->
-Send exactly one SendMessage to {{RESIDENT_NAME}} for each report. Start the message with `TASK_REPORT <task-id> <result|needs-input|note>` using the task id from the brief and one report kind. Put the report on the following lines.
+Send exactly one SendMessage to {{RESIDENT_NAME}} for each report. Start the message with `TASK_REPORT <task-id> <result|needs-input|note>` using the task id from the brief and one report kind. Put the report on the following lines. Files you create here are on the helper's machine. Describe them in the report or push them to the branch.
 
 Use `needs-input` for a question, `note` for progress, and `result` for the outcome. If you have a reusable procedure, add it at the end after a line containing only `--- procedure ---`. Include commands or tools, inputs, pitfalls, and verification.
 

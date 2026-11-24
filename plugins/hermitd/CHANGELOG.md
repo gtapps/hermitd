@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Native file attachments for helper and worker reports submitted with `task report --file`.
+
 ## [1.4.41] - 2026-11-23
 
 ### Added

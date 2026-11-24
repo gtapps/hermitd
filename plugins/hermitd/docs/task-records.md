@@ -65,8 +65,8 @@ The close or check digest carries `next`, naming the absolute path of the review
 Helpers and workers submit once with the body on stdin:
 
 ```bash
-.hermit/bin/hermitd-run task report .hermit <task-id> --as helper:<name> --kind result <<'REPORT'
-The review is ready.
+.hermit/bin/hermitd-run task report .hermit <task-id> --as helper:<name> --kind result --file /absolute/path/after.png <<'REPORT'
+The review is ready. See after.png.
 
 1. Confirm the proposed name.
 
@@ -76,9 +76,9 @@ REPORT
 
 Workers use `--as worker`; `needs-input` records a requester wait without setting a result, and `note` records progress tagged with the author. Results reuse `block --result-stdin`, including consent checks, decision generations and `result_rev`. A multiline result is stored as a JSON-quoted scalar and round-trips exactly; Progress, Decisions and Outcome notes stay on one line. Each spawn binds a task. A terminal spawn that opens a record without a source task or conversation adds the `auto-close` tag, which closes on a result with no numbered decisions. A result with decisions stays open for the operator.
 
-The script chooses a ten-character report id and writes immutable `helper-reports/<id>.md`, with task and author binding in `<id>.json`. No operator-authored path selects the file. Empty or over-64-KB input, a closed task, or an owner mismatch is refused before storage or delivery. Proposal consent refusals also store and send nothing. A final `--- procedure ---` block is stored separately as `<id>.procedure.md` when non-empty.
+The script chooses a ten-character report id and writes immutable `helper-reports/<id>.md`, with task and author binding in `<id>.json`. The script selects the storage paths. Repeat `--file <absolute-path>` for a `result` or `needs-input` report. Each path must resolve to an existing regular file. Configured channel state and `~/.claude/channels/` are guarded, with channel `inbox/` files allowed. An invalid file or a file on a `note` returns `invalid_file` without recording or sending the report. Copies live in `<id>.files/`. Duplicate declarations are stored once and collisions get a numeric suffix. Exact declared paths in the report body become the stored names. Empty or over-64-KB input, a closed task, or an owner mismatch is refused before storage or delivery. Proposal consent refusals also store and send nothing. A final `--- procedure ---` block is stored separately as `<id>.procedure.md` when non-empty.
 
-The JSON receipt is `{report, task, recorded, result_rev, delivery}`. The task keeps the report id, kind and delivery. A channel send starts after the record is written with `pending`, then updates that receipt only if it is still current. A pending receipt is never resent automatically. Shared chats receive the task handle and title with the report, and a capped Discord send counts as sent. The helper ends on the same report. An idle notice makes the resident use the new receipt for card updates, checks and closure. Relay and no-channel delivery get a short report-back with the verdict and decision titles, and “full report” returns the stored body. Failed or partial delivery gets one line.
+The JSON receipt is `{report, task, recorded, result_rev, delivery}`. The task keeps the report id, kind and delivery. A channel send starts after the record is written with `pending`, then updates that receipt only if it is still current. A pending receipt is never resent automatically. Shared chats receive the task handle and title with the report, and a capped Discord send counts as sent. The helper ends on the same report. An idle notice makes the resident use the new receipt for card updates, checks and closure. Relay and no-channel delivery get a short report-back with the verdict and decision titles, and “full report” returns the stored body. Failed or partial text delivery gets one line. When the report has files, `task list --json --with-decisions` includes their absolute copy paths as `attachments` in declaration order. The resident uses the native file tool for the task conversation, or describes the files if attachments are unavailable. A full-report request includes the files.
 
 ## Proposals and durable questions
 

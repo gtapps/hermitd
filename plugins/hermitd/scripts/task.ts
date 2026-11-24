@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     return;
   }
   const allowed: Record<string, string[]> = {
-    report: ['as', 'kind'],
+    report: ['as', 'kind', 'file'],
     open: ['source', 'category', 'tags', 'waiting-on', 'decision', 'body-stdin', 'kind', 'note-stdin', 'title', 'requester', 'done', 'requester-name', 'origin-message-id', 'due', 'conversation', 'card', 'owner', 'muted', 'approver', 'dedupe-key', 'claim', 'check'],
     answer: ['local', 'chat', 'user', 'reply', 'generation', 'result-rev'],
     note: ['chat', 'user', 'actor', 'due', 'card', 'decision', 'approval', 'done', 'clear-waiting', 'if-waiting-since', 'check', 'owner', 'muted'],
@@ -43,9 +43,9 @@ async function main(): Promise<void> {
     if (booleans.has(name) || (verb === 'note' && name === 'decision')) { flags[name] = true; continue; }
     const value = args.shift();
     if (value === undefined || value.startsWith('--')) throw new Error(`missing_${name.replaceAll('-', '_')}`);
-    if (name === 'claim') {
-      flags.claim ??= [];
-      (flags.claim as string[]).push(value);
+    if (name === 'claim' || name === 'file') {
+      flags[name] ??= [];
+      (flags[name] as string[]).push(value);
     }
     else if (name in flags) throw new Error('duplicate_flag');
     else flags[name] = value;

@@ -2510,7 +2510,7 @@ describe('resident prompt launch requirement', () => {
   test('the local transport renders the same helper text byte for byte', () => {
     const template = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/helper.md'), 'utf8');
     const local = renderHelperPrompt(template, 'local', { PROJECT_ROOT: '/example/project', RESIDENT_NAME: 'resident' });
-    expect(sha256(local)).toBe('f82f74ab23fff489d9be37917f6291854a1baca15661f996971e5b35cd9b6027');
+    expect(sha256(local)).toBe('8a0f8358f5eef1a7c3d0b03b68fe6b0a416435feca8b970c2feeff977e122a44');
   });
   test('command appends the absolute resident path', async () => {
     const { cmd } = await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);

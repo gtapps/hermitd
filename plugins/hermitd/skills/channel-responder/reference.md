@@ -4,7 +4,7 @@ Read on demand from `SKILL.md`; never loaded on a turn that does not need it.
 
 ## Standing work
 
-Standing work is what the hermit does without being asked in the moment: routines, watches, and standing roles. Session-triggered `scheduled_checks` fire on session events and are not standing work. Answer in channel voice (`SKILL.md` § 3): no cron strings, ids, file paths, or slash commands, except `!doctor` when a live check is the next step.
+Standing work is what the hermit does without being asked in the moment: routines, watches, and standing roles. Session-triggered `scheduled_checks` fire on session events and are not standing work. Follow [Response Guidelines](SKILL.md#3-response-guidelines) for channel voice and file delivery.
 
 ### Gather (bounded reads only)
 

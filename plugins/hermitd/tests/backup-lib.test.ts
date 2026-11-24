@@ -200,6 +200,18 @@ describe('scanRefusedPaths', () => {
     expect(byPath['plain.md']).toBeUndefined();
   });
 
+  test('refuses staged and stored report attachments while keeping report text and bindings', () => {
+    const dir = freshDir();
+    const rel = '.hermit/helper-reports';
+    const copies = [`${rel}/abcdef1234.files/after.png`, `${rel}/.staging-123456/after.png`];
+    const reports = [`${rel}/abcdef1234.md`, `${rel}/abcdef1234.json`];
+    for (const file of [...copies, ...reports]) {
+      fs.mkdirSync(path.join(dir, path.dirname(file)), { recursive: true });
+      fs.writeFileSync(path.join(dir, file), 'sample');
+    }
+    expect(scanRefusedPaths(dir, [...copies, ...reports])).toEqual(copies.map(file => ({ path: file, reason: 'secret-filename' })));
+  });
+
   test('refuses the backup\'s own bookkeeping so a quiet run commits nothing', () => {
     const dir = freshDir();
     const rel = '.hermit/state';

@@ -49,7 +49,7 @@ Submit once in a quoted heredoc:
 REPORT
 ```
 
-Use `--kind needs-input` for a question and `--kind note` for progress. Never resubmit after a failure, refusal or classifier denial. Retain the receipt and print `Report: <id>` and `Delivery: <status>` before the final WORKER line, with no report body. On a classifier denial or script refusal, print `Delivery: blocked <reason>` and omit `Report:`; use `none` as the final report id. Do not route a denied submission through another tool.
+Use `--kind needs-input` for a question and `--kind note` for progress. Attach each file the reader should see with `--file <absolute-path>` on your final report. Use file names in the report text. Never resubmit after a failure, refusal or classifier denial. Retain the receipt and print `Report: <id>` and `Delivery: <status>` before the final WORKER line, with no report body. On a classifier denial or script refusal, print `Delivery: blocked <reason>` and omit `Report:`; use `none` as the final report id. Do not route a denied submission through another tool.
 
 When the work followed a reusable procedure, write `.hermit/helper-reports/<id>.procedure.md` beside the stored report, using the receipt's `<id>`: steps with the exact commands or tools used, inputs, pitfalls, and how done was verified. Otherwise write no procedure file. Never write project skills yourself; workers hand the procedure to the resident.
 
