@@ -15,6 +15,8 @@
 ### Upgrade Instructions
 
 1. **Tmux and interactive agents only:** when `browser.enabled` is not false, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-install.ts >/dev/null 2>&1 &` once in the background so the browser moves to the new pins. Do not wait for the download. Docker agents pick up the new browser and Bun on the image rebuild that the host `hermitd update` runs.
+- `hermit-settings remote-environments` points to `/remote-env` for environment IDs.
+- A helper launched with `--environment` is checked after launch, and a wrong ID that landed on hosted Claude is reported.
 
 ## [1.4.42] - 2026-11-24
 

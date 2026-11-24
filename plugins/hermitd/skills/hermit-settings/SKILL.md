@@ -373,6 +373,7 @@ Note: "Channel changes take effect on next `hermitd-start` run (type `/hermitd:h
 **If argument is "remote-environments":**
 - With no name or value, show the entries in `remote_environments`.
 - With `<name> remove`, use `unset remote_environments.<name>`.
+- Without an ID, tell the operator `/remote-env` lists each environment's `env_…` ID.
 - Otherwise take the `env_…` ID as given or from the `environment` value of a `https://claude.ai/code?environment=env_…` link, and `set remote_environments.<name> <env_id>` with the ID alone; `set` rejects an invalid name or ID.
 
 **If argument is "docker":**
