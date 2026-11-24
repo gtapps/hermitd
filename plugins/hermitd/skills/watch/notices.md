@@ -38,7 +38,7 @@ Match the completion's task id to a live `poll_task_id`, then read its output. I
 
 ### Handling report notices
 
-- `REPORT_STORED <T>` or `CLOUD_REPORT_STORED <T>`: use `.hermit/bin/hermitd-run task list .hermit --all --id <T> --json --with-decisions` to look up the task and its current `report_id`. When it has a report, follow § Report receipts using the returned row. Keep the report body unread.
+- `REPORT_STORED <T>` or `CLOUD_REPORT_STORED <T>`: use `.hermit/bin/hermitd-run task list .hermit --all --id <T> --json --with-decisions` to look up the task and its current `report_id`. When it has a report this conversation has not already given a receipt for, follow § Report receipts using the returned row. Keep the report body unread.
 - `CLOUD_REPORT_FAILED <T> <reason>`: send one plain line in the operator's language that the report was not stored and why; for `closed`, say it arrived after the task closed. Leave the task's status as it is.
 
 ### Report receipts

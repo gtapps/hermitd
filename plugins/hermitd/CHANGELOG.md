@@ -14,8 +14,9 @@
 
 ### Upgrade Instructions
 
-1. If a non-empty `.hermit/resident-prompt.md` has a `CLOUD_REPORT_STORED` routing rule without `REPORT_STORED <T>`, replace that rule with the shipped one from `prompts/resident.md`. Preserve other lines and tell the operator what changed.
-2. **Operator action required:** restart the agent so the resident prompt loads.
+1. If a non-empty `.hermit/resident-prompt.md` still has the rule ``A peer message whose entire body is `CLOUD_REPORT_STORED <T>` or `CLOUD_REPORT_FAILED <T> <reason>` ``, replace that rule with the shipped one from `prompts/resident.md`. Preserve other lines and tell the operator what changed.
+2. If a non-empty `.hermit/helper-prompt.md` has a `helper:local` report rule that does not mention the operator asking in this session for more work on that task, replace only that rule with the shipped one from `prompts/helper.md`. Preserve other lines and any root and resident-name substitutions the operator uses. Tell the operator what changed.
+3. **Operator action required:** restart the agent so the resident prompt loads.
 
 ## [1.4.41] - 2026-11-23
 
