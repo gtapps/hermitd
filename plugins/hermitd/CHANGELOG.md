@@ -5,6 +5,9 @@
 ### Fixed
 
 - A helper result or question under a session watch reaches the agent only once, with any follow-up retry before the report, including after compaction or `/clear`.
+### Changed
+
+- Helpers on another machine fetch `origin` and work from the current remote branch before starting a task in a git repository, and name that commit in their report.
 
 ## [1.4.42] - 2026-11-24
 
