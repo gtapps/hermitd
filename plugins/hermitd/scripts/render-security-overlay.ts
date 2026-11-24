@@ -323,7 +323,7 @@ function connectorService(host: ConnectorHost): string {
   const mount = (sub: string, ro = false) => `      - ${JSON.stringify(`${path.join(host.store, sub)}:/connector/${sub}${ro ? ':ro' : ''}`)}`;
   return [
     '  hermit-connector:',
-    '    image: oven/bun:1.4.2-distroless',
+    '    image: oven/bun:1.4.5-distroless',
     '    command: ["/connector/sidecar/gateway.ts", "/connector"]',
     `    user: "${host.uid}:${host.gid}"`,
     '    environment:',

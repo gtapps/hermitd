@@ -16,7 +16,7 @@ export function browserPlatform(platform = process.platform, arch: string = proc
       musl = (ldd.stdout.toString() + ldd.stderr.toString()).toLowerCase().includes('musl');
     } catch { musl = fs.existsSync('/lib/ld-musl-x86_64.so.1') || fs.existsSync('/lib/ld-musl-aarch64.so.1'); }
   }
-  return { binary: `agent-browser-${platform === 'linux' && musl ? 'linux-musl' : platform}-${arch}`,
+  return { native: (platform === 'darwin' ? `darwin-${arch}` : `linux-${arch}-${musl ? 'musl' : 'gnu'}`) as keyof typeof BROWSER_PINS.agent.native,
     chrome: platform === 'darwin' ? `mac-${arch}` as 'mac-x64' | 'mac-arm64' : arch === 'arm64' ? 'linux-arm64' as const : 'linux64' as const,
     linux: platform === 'linux' };
 }
@@ -58,9 +58,12 @@ export async function installBrowser(options: InstallOptions = {}) {
     };
     const agent = await download(pins.agent.url, 'agent.tgz', 'sha512', pins.agent.integrity.slice('sha512-'.length), 'base64');
     command(['tar', 'xzf', agent, '-C', temp]);
-    const binary = path.join(temp, 'package/bin', platform.binary);
-    fs.chmodSync(binary, 0o755);
-    fs.renameSync(binary, path.join(temp, 'agent-browser'));
+    // Lay the native binary out the way npm's postinstall does: `skills get` finds skill-data from the package root.
+    const native = await download(`https://registry.npmjs.org/@agent-browser/cli-${platform.native}/-/cli-${platform.native}-${pins.agent.version}.tgz`,
+      'native.tgz', 'sha512', pins.agent.native[platform.native].slice('sha512-'.length), 'base64');
+    const binary = 'package/bin/agent-browser';
+    command(['tar', 'xzf', native, '-C', temp, binary]);
+    fs.chmodSync(path.join(temp, binary), 0o755);
     const chromeZip = await download(`https://storage.googleapis.com/chrome-for-testing-public/${pins.chrome.version}/${platform.chrome}/chrome-${platform.chrome}.zip`, 'chrome.zip', 'sha256', pins.chrome.checksums[platform.chrome]);
     command(['unzip', '-q', chromeZip, '-d', temp]);
     fs.renameSync(path.join(temp, `chrome-${platform.chrome}`), path.join(temp, 'chrome'));
@@ -72,9 +75,9 @@ export async function installBrowser(options: InstallOptions = {}) {
       command(['tar', 'xzf', novnc, '-C', path.join(temp, 'novnc'), '--strip-components=1']);
       if (!fs.existsSync(path.join(temp, 'novnc/core/rfb.js'))) throw new Error('novnc_incomplete');
     }
-    for (const name of ['agent.tgz', 'chrome.zip', 'novnc.tgz', 'package']) fs.rmSync(path.join(temp, name), { recursive: true, force: true });
+    for (const name of ['agent.tgz', 'native.tgz', 'chrome.zip', 'novnc.tgz']) fs.rmSync(path.join(temp, name), { recursive: true, force: true });
     fs.writeFileSync(path.join(temp, 'config.json'), '{}\n');
-    writeFileAtomic(path.join(temp, 'complete.json'), JSON.stringify({ binary: 'agent-browser', chrome }) + '\n');
+    writeFileAtomic(path.join(temp, 'complete.json'), JSON.stringify({ binary, chrome }) + '\n');
     fs.rmSync(target, { recursive: true, force: true });
     fs.renameSync(temp, target); temp = undefined;
     fs.rmSync(path.join(data, 'install-error.json'), { force: true });

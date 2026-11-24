@@ -368,13 +368,13 @@ test('browser true pins and verifies both architectures above the root operator 
   const dir = freshDir();
   expect((await render(dir, { browser: true })).exitCode).toBe(0);
   const image = dockerfile(dir);
-  expect(image).toContain('agent-browser@0.41.0');
-  expect(image).toContain('156.0.8078.80');
+  expect(image).toContain('agent-browser@0.44.0');
+  expect(image).toContain('158.0.8127.88');
   expect(image).toContain('sha256sum -c -');
   expect(image).toContain('amd64) platform=linux64');
   expect(image).toContain('arm64) platform=linux-arm64');
-  expect(image).toContain('b711c720f774be355197f32edf37e0651418ba036d92446ee2da19ac017540a7');
-  expect(image).toContain('1f496a826c9ba4d6a5f5bf2de686145fe718528c2cc3dbeb96b5893b89653724');
+  expect(image).toContain('59e3b43f8b3aaa292238fbdcfb36a93127debd53e212510dcdc2cc8812b4b57e');
+  expect(image).toContain('91669b5de79af808d498037dd974e4b09461776a1b5240b3bb656abd17e5d3ab');
   expect(image).toContain('/etc/hermit/managed-browser');
   expect(image).toContain('scripts/browser-agent.ts');
   expect(image.indexOf('npm install -g --allow-scripts')).toBeLessThan(image.indexOf('# Match host UID'));
