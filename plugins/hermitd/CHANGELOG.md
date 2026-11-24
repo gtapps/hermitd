@@ -1,11 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.42] - 2026-11-24
 
 ### Added
 
 - Native file attachments for helper and worker reports submitted with `task report --file`.
 - Default-on `/hermitd:make-me-proactive` research preview for up to three standing job offers based on the operator's work, with a yes required before setup.
+
 ### Fixed
 
 - An update, restart or upgrade asked for in plain words in chat gets the typed-command reply instead of running.
