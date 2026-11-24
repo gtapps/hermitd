@@ -107,9 +107,21 @@ test('clips safely, excludes long evidence and counts truncated-result lessons',
     save(f.dir, row);
     const digest = await briefDigest(f.dir, 'daily', reference, { agent: true });
     if (!('records' in digest)) throw new Error('Expected daily records');
-    expect(digest.records![0]).toMatchObject({ title: 'x'.repeat(199), result_truncated: true, result_verdict: 'r'.repeat(200), lessons: [] });
+    expect(digest.records![0]).toMatchObject({ title: 'x'.repeat(199), result_truncated: true, result_verdict: null, lessons: [] });
     expect(digest.records![0].result).toHaveLength(4000);
     expect(digest.omitted).toMatchObject({ clipped: 6, lessons: 2, decisions: 1 });
+  } finally { f.cleanup(); }
+});
+
+test('a truncated result keeps a short first line as its verdict', async () => {
+  const f = taskFixture();
+  try {
+    const row = await seed(f);
+    row.result = `\nPhotos done: two draft PRs open, not merged\n${'r'.repeat(500)}`;
+    save(f.dir, row);
+    const digest = await briefDigest(f.dir, 'daily', reference, { agent: true });
+    if (!('records' in digest)) throw new Error('Expected daily records');
+    expect(digest.records![0]).toMatchObject({ result_truncated: true, result_verdict: 'Photos done: two draft PRs open, not merged' });
   } finally { f.cleanup(); }
 });
 

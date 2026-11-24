@@ -20,7 +20,7 @@ test('report passes repeatable file flags as an array in argv order', async () =
     const code = `
       import { mock } from 'bun:test';
       mock.module(${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/lib/helper-reports.ts'))}, () => ({
-        noticeUnwatchedReport: async () => {},
+        noticeStoredReport: async () => {},
         reportAttachments: () => ({}),
         reportSummary: () => ({}),
         submitHelperReport: (_dir, _id, flags) => flags.file,
@@ -421,7 +421,7 @@ test('a report killed during delivery leaves a pending receipt without resending
   } finally { server.stop(true); f.cleanup(); }
 });
 
-test('a stored helper result or question reaches the resident only when no live watch lists the record', async () => {
+test('a stored helper result or question reaches the resident even while a session watch lists the record', async () => {
   const f = taskFixture();
   const sockets = fs.mkdtempSync(path.join(os.tmpdir(), 'rs-'));
   const socket = path.join(sockets, 'in');
@@ -450,15 +450,14 @@ test('a stored helper result or question reaches the resident only when no live 
     const steer = (id: string, kind = 'result') => [id, '--as', 'helper:steer', '--kind', kind];
     f.put('state/monitors.runtime.json', { monitors: [{ id: 'session-review', class: 'peer-idle', target: 'review', records: [{ record: watched.id, prior_report: null }] }] });
 
-    await f.ok('report', args(watched.id, 'needs-input'), 'Which branch?');
     await f.ok('report', steer(unwatched.id, 'note'), 'Progress.');
     await settle();
     expect(messages).toEqual([]);
 
-    await f.ok('report', steer(unwatched.id, 'needs-input'), 'Which branch?');
+    await f.ok('report', args(watched.id, 'needs-input'), 'Which branch?');
     await f.ok('report', steer(unwatched.id), '1. Merge both PRs?');
     await settle();
-    expect(messages).toEqual([`REPORT_STORED ${unwatched.id}`, `REPORT_STORED ${unwatched.id}`]);
+    expect(messages).toEqual([`REPORT_STORED ${watched.id}`, `REPORT_STORED ${unwatched.id}`]);
 
     const worker = await f.open(['--owner', 'worker:a123456789']);
     await f.ok('report', [worker.id, '--as', 'worker', '--kind', 'result'], 'Worker result');

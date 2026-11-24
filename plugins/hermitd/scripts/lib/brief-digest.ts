@@ -75,8 +75,11 @@ export async function briefDigest(dir: string, mode: BriefMode, reference = new 
     return clipText(value, limit);
   };
   const nullable = (value: string | null) => value === null ? null : clip(value);
-  // A report's first line is its verdict; a truncated result keeps it whole.
-  const verdictLine = (text: string) => clipText(text.split(/\r?\n/).find(line => line.trim())?.trim() ?? '', 200);
+  // A report's first line is its verdict; a longer first line is no verdict, so the brief falls back to title and outcome.
+  const verdictLine = (text: string) => {
+    const line = text.split(/\r?\n/).find(line => line.trim())?.trim() ?? '';
+    return line && line.length <= 200 ? line : null;
+  };
   const recordRow = (report: TaskReport, latest = false) => {
     const result = clip(report.result ?? '', !latest && report.lessons.length ? 4000 : 400);
     const result_truncated = result !== (report.result ?? '');

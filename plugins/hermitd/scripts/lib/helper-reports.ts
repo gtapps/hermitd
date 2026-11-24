@@ -9,7 +9,6 @@ import { classifyChat } from './channel-chats';
 import { channelStateDirs } from './channel-config';
 import { clip, safeForLLM } from './sanitize';
 import { loadMessages } from './messages';
-import { readJson } from './cli';
 import { postToSession } from './peer-post';
 import { readRuntimeJson } from './runtime';
 
@@ -302,12 +301,9 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
   }
 }
 
-/** Tells the resident about a stored helper result or question that no live session watch will announce. */
-export async function noticeUnwatchedReport(dir: string, id: string, flags: TaskFlags): Promise<void> {
+/** Tells the resident about a stored helper result or question; its receipt path skips a report it already handled. */
+export async function noticeStoredReport(dir: string, id: string, flags: TaskFlags): Promise<void> {
   if (flags.as === 'worker' || flags.kind === 'note') return;
-  const monitors = readJson(path.join(dir, 'state/monitors.runtime.json'))?.monitors;
-  const watched = (Array.isArray(monitors) ? monitors : []).flatMap((entry: any) => entry?.class === 'peer-idle' && Array.isArray(entry.records) ? entry.records : []);
-  if (watched.some((pair: any) => pair?.record === id)) return;
   const socket = readRuntimeJson(path.join(dir, 'state'))?.inbox_socket;
   if (typeof socket === 'string' && socket) await postToSession(socket, `REPORT_STORED ${id}`);
 }

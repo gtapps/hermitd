@@ -1,4 +1,4 @@
-import { noticeUnwatchedReport, submitHelperReport } from './lib/helper-reports';
+import { noticeStoredReport, submitHelperReport } from './lib/helper-reports';
 import { parseDecideArgs } from './lib/task-decide-args';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { classifyChat, needsThread, threadParent } from './lib/channel-chats';
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   let result: unknown;
   if (verb === 'report') {
     result = await submitHelperReport(dir, id, flags, await Bun.stdin.text());
-    if ((result as { recorded?: boolean }).recorded) await noticeUnwatchedReport(dir, id!, flags);
+    if ((result as { recorded?: boolean }).recorded) await noticeStoredReport(dir, id!, flags);
   } else if (verb === 'helper-eligible') {
     if (typeof flags.folder !== 'string' || !flags.folder) throw new Error('missing_folder');
     result = eligibleHelper(dir, typeof flags.conversation === 'string' ? flags.conversation : null, flags.folder);
