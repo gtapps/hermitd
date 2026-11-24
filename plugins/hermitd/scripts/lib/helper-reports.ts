@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { randomBytes } from 'node:crypto';
-import { HELPER_OWNER, mutateTask, settleReportDelivery, threadRecords, type Task, type TaskFlags } from './tasks';
+import { HELPER_OWNER, mutateTask, readTasks, settleReportDelivery, threadRecords, type Task, type TaskFlags } from './tasks';
 import { readSettledConfig } from './config-read';
 import { sendToOwnedChat, type SendResult } from './channel-send';
 import { classifyChat } from './channel-chats';
@@ -144,9 +144,10 @@ function stageAttachments(dir: string, declared: string[]) {
       }
       const { base, name, ext } = path.parse(file);
       let stored = base;
-      for (let suffix = 2; used.has(stored); suffix++) stored = `${name}-${suffix}${ext}`;
+      // Case-insensitive file systems would collide on names that differ only in case.
+      for (let suffix = 2; used.has(stored.toLowerCase()); suffix++) stored = `${name}-${suffix}${ext}`;
       copyAttachment(source, path.join(staging, stored));
-      used.add(stored);
+      used.add(stored.toLowerCase());
       names.set(file, stored);
     }
     return { staging, names };
@@ -238,7 +239,11 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
       if (kind === 'note') throw new Error('invalid_file');
       attachments = stageAttachments(dir, flags.file);
       const longestFirst = [...attachments.names].sort(([a], [b]) => b.length - a.length);
-      for (const [file, name] of longestFirst) text = text.replaceAll(file, () => name);
+      // Replace whole paths only, never a prefix or suffix of a longer undeclared path.
+      for (const [file, name] of longestFirst) {
+        const exact = new RegExp(String.raw`(?<![\w./-])` + file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + String.raw`(?![\w/-]|\.\w)`, 'g');
+        text = text.replace(exact, () => name);
+      }
     }
 
     let recorded!: Task;
@@ -279,7 +284,10 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
     }
     return { report, task: id, recorded: true, result_rev: recorded.result_rev, delivery };
   } catch (error) {
-    if (attachments && report) {
+    let current: string | null | undefined;
+    if (attachments && report) try { current = readTasks(dir).find(task => task.id === id)?.report_id; } catch {}
+    // A task already written with this report keeps its copies.
+    if (attachments && report && current !== report) {
       const folder = path.join(path.dirname(attachments.staging), report + '.files');
       fs.rmSync(folder, { recursive: true, force: true });
       fs.rmSync(folder + '.json', { force: true });

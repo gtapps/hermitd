@@ -31,6 +31,7 @@ Some paths are never committed:
 | Reason | What it covers |
 |---|---|
 | `secret-filename` | `.env` and every suffixed variant of it (timestamped backups, per-environment copies, samples), `*.pem`, `*.key`, `id_rsa*`, `.credentials.json`, anything under `.claude.local/` |
+| `report-attachment` | `.hermit/helper-reports/<id>.files/`, the copies of files a helper attached with `task report --file`, which may come from anywhere on the host |
 | `channel-log` | `state/channel-log.sqlite` and its journal files — your verbatim Discord/Telegram messages, documented as local-only in [security.md](security.md) |
 | `credential-marker` | A file whose text contains a recognizable credential shape (Anthropic, AWS, GitHub, Slack), checked for files under 512 KiB |
 | `too-large` | Anything over 95 MB, which most git remotes reject outright |

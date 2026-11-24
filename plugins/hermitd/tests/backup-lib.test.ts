@@ -209,7 +209,7 @@ describe('scanRefusedPaths', () => {
       fs.mkdirSync(path.join(dir, path.dirname(file)), { recursive: true });
       fs.writeFileSync(path.join(dir, file), 'sample');
     }
-    expect(scanRefusedPaths(dir, [...copies, ...reports])).toEqual(copies.map(file => ({ path: file, reason: 'secret-filename' })));
+    expect(scanRefusedPaths(dir, [...copies, ...reports])).toEqual(copies.map(file => ({ path: file, reason: 'report-attachment' })));
   });
 
   test('refuses the backup\'s own bookkeeping so a quiet run commits nothing', () => {

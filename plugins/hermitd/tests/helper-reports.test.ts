@@ -104,6 +104,20 @@ test('reports use declared basenames, suffix collisions and replace the longest 
   } finally { f.cleanup(); }
 });
 
+test('report names differ beyond case and only whole declared paths are replaced', async () => {
+  const f = taskFixture(); try {
+    const { id } = await f.open(['--owner', author]);
+    const upper = path.join(f.dir, 'Photo.png');
+    const lower = path.join(f.dir, 'sub/photo.png');
+    fs.mkdirSync(path.dirname(lower));
+    for (const file of [upper, lower]) fs.writeFileSync(file, file);
+    const { report } = await f.ok('report', [...args(id), '--file', upper, '--file', lower],
+      `See ${upper}. Kept: ${upper}.bak and /x${lower} and ${lower}/extra`);
+    expect(decodeTask(f.text(id)).result).toBe(`See Photo.png. Kept: ${upper}.bak and /x${lower} and ${lower}/extra`);
+    expect(fs.readdirSync(path.join(f.dir, 'helper-reports', report + '.files')).sort()).toEqual(['Photo.png', 'photo-2.png']);
+  } finally { f.cleanup(); }
+});
+
 test('attachment storage refuses a symlink at the report files directory', () => {
   const f = taskFixture(); try {
     const reports = path.join(f.dir, 'helper-reports');
