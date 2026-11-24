@@ -64,6 +64,7 @@ const TRANSIENT_RE = /(\.lock$|\.lock\.|\.\d+\.tmp$|^backup-status\.json$|^backu
 // The harness command queue is moment-scoped and session-bound: a restored entry
 // would name a session that no longer exists.
 const QUEUE_DIR_RE = /^harness-(?:queue|inflight|outcomes)$/;
+const REPORT_COPY_RE = /(?:^|\/)\.hermit\/helper-reports\/(?:[a-z0-9]{10}\.files|\.staging-[^/]+)\//;
 
 export interface RefusedPath { path: string; reason: string; }
 
@@ -74,6 +75,7 @@ export function scanRefusedPaths(root: string, relPaths: string[]): RefusedPath[
     const segments = rel.split('/');
     const base = segments[segments.length - 1] ?? '';
     if (segments.includes('.claude.local')) { out.push({ path: rel, reason: 'secret-filename' }); continue; }
+    if (REPORT_COPY_RE.test(rel)) { out.push({ path: rel, reason: 'report-attachment' }); continue; }
     if (DREAM_RUN_RE.test(rel)) { out.push({ path: rel, reason: 'dream-run' }); continue; }
     if (CHANNEL_LOG_RE.test(base)) { out.push({ path: rel, reason: 'channel-log' }); continue; }
     if (TRANSIENT_RE.test(base) || segments.some(s => QUEUE_DIR_RE.test(s))) { out.push({ path: rel, reason: 'transient' }); continue; }

@@ -114,7 +114,7 @@ cp .hermit/state/helper-system-prompt.md .hermit/helper-prompt.md
 
 Before you cut anything:
 
-- **Keep the `task report` submission and end-on-report rule.** The helper writes for the operator in the brief’s language, submits once with a quoted heredoc, and ends with the same report. The resident sees a receipt after the idle notice. In relay or terminal sessions, the resident gives a short report-back. Ask for “full report” to get the stored text.
+- **Keep the `task report` submission and end-on-report rule.** The helper writes for the operator in the brief’s language, submits once with a quoted heredoc, and ends with the same report. The resident sees a receipt after the idle notice. In relay or terminal sessions, the resident gives a short report-back. Local helpers use `--file` on the final report for each file the reader should see. Ask for “full report” to get the stored text and attachments.
 - Keep the project path lines: they point helpers working in a worktree at the hermit's real state folder.
 - What you remove is yours: the shipped rules you cut no longer reach helpers.
 - The copy holds today's path and name. Put `{{PROJECT_ROOT}}` and `{{RESIDENT_NAME}}` back in their place if you want the file to follow a moved project or a renamed hermit.

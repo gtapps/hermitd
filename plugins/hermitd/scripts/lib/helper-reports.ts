@@ -1,16 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { randomBytes } from 'node:crypto';
-import { HELPER_OWNER, mutateTask, settleReportDelivery, threadRecords, type Task, type TaskFlags } from './tasks';
+import { HELPER_OWNER, mutateTask, readTasks, settleReportDelivery, threadRecords, type Task, type TaskFlags } from './tasks';
 import { readSettledConfig } from './config-read';
 import { sendToOwnedChat, type SendResult } from './channel-send';
 import { classifyChat } from './channel-chats';
+import { channelStateDirs } from './channel-config';
 import { clip, safeForLLM } from './sanitize';
 import { loadMessages } from './messages';
 
-const REFUSALS = new Set(['not_owner', 'closed', 'empty', 'report_too_long', 'report_outside_state', 'consent_required', 'not_found']);
+const REFUSALS = new Set(['not_owner', 'closed', 'empty', 'report_too_long', 'report_outside_state', 'consent_required', 'not_found', 'invalid_file']);
 type ReportKind = 'result' | 'needs-input' | 'note';
 export type ReportDelivery = 'sent' | 'partial' | 'failed' | 'relay' | 'no_channel';
+
+const REPORT_ID = /^[a-z0-9]{10}$/;
+const { O_RDONLY, O_NOFOLLOW, O_NONBLOCK, O_WRONLY, O_CREAT, O_EXCL } = fs.constants;
 
 const numberedLine = /^\s*\d+[.)]\s+(.*)$/;
 export function hasNumberedReportLine(text: string): boolean {
@@ -30,22 +35,126 @@ export function reportDecisionTitles(text: string): string[] {
   return titles;
 }
 
+function readReportFile(file: string, maxBytes: number): string | undefined {
+  const fd = fs.openSync(file, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile() || stat.size > maxBytes) return;
+    const buffer = Buffer.allocUnsafe(stat.size);
+    let offset = 0;
+    while (offset < buffer.length) {
+      const count = fs.readSync(fd, buffer, offset, buffer.length - offset, null);
+      if (!count) break;
+      offset += count;
+    }
+    return buffer.toString('utf8', 0, offset);
+  } finally { fs.closeSync(fd); }
+}
+
 export function reportSummary(dir: string, reportId: string | null) {
   const empty = { report_verdict: null, report_decisions: [] };
-  if (!reportId || !/^[a-z0-9]{10}$/.test(reportId)) return empty;
+  if (!reportId || !REPORT_ID.test(reportId)) return empty;
   const reports = path.join(dir, 'helper-reports');
   try {
     if (fs.lstatSync(reports).isSymbolicLink()) return empty;
-    const fd = fs.openSync(path.join(reports, reportId + '.md'), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
-    try {
-      const stat = fs.fstatSync(fd);
-      if (!stat.isFile() || stat.size > 64 * 1024) return empty;
-      const text = fs.readFileSync(fd, 'utf8');
-      const verdict = text.trimStart().split(/\r?\n/, 1)[0].trim();
-      const bounded = (line: string) => clip(safeForLLM(line), 200);
-      return { report_verdict: verdict ? bounded(verdict) : null, report_decisions: reportDecisionTitles(text).map(bounded) };
-    } finally { fs.closeSync(fd); }
+    const text = readReportFile(path.join(reports, reportId + '.md'), 64 * 1024);
+    if (text === undefined) return empty;
+    const verdict = text.trimStart().split(/\r?\n/, 1)[0].trim();
+    const bounded = (line: string) => clip(safeForLLM(line), 200);
+    return { report_verdict: verdict ? bounded(verdict) : null, report_decisions: reportDecisionTitles(text).map(bounded) };
   } catch { return empty; }
+}
+
+// Read only the order index and stat its named copies. The index bound exceeds
+// the host argv budget even after JSON escaping; it is not an attachment limit.
+export function reportAttachments(dir: string, reportId: string | null): { attachments?: string[] } {
+  if (!reportId || !REPORT_ID.test(reportId)) return {};
+  try {
+    const reports = path.join(fs.realpathSync(dir), 'helper-reports');
+    if (!fs.lstatSync(reports).isDirectory()) return {};
+    const folder = path.join(reports, reportId + '.files');
+    if (!fs.lstatSync(folder).isDirectory()) return {};
+    const index = readReportFile(folder + '.json', 64 * 1024 * 1024);
+    if (!index) return {};
+    const names: unknown = JSON.parse(index);
+    if (!Array.isArray(names)) return {};
+    const attachments: string[] = [];
+    for (const name of names) {
+      if (typeof name !== 'string' || !name || name === '.' || name === '..' || path.basename(name) !== name) return {};
+      const file = path.join(folder, name);
+      if (fs.lstatSync(file, { throwIfNoEntry: false })?.isFile()) attachments.push(file);
+    }
+    return attachments.length ? { attachments } : {};
+  } catch { return {}; }
+}
+
+function reportDirectory(dir: string): string {
+  const root = fs.realpathSync(dir);
+  const reports = path.join(root, 'helper-reports');
+  fs.mkdirSync(reports, { recursive: true });
+  if (fs.lstatSync(reports).isSymbolicLink() || !fs.realpathSync(reports).startsWith(root + path.sep)) throw new Error('report_outside_state');
+  return reports;
+}
+
+function guardRoot(dir: string): string {
+  try { return fs.realpathSync(dir); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    return path.resolve(dir);
+  }
+}
+
+function copyAttachment(source: string, destination: string): void {
+  const input = fs.openSync(source, O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
+  try {
+    if (!fs.fstatSync(input).isFile()) throw new Error('invalid_file');
+    const output = fs.openSync(destination, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o444);
+    try {
+      fs.fchmodSync(output, 0o444);
+      const buffer = Buffer.allocUnsafe(64 * 1024);
+      let count: number;
+      while ((count = fs.readSync(input, buffer, 0, buffer.length, null)) > 0) {
+        let offset = 0;
+        while (offset < count) offset += fs.writeSync(output, buffer, offset, count - offset);
+      }
+    } finally { fs.closeSync(output); }
+  } finally { fs.closeSync(input); }
+}
+
+function stageAttachments(dir: string, declared: string[]) {
+  const roots = [...channelStateDirs(dir, readSettledConfig(dir))].map(([, root]) => guardRoot(root));
+  const userChannels = guardRoot(path.join(os.homedir(), '.claude', 'channels'));
+  // mkdtemp creates the private directory atomically and exclusively.
+  const staging = fs.mkdtempSync(path.join(reportDirectory(dir), '.staging-'));
+  const names = new Map<string, string>();
+  const used = new Set<string>();
+  try {
+    if (!fs.lstatSync(staging).isDirectory()) throw new Error('invalid_file');
+    for (const file of new Set(declared)) {
+      if (!path.isAbsolute(file)) throw new Error('invalid_file');
+      const source = fs.realpathSync(file);
+      if (roots.some(root => source.startsWith(root + path.sep) && !source.startsWith(path.join(root, 'inbox') + path.sep))) {
+        throw new Error('invalid_file');
+      }
+      if (source.startsWith(userChannels + path.sep)) {
+        const parts = path.relative(userChannels, source).split(path.sep);
+        if (!(parts[0] === 'inbox' && parts.length > 1) && !(parts[1] === 'inbox' && parts.length > 2)) {
+          throw new Error('invalid_file');
+        }
+      }
+      const { base, name, ext } = path.parse(file);
+      let stored = base;
+      // Case-insensitive file systems would collide on names that differ only in case.
+      for (let suffix = 2; used.has(stored.toLowerCase()); suffix++) stored = `${name}-${suffix}${ext}`;
+      copyAttachment(source, path.join(staging, stored));
+      used.add(stored.toLowerCase());
+      names.set(file, stored);
+    }
+    return { staging, names };
+  } catch {
+    fs.rmSync(staging, { recursive: true, force: true });
+    throw new Error('invalid_file');
+  }
 }
 
 /** Immutable report files confined to the pinned state root. */
@@ -53,23 +162,22 @@ export function storeHelperReport(
   dir: string, text: string, binding: { task: string | null; author: string },
   createId = () => randomBytes(5).toString('hex'),
   procedure = '',
+  attachments?: ReturnType<typeof stageAttachments>,
 ): string {
-  const root = fs.realpathSync(dir);
-  const reports = path.join(root, 'helper-reports');
-  fs.mkdirSync(reports, { recursive: true });
-  if (fs.lstatSync(reports).isSymbolicLink() || !fs.realpathSync(reports).startsWith(root + path.sep)) throw new Error('report_outside_state');
+  const reports = reportDirectory(dir);
   for (let attempt = 0; attempt < 10; attempt++) {
     const id = createId();
-    if (!/^[a-z0-9]{10}$/.test(id)) throw new Error('invalid_report_id');
+    if (!REPORT_ID.test(id)) throw new Error('invalid_report_id');
     const file = path.join(reports, `${id}.md`);
     let fd: number;
-    try { fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o444); }
+    try { fd = fs.openSync(file, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o444); }
     catch (error: any) {
       if (error.code !== 'EEXIST') throw error;
       if (fs.lstatSync(file).isSymbolicLink()) throw new Error('report_outside_state');
       continue;
     }
     const created = [file];
+    let attachmentDir: string | undefined;
     try {
       if (!fs.realpathSync(file).startsWith(reports + path.sep)) throw new Error('report_outside_state');
       const write = (suffix: string, contents: string) => {
@@ -81,9 +189,23 @@ export function storeHelperReport(
       };
       write('.json', JSON.stringify(binding) + '\n');
       if (procedure) write('.procedure.md', procedure);
+      if (attachments) {
+        const target = path.join(reports, id + '.files');
+        try { fs.mkdirSync(target, { mode: 0o700 }); }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST' && fs.lstatSync(target).isSymbolicLink()) throw new Error('report_outside_state');
+          throw error;
+        }
+        attachmentDir = target;
+        if (!fs.lstatSync(target).isDirectory()) throw new Error('report_outside_state');
+        const names = [...attachments.names.values()];
+        write('.files.json', JSON.stringify(names) + '\n');
+        for (const name of names) fs.renameSync(path.join(attachments.staging, name), path.join(target, name));
+      }
       fs.writeFileSync(fd, text);
       return id;
     } catch (error) {
+      if (attachmentDir) fs.rmSync(attachmentDir, { recursive: true, force: true });
       for (const target of created) fs.unlinkSync(target);
       throw error;
     } finally { fs.closeSync(fd); }
@@ -105,14 +227,25 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
   if (id === undefined) throw new Error('invalid_arguments');
   if (flags.kind !== 'result' && flags.kind !== 'needs-input' && flags.kind !== 'note') throw new Error('invalid_kind');
   const kind: ReportKind = flags.kind;
+  let attachments: ReturnType<typeof stageAttachments> | undefined;
+  let report = '';
   try {
     if (Buffer.byteLength(text, 'utf8') > 64 * 1024) throw new Error('report_too_long');
     const delimiter = /^[^\S\r\n]*--- procedure ---[^\S\r\n]*\r?$/m.exec(text);
     const procedure = delimiter ? text.slice(delimiter.index + delimiter[0].length).trim() : '';
     if (delimiter) text = text.slice(0, delimiter.index);
     if (!text.trim()) throw new Error('empty');
+    if (Array.isArray(flags.file) && flags.file.length) {
+      if (kind === 'note') throw new Error('invalid_file');
+      attachments = stageAttachments(dir, flags.file);
+      const longestFirst = [...attachments.names].sort(([a], [b]) => b.length - a.length);
+      // Replace whole paths only, never a prefix or suffix of a longer undeclared path.
+      for (const [file, name] of longestFirst) {
+        const exact = new RegExp(String.raw`(?<![\w./-])` + file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + String.raw`(?![\w/-]|\.\w)`, 'g');
+        text = text.replace(exact, () => name);
+      }
+    }
 
-    let report = '';
     let recorded!: Task;
     const tag = author === 'worker' ? '[worker]' : `[guest:${author.slice('helper:'.length)}]`;
     const mutation: { verb: string; flags: TaskFlags; input: string } = {
@@ -124,7 +257,7 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
       author,
       autoClose: kind === 'result' && !hasNumberedReportLine(text),
       store(record) {
-        report = storeHelperReport(dir, text, { task: id, author }, undefined, procedure);
+        report = storeHelperReport(dir, text, { task: id, author }, undefined, procedure, attachments);
         recorded = record;
         record.report_id = report;
         record.report_kind = kind;
@@ -151,7 +284,17 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
     }
     return { report, task: id, recorded: true, result_rev: recorded.result_rev, delivery };
   } catch (error) {
+    let current: string | null | undefined;
+    if (attachments && report) try { current = readTasks(dir).find(task => task.id === id)?.report_id; } catch {}
+    // A task already written with this report keeps its copies.
+    if (attachments && report && current !== report) {
+      const folder = path.join(path.dirname(attachments.staging), report + '.files');
+      fs.rmSync(folder, { recursive: true, force: true });
+      fs.rmSync(folder + '.json', { force: true });
+    }
     if (error instanceof Error && REFUSALS.has(error.message)) return { status: 'refused', reason: error.message };
     throw error;
+  } finally {
+    if (attachments) fs.rmSync(attachments.staging, { recursive: true, force: true });
   }
 }

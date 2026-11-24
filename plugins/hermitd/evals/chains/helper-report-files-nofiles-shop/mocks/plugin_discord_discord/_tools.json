@@ -1,0 +1,1 @@
+{"tools":[{"name":"reply","description":"Send a message to the task chat. Pass chat_id and optionally reply_to.","inputSchema":{"type":"object","properties":{"chat_id":{"type":"string"},"text":{"type":"string"},"reply_to":{"type":"string"}},"required":["chat_id","text"]}}]}

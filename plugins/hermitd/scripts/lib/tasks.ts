@@ -20,7 +20,7 @@ import { appendEvent, respondedEvent } from './proposals/event';
 import { REVIEW_CALLS } from './learned-skills';
 import { readDeliveryBudget } from './decisions';
 import { readHelperJob } from './helper-job';
-import { reportSummary, type ReportDelivery } from './helper-reports';
+import { reportAttachments, reportSummary, type ReportDelivery } from './helper-reports';
 import { TASK_ID } from './task-decide-args';
 
 export { TASK_ID } from './task-decide-args';
@@ -826,7 +826,7 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
     && (!owner || (ownerPrefix ? r.owner.startsWith(ownerPrefix) : r.owner === owner))
     && (!flags['with-check'] || !!r.check)
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, report_id: r.report_id, report_kind: r.report_kind, delivery: r.delivery, ...(flags['with-decisions'] ? reportSummary(dir, r.report_id) : {}), owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : clip(r.result.split(/\r?\n/).find(line => line.trim()) ?? '', 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, report_id: r.report_id, report_kind: r.report_kind, delivery: r.delivery, ...(flags['with-decisions'] ? { ...reportSummary(dir, r.report_id), ...reportAttachments(dir, r.report_id) } : {}), owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : clip(r.result.split(/\r?\n/).find(line => line.trim()) ?? '', 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

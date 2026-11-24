@@ -131,7 +131,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Question** ("why did you...", "what about...", "how does X work?")
   - Answer using current session context
-  - Cite relevant files or selected-record decisions
+  - Refer to selected-record decisions when relevant
 
 - **Pause / resume / snooze / release** (exactly `!pause`, `!stop`, `!resume`, `!snooze <duration>`, or `!release`)
   - The `user-prompt-pipeline.ts` `UserPromptSubmit` pause stage already updated `state/operator-pause.json`; only acknowledge through the channel.
@@ -154,7 +154,8 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 - If you can't handle it, say so and suggest the operator's next step
 - `!release` uses the same trusted-controller gate and releases human browser control only. It keeps the task claim; acknowledge whether anything was held.
 
-- **Channel voice:** no internal IDs (task ids), no token counts or cost-log jargon, no slash commands, no file paths, no cron strings. Say what happened and the one next thing the operator can do from chat (a plain reply, not a command). Internal IDs stay in files; terminal/maintainer output is exempt. **Exceptions:** the channel control commands; `!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`, `!release`; may be named when the operator asks how to control you, because they *are* the reply they would send. The `!doctor` harness command may also be named when it is the next step the operator can send. No other slash command qualifies. See `prompts/resident.md` § Operator Notification for the full rule.
+- **Channel voice:** no internal IDs (task ids), no token counts or cost-log jargon, no slash commands, no cron strings. Say what happened and the one next thing the operator can do from chat (a plain reply, not a command). Internal IDs stay in files; terminal/maintainer output is exempt. **Exceptions:** the channel control commands; `!pause`, `!stop`, `!resume`, `!snooze`, `!status`, `!scheduled`, `!release`; may be named when the operator asks how to control you, because they *are* the reply they would send. The `!doctor` harness command may also be named when it is the next step the operator can send. No other slash command qualifies. See `prompts/resident.md` § Operator Notification for the full rule.
+- **Files:** Attach a file the reader should see through the conversation reply tool's file parameter, or through `SendUserFile` when available in the Claude app or terminal. If there is no attachment mechanism, describe the file in words. Put a path in the reply only when the path itself is the requested answer.
 - **Sign-in links:** never repeat a pasted callback address.
 - **Chat boundary:** each chat's messages, tasks and decisions belong to it, even though this session holds them all: repeat them in the chat you reply in only if its readers could already read them, and on a non-technical install never carry maintainer-chat content into a client chat. Resolve a reference or bare go-ahead against this chat's own latest exchange first; reach into another chat only when this chat holds no candidate, and then name it and ask, never acting on it from here.
 

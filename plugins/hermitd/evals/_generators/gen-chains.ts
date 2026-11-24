@@ -367,7 +367,7 @@ function receiptRow(delivery: string, owner = `helper:${HELPER}`) {
     report_id: REPORT_ID, report_kind: 'result', report_verdict: REPORT_BODY.split('\n')[0],
     report_decisions: ['Rever a amostra.'], delivery, result_rev: 1, listing: ['unconfirmed'] };
 }
-const receiptState = (row: ReturnType<typeof receiptRow>) =>
+const receiptState = (row: ReturnType<typeof receiptRow> & { attachments?: string[] }) =>
   `<system-reminder>\n${NO_SHELL}\nOperator language: pt.\n`
   + `- task list --all --id ${TASK} --json --with-decisions: ${JSON.stringify({ rows: [row] })}\n`
   + '- Use the fixture reply tool to notify this task conversation when the receipt calls for a channel reply.\n</system-reminder>\n';
@@ -389,6 +389,39 @@ for (const [name, delivery, action] of [
       '.hermit/state/monitors.runtime.json': registry(name === 'watch-unchanged-baseline-shop' ? REPORT_ID : null), ...reportFixture,
     }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, maxTurns: 16 });
   if (delivery !== 'no_channel') mock(name, CARD_MOCK);
+}
+
+const REPLY_WITHOUT_FILES = {
+  name: 'reply',
+  description: 'Send a message to the task chat. Pass chat_id and optionally reply_to.',
+  inputSchema: {
+    type: 'object', properties: { chat_id: { type: 'string' }, text: { type: 'string' }, reply_to: { type: 'string' } },
+    required: ['chat_id', 'text'],
+  },
+};
+
+const attachmentPaths = ['amostra.csv', 'comparacao.csv']
+  .map(file => `/eval-fixture/.hermit/helper-reports/${REPORT_ID}.files/${file}`);
+const noReportRead: Grader = { name: 'no-report-body-read', type: 'tool_used', tool: 'Read',
+  input_match: String.raw`\.hermit/helper-reports/[^/]+\.md`, min: 0, max: 0, weight: 3 };
+for (const [variant, delivery] of [['files', 'sent'], ['files-nofiles', 'relay'], ['files-no-channel', 'no_channel']] as const) {
+  const name = `helper-report-${variant}-shop`;
+  const row = { ...receiptRow(delivery), attachments: attachmentPaths };
+  const action = variant === 'files'
+    ? `Exactly one conversation reply call carries both paths in its files array: ${attachmentPaths.join(', ')}. `
+    : 'Describe the files in words in the report-back. ';
+  chainCase(name, 'heldout', 'Native idle notice for a report with attachments.', 'Deliver saved files using the task conversation’s available mechanism',
+    receiptState(row) + idle(), [
+      noReportRead,
+      rubric(`PASS if the resident takes this action: ${action}FAIL if any reader-facing reply text contains a rooted file path. Only inspect file paths in the files parameter for the attachment check.`,
+        delivery === 'no_channel' ? 'trace' : 'mock_calls', 'attachment-delivery'),
+    ],
+    residentScaffold({ ...RESIDENT_CONFIG, language: 'pt', ...(delivery === 'no_channel' ? { channels: {} } : {}) }, {
+      '.hermit/state/monitors.runtime.json': registry(), ...reportFixture,
+    }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, maxTurns: 16 });
+  if (variant === 'files-nofiles') {
+    mock(name, { '_tools.json': JSON.stringify({ tools: [REPLY_WITHOUT_FILES] }) + '\n' });
+  }
 }
 
 chainCase('watch-relay-unknown-sender-shop', 'heldout', 'Unknown idle sender gets no notice or record.', 'Ignore the unmatched notice',
