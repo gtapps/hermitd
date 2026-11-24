@@ -10,6 +10,7 @@ Read `.hermit/TASKS.md` first for intake and confirmation policy. Use `bun ${CLA
 ## Commands
 - `task-block`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit`
 - `task-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit`
+- `task-receipt`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts receipt .hermit`
 - `helper-eligible`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts helper-eligible .hermit`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
 - `conversation`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/conversation.ts .hermit`

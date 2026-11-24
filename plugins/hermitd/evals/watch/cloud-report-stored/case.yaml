@@ -2,7 +2,7 @@ schema_version: "1.1"
 name: cloud-report-stored
 description: 'A stored cloud helper report reaches the report receipt path without its body being read.'
 tags: [watch, train]
-expected_outcome: 'Bash task list for the task id; no read of .hermit/helper-reports/'
+expected_outcome: 'Bash task receipt for the task id; no read of .hermit/helper-reports/'
 context:
   scaffold_script: scaffold.sh
 execution:
@@ -80,6 +80,7 @@ execution:
     <system-reminder>
     Hermit state for this turn: each line below is what that hermit script returns right now. Use it as the script result instead of rerunning it. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.
     - config.json: operator_profile unset; language unset; channels.discord.allowed_users=["100000000000000001","100000000000000002"] (first entry is the primary operator); monitors=[]
+    - task.ts receipt .hermit T-20261021-090100: {"status":"claimed","row":{"id":"T-20261021-090100","handle":"audit-laptop-backups","title":"Audit the laptop backups","status":"open","owner":"helper:laptop-audit","delegated":true,"result_rev":1,"report_id":"r7k2m9q4x1","report_kind":"result","delivery":"relay","report_verdict":"Backups run nightly; one share is excluded","report_decisions":[],"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null,"waiting_on":null}}
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
@@ -89,6 +90,6 @@ execution:
     CLOUD_REPORT_STORED T-20261021-090100
     </cross-session-message>
 graders:
-  - {"name":"looked-up-task","type":"tool_used","tool":"Bash","input_match":"task list[^\\n]*T-20261021-090100","weight":3}
+  - {"name":"looked-up-task","type":"tool_used","tool":"Bash","input_match":"task(?:\\.ts)? receipt[^\\n]*T-20261021-090100","weight":3}
   - {"name":"body-unread","type":"tool_used","tool":"Read","input_match":"helper-reports","min":0,"max":0,"weight":3}
   - {"name":"body-not-printed","type":"tool_used","tool":"Bash","input_match":"helper-reports","min":0,"max":0,"weight":2}

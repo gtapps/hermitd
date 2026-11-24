@@ -77,6 +77,7 @@ category: improvement
 report_id: null
 report_kind: null
 delivery: null
+receipt_report_id: null
 muted: false
 delegated: false
 tags: "[]"
@@ -135,6 +136,7 @@ category: improvement
 report_id: null
 report_kind: null
 delivery: null
+receipt_report_id: null
 muted: false
 delegated: false
 tags: "[]"
@@ -193,6 +195,7 @@ category: improvement
 report_id: null
 report_kind: null
 delivery: null
+receipt_report_id: null
 muted: false
 delegated: false
 tags: "[]"
@@ -251,6 +254,7 @@ category: improvement
 report_id: null
 report_kind: null
 delivery: null
+receipt_report_id: null
 muted: false
 delegated: false
 tags: "[]"
@@ -309,6 +313,7 @@ category: improvement
 report_id: null
 report_kind: null
 delivery: null
+receipt_report_id: null
 muted: false
 delegated: false
 tags: "[]"

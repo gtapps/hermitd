@@ -26,9 +26,7 @@ HERMIT_CONFIG
 mkdir -p ".hermit/bin"
 cat > '.hermit/bin/hermitd-run' <<'HERMIT_FIXTURE'
 #!/usr/bin/env bash
-cat <<'JSON'
-{"rows":[{"id":"T-20261021-090100","handle":"audit-laptop-backups","title":"Audit the laptop backups","status":"open","owner":"helper:laptop-audit","delegated":true,"result_rev":1,"report_id":"r7k2m9q4x1","report_kind":"result","delivery":"relay","report_verdict":"Backups run nightly; one share is excluded","report_decisions":[],"conversation":"discord:400000000000000001","card_chat_id":null,"card_message_id":null,"waiting_on":null}],"total":1,"omitted":0}
-JSON
+echo OK
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

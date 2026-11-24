@@ -20,7 +20,7 @@ import { appendEvent, respondedEvent } from './proposals/event';
 import { REVIEW_CALLS } from './learned-skills';
 import { readDeliveryBudget } from './decisions';
 import { readHelperJob } from './helper-job';
-import { reportAttachments, reportSummary, type ReportDelivery } from './helper-reports';
+import { REPORT_ID, reportAttachments, reportSummary, type ReportDelivery } from './helper-reports';
 import { TASK_ID } from './task-decide-args';
 
 export { TASK_ID } from './task-decide-args';
@@ -36,7 +36,7 @@ const HOUR = 3600000;
 // Absolute, because a close outside the task skill has no plugin root to resolve against.
 const LEARN_GUIDE = path.resolve(import.meta.dirname, '../../skills/task/learn.md');
 const requiredStrings = ['id', 'type', 'title', 'created', 'summary', 'audience', 'status', 'opened_at', 'requester', 'handle', 'owner'] as const;
-const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'last_worker', 'kind', 'decision', 'approved_rev', 'approved_by', 'source', 'category', 'report_id', 'report_kind', 'delivery'] as const;
+const nullableStrings = ['closed_at', 'closed_by', 'closed_actor', 'closed_reason', 'requester_name', 'origin_message_id', 'approver', 'due', 'conversation', 'card_chat_id', 'card_message_id', 'waiting_on', 'waiting_since', 'result', 'result_at', 'stall_at', 'stall_status', 'stall_next', 'dedupe_key', 'check', 'last_worker', 'kind', 'decision', 'approved_rev', 'approved_by', 'source', 'category', 'report_id', 'report_kind', 'delivery', 'receipt_report_id'] as const;
 const booleans = ['muted', 'delegated'] as const;
 const nullableDefaults = () => Object.fromEntries(nullableStrings.map(key => [key, null])) as Record<typeof nullableStrings[number], string | null>;
 export type Task = Record<typeof requiredStrings[number], string> & Record<typeof nullableStrings[number], string | null> & Record<typeof booleans[number], boolean> & { tags: string[] | string | null; claims: string[]; result_rev: number; body: string };
@@ -71,7 +71,7 @@ export function validateTask(record: Task): void {
     const tags = JSON.parse(record.tags);
     if (!Array.isArray(tags) || tags.some(x => typeof x !== 'string')) fail();
   }
-  if (record.report_id !== null && !/^[a-z0-9]{10}$/.test(record.report_id)) fail();
+  for (const key of ['report_id', 'receipt_report_id'] as const) if (record[key] !== null && !REPORT_ID.test(record[key]!)) fail();
   if (![null, 'result', 'needs-input', 'note'].includes(record.report_kind)) fail();
   if (![null, 'pending', 'sent', 'partial', 'failed', 'relay', 'no_channel'].includes(record.delivery)) fail();
   if (record.kind !== null && record.kind !== 'proposal') fail();
@@ -755,6 +755,36 @@ export function settleReportDelivery(dir: string, id: string, reportId: string, 
   } finally { releaseLock(lock); }
 }
 
+// Records which report the resident already announced, so every notice path announces it once.
+// Without a report id it leaves a report under a session watch that holds an unretried follow-up
+// to the caller, which judges whether that watch's idle notice must retry first.
+export function claimReportReceipt(dir: string, id: string, reportId?: string) {
+  if (reportId !== undefined && !REPORT_ID.test(reportId)) throw new Error('invalid_report_id');
+  const lock = path.join(dir, 'state', 'tasks.lock');
+  if (!acquireLockWithWait(lock, 2000)) throw new Error('lock_unavailable');
+  let records: Task[];
+  let status: 'claimed' | 'watched';
+  let followup: unknown;
+  try {
+    records = readTasks(dir);
+    const record = records.find(task => task.id === id);
+    if (!record) throw new Error('not_found');
+    if (record.report_id === null) return { status: 'none' };
+    if (reportId !== undefined && reportId !== record.report_id) return { status: 'stale', report_id: record.report_id };
+    if (record.receipt_report_id === record.report_id) return { status: 'already', report_id: record.report_id };
+    const monitors = reportId === undefined ? readJson(path.join(dir, 'state/monitors.runtime.json'))?.monitors : null;
+    followup = (Array.isArray(monitors) ? monitors : []).find((entry: any) => entry?.class === 'peer-idle' && entry.followup && entry.retry !== true
+      && Array.isArray(entry.records) && entry.records.some((pair: any) => pair?.record === id))?.followup;
+    status = followup ? 'watched' : 'claimed';
+    if (status === 'claimed') {
+      record.receipt_report_id = record.report_id;
+      writeFileAtomic(path.join(dir, 'tasks', id + '.md'), encodeTask(record));
+    }
+  } finally { releaseLock(lock); }
+  const row = listTasks(dir, { all: true, id, 'with-decisions': true }, records).rows[0];
+  return status === 'watched' ? { status, row, followup } : { status, row };
+}
+
 // `delegation` carries the configured model and effort for the worker this open usually precedes.
 function openDigest(dir: string, record: Task, records: Task[], created: boolean) {
   return { id: record.id, handle: record.handle, created, open_count: records.filter(r => r.status === 'open').length, queued: taskListing(record, records).includes('queued'), delegation: readSettledConfig(dir).delegation };
@@ -836,7 +866,7 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
     && (!flags['with-check'] || !!r.check)
     && (dedupePrefix === undefined || r.dedupe_key?.startsWith(dedupePrefix))
     && ['conversation', 'requester', 'handle', 'id', 'dedupe-key'].every(key => !flag(flags, key) || r[key === 'dedupe-key' ? 'dedupe_key' : key as 'id'] === flag(flags, key)));
-  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, dedupe_key: r.dedupe_key, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, report_id: r.report_id, report_kind: r.report_kind, delivery: r.delivery, ...(flags['with-decisions'] ? { ...reportSummary(dir, r.report_id), ...reportAttachments(dir, r.report_id) } : {}), owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : clip(r.result.split(/\r?\n/).find(line => line.trim()) ?? '', 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
+  const rows = selected.slice(0, limit).map(r => ({ id: r.id, handle: r.handle, dedupe_key: r.dedupe_key, kind: r.kind, decision: r.decision, approved_rev: r.approved_rev, approved_by: r.approved_by, source: r.source, category: r.category, tags: r.tags, listing: taskListing(r, records), requester: r.requester, title: r.title, due: r.due, result_rev: r.result_rev, report_id: r.report_id, report_kind: r.report_kind, delivery: r.delivery, ...(flags['with-decisions'] ? { receipt_report_id: r.receipt_report_id, ...reportSummary(dir, r.report_id), ...reportAttachments(dir, r.report_id) } : {}), owner: r.owner, last_worker: r.last_worker, delegated: r.delegated, result: r.result === null ? null : clip(r.result.split(/\r?\n/).find(line => line.trim()) ?? '', 200), result_len: r.result?.length ?? 0, waiting_on: r.waiting_on, closed_by: r.closed_by, check: r.check, conversation: r.conversation, card_chat_id: r.card_chat_id, card_message_id: r.card_message_id }));
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 

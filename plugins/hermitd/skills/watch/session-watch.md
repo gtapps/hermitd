@@ -27,7 +27,7 @@ section; after a caller has already armed a subscription, use
    ```
 
    If no row is printed, answer `No session named <name> is reachable from here.`
-   and stop. If its state is `done` and status is not busy and `waitingFor` is null, decline as in step 2 unless this is a fresh launch. When declining a registration that carries `--record`, run `task-list` (Commands) with `--all --id <T-id> --json --with-decisions`; if its `report_id` differs from `--prior-report`, handle it per [notices.md](notices.md) § Report receipts.
+   and stop. If its state is `done` and status is not busy and `waitingFor` is null, decline as in step 2 unless this is a fresh launch. When declining a registration that carries `--record`, run `task-list` (Commands) with `--all --id <T-id> --json --with-decisions`; if its `report_id` differs from `--prior-report`, handle it per [notices.md](notices.md) § New report.
 
    Resolve `<name>` with `ListAgents`. The row must be a Claude Code
    session on this machine — `notify_when_idle` covers nothing else, so a
@@ -79,6 +79,7 @@ Inputs: the target name, note, optional record/purpose/retry metadata and bg id,
 sent message text when the send carried one, and the
 result of a successful `SendMessage` with `notify_when_idle: true`. This section
 only records that subscription; do not send another message or subscribe again.
+A `REPORT_STORED` for the supplied record that arrives before the registry write is handled after it, so the follow-up retry still applies.
 
 1. Read the supplied send result: it says whether the notice will be shown to you or only
    to the operator. When it is operator-only (this session holds peer messages

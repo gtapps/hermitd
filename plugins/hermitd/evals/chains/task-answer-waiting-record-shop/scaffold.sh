@@ -71,6 +71,7 @@ category: null
 report_id: null
 report_kind: null
 delivery: null
+receipt_report_id: null
 muted: false
 delegated: true
 tags: ["task","discord:100000000000000001"]
