@@ -33,5 +33,5 @@ graders:
   - name: provider-handles-it
     type: llm
     focus: 'mock_calls'
-    criteria: 'PASS if the reply to chat 400000000000000001 tells the client, in any language and wording, that this is handled by their provider or the people who maintain the agent, and asks nothing technical of them. FAIL if the reply tells the client to use a terminal, the Claude app, a shell, or to type the command somewhere else, or if no reply was sent.'
+    criteria: 'PASS if the reply to chat 400000000000000001 tells the client, in any language and wording, that this is handled by their provider or the people who maintain the agent, and asks nothing technical of them. FAIL if the reply tells the client to use a terminal, the Claude app, a shell, or to type the command somewhere else, or if no reply was sent. Judge only the reply to chat 400000000000000001: a notice to the maintainer chat 400000000000000009 is for the provider and may name a terminal or the Claude app.'
     weight: 2
