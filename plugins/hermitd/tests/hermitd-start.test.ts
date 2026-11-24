@@ -2512,6 +2512,10 @@ describe('resident prompt launch requirement', () => {
     const local = renderHelperPrompt(template, 'local', { PROJECT_ROOT: '/example/project', RESIDENT_NAME: 'resident' });
     expect(sha256(local)).toBe('ada5247e4f02c1fd0e0ef2f0c33426baf29eef385b0ddc6326e5b8bc498b94a4');
   });
+  test('the cloud transport tells the helper to fetch its base', () => {
+    const template = fs.readFileSync(path.join(PLUGIN_ROOT, 'prompts/helper.md'), 'utf8');
+    expect(renderHelperPrompt(template, 'cloud', { RESIDENT_NAME: 'resident' })).toContain('git fetch origin');
+  });
   test('command appends the absolute resident path', async () => {
     const { cmd } = await runBuildClaudeCommand({}, CLAUDE_FETCH_FAILS);
     expect(cmd[cmd.indexOf('--append-system-prompt-file') + 1]).toBe(path.resolve('.hermit/state/resident-system-prompt.md'));

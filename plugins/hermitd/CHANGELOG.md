@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Helpers on another machine fetch the remote and branch from its current base before working in a git repository, and name that commit in their report.
+
 ## [1.4.42] - 2026-11-24
 
 ### Added
