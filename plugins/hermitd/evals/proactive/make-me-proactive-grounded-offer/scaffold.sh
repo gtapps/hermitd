@@ -68,3 +68,5 @@ cat > 'tools/supplier-price' <<'HERMIT_FIXTURE'
 printf "52.00\n"
 HERMIT_FIXTURE
 chmod +x .hermit/bin/hermitd-run
+mkdir -p eval-stand-ins
+printf '{"root":"%s/.hermit","memory_dir":"%s/memory"}\n' "$PWD" "$PWD" > eval-stand-ins/proposal-anchor.json

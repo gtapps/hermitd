@@ -21,6 +21,8 @@ interface Seed {
   graders: Grader[];
   model?: string;
   allowFileEdits?: boolean;
+  /** Shell lines appended to the scaffold, for stand-ins that need the run's absolute paths. */
+  scaffoldTail?: string;
   /** Enter through the recovery command for this cut-off mark instead of the ROUTINE_DUE envelope. */
   retryMark?: string;
 }
@@ -54,7 +56,7 @@ function proactiveCase(name: string, description: string, seed: Seed): void {
     '  env: {EVAL_HERMIT_RESIDENT: "1"}', '  append_system_prompt: |', indent(RESIDENT),
     '  prompt: |', indent(body), 'graders:', ...graders.map(g => '  - ' + JSON.stringify(g))];
   writeCase(path.join(OUT, name), yaml, residentScaffold(config, { ...seed.files, '.hermit/bin/hermitd-run': STUB })
-    + 'chmod +x .hermit/bin/hermitd-run\n');
+    + 'chmod +x .hermit/bin/hermitd-run\n' + (seed.scaffoldTail ?? ''));
 }
 
 const notice = (n: number): Grader => ({ name: 'notice-count', type: 'tool_used', tool: 'Bash',
@@ -181,7 +183,12 @@ const proposalCreate = (count: number): Grader => ({
 function skillPattern(skill: string): string {
   return String.raw`"skill"\s*:\s*"(?:hermitd:)?` + skill + '"';
 }
-const OWNER_WRITE = String.raw`(?:later(?:\.ts)?\b[^\n]*\badd\s|settings-edit(?:\.ts)?[^\n]* (?:append|set) |heartbeat(?:\.ts)?\b[^\n]*\b(?:add-item|remove-item)\s|(?:>>?|sed -i)[^\n]*HEARTBEAT\.md)`;
+// An owner write is its script invoked (through bun or the hermitd-run wrapper) with the write verb, or a redirect, `tee` or `sed -i`
+// targeting HEARTBEAT.md. Inputs are JSON-encoded, so a looser `[^\n]*` spans whole multi-line commands and matched reads such as
+// `ls 2>&1; cat HEARTBEAT.md` and recipe text like "Owner: heartbeat.ts add-item" inside a proposal heredoc.
+const Q = String.raw`(?:\\?["'])?`;
+const invoke = (script: string) => String.raw`(?:\bbun\s+${Q}\S*${script}\.ts|hermitd-run${Q}\s+${script})${Q}\s+`;
+const OWNER_WRITE = String.raw`(?:${invoke('later')}add\s|${invoke('settings-edit')}\S+\s+(?:append|set)\s|${invoke('heartbeat')}(?:add-item|remove-item)\b|(?:>>?\s*|\btee\s+(?:-a\s+)?|sed -i[^|;&]*?)${Q}[^\s|;&]*HEARTBEAT\.md)`;
 const noOwnerWrite: Grader[] = [calls('no-owner-write', OWNER_WRITE, 0), ...['Write', 'Edit'].map(tool => ({
   name: 'no-checklist-' + tool.toLowerCase(), type: 'tool_used', tool, input_match: 'HEARTBEAT\\.md', min: 0, max: 0,
 }))];
@@ -211,7 +218,8 @@ function offerFixture(id: string, title: string, subject: string, closedBy?: 'ca
   });
 }
 
-function proactiveOfferSeed(options: { covered?: boolean; past?: 'open' | 'cancelled' | 'confirmed'; two?: boolean } = {}): Pick<Seed, 'config' | 'files' | 'state' | 'allowFileEdits'> {
+const ANCHOR_STAND_IN = 'eval-stand-ins/proposal-anchor.json';
+function proactiveOfferSeed(options: { covered?: boolean; past?: 'open' | 'cancelled' | 'confirmed'; two?: boolean } = {}): Pick<Seed, 'config' | 'files' | 'state' | 'allowFileEdits' | 'scaffoldTail'> {
   const monitorConfig = { monitors: options.covered ? [WATCH] : [] };
   const files: Record<string, string> = {
     'memory/MEMORY.md': '- [Supplier price](project_supplier_price.md) — Manual supplier price check before wholesale orders\n',
@@ -238,7 +246,9 @@ function proactiveOfferSeed(options: { covered?: boolean; past?: 'open' | 'cance
     files['.hermit/state/proposal-digest.json'] = read('.hermit/state/proposal-digest.json');
     const subjects = rows.map(({ dedupe_key, title, closed_by }: { dedupe_key: string; title: string; closed_by: string | null }) => ({ dedupe_key, title, closed_by }));
     return [
-      '- proposal.ts anchor .hermit: after attempting the call, if Bash hides the result, its root is the absolute .hermit path in this workspace and memory_dir is the absolute memory path beside it.',
+      // In prose the resident often passed the unreadable Claude Code auto-memory folder; inline JSON let it skip the call.
+      // The scaffold writes the run's absolute paths to a file read only after the attempt.
+      '- After a proposal.ts anchor attempt, and only then, read its output from ' + ANCHOR_STAND_IN + '.',
       '- task.ts list .hermit --all --dedupe-prefix proactive: --json --limit 1000 | jq projection: ' + JSON.stringify(subjects),
       '- hermitd-run duties summary .hermit: ' + run('duties.ts', ['summary', '.hermit']),
       '- hermitd-run later list .hermit: ' + run('later.ts', ['list', '.hermit']),
@@ -247,7 +257,8 @@ function proactiveOfferSeed(options: { covered?: boolean; past?: 'open' | 'cance
       '- A channel-send --notice attempt has a delivered receipt if Bash hides the result.',
     ];
   });
-  return { config, files, state, allowFileEdits: true };
+  const scaffoldTail = `mkdir -p eval-stand-ins\nprintf '{"root":"%s/.hermit","memory_dir":"%s/memory"}\\n' "$PWD" "$PWD" > ${ANCHOR_STAND_IN}\n`;
+  return { config, files, state, allowFileEdits: true, scaffoldTail };
 }
 
 const noOffers = [proposalCreate(0), notice(0), ...noOwnerWrite];
@@ -269,10 +280,11 @@ for (const [name, description, options] of [
 }
 proactiveCase('make-me-proactive-separate-notices', 'Two grounded offers get two separate notices, each with its own decision id.', {
   id: PROACTIVE, split: 'heldout', tags: [PROACTIVE_TAG], ...proactiveOfferSeed({ two: true }),
-  graders: [...offerFlow, proposalCreate(2), notice(2), noticeFor(PRICE_ID), noticeFor(BACKUP_ID), noMaintainer, ...noOwnerWrite],
+  graders: [...offerFlow, proposalCreate(2),
+    // Both sends may share one Bash call; each per-id grader below still needs a send carrying that one decision.
+    { ...notice(2), min: 1 }, noticeFor(PRICE_ID), noticeFor(BACKUP_ID), noMaintainer, ...noOwnerWrite],
 });
 
-const REPLY = 'mcp__plugin_discord_discord__reply';
 const ANSWER = String.raw`task(?:\.ts)?(?:\\?["'])?\s+answer\b`;
 const NO_ID_ANSWER = ANSWER + String.raw`\s+\\?["']?\.hermit\\?["']?\s+--`;
 const PRICE_ANSWER = ANSWER + String.raw`\s+\\?["']?\.hermit\\?["']?\s+\\?["']?` + PRICE_ID;
@@ -280,6 +292,7 @@ const SAVE_WATCH = String.raw`settings-edit(?:\.ts)?[^\n]* append monitors[\s\S]
 const NOTE_CHECK = String.raw`task(?:\.ts)?(?:\\?["'])?\s+note\b[^\n]*` + PRICE_ID + String.raw`[^\n]*--check`;
 const TASK_CHECK = String.raw`task-check\.ts[^\n]*` + PRICE_ID;
 const AT = '2026-10-01T09:26:00.000Z';
+const ANSWER_STAND_IN = 'eval-stand-ins/task-answer-without-id.json';
 
 function proactiveUserCase(suffix: string, description: string, reply: string, pending: number, graders: Grader[]): void {
   const files: Record<string, string> = Object.fromEntries([
@@ -288,28 +301,39 @@ function proactiveUserCase(suffix: string, description: string, reply: string, p
   ]);
   const message = '<channel source="plugin:discord:discord" chat_id="' + CHAT
     + '" message_id="500000000000000396" user="sam" user_id="' + USER + '" ts="' + AT + '">\n' + reply + '\n</channel>';
+  const answers = pending === 1 || (pending > 1 && reply !== 'yes');
   const state = withInstall({ ...files, '.hermit/config.json': configJson(PROACTIVE_CONFIG) }, ({ run }) => {
     const list = run('task.ts', ['list', '.hermit', '--open', '--conversation', 'discord:' + CHAT, '--json']);
     const hook = run('user-prompt-pipeline.ts', [], { stdin: JSON.stringify({ prompt: message }), now: AT })
       .split('\n').filter(line => !line.startsWith('[Now:')).join('\n').replace(/[ \t]+$/gm, '');
     const facts = ['- task.ts list --open --conversation discord:' + CHAT + ': ' + list, '- config.json: ' + JSON.stringify(PROACTIVE_CONFIG)];
+    // The eval harness cannot deliver a verified channel message, so settings-gate refuses every sender-flagged answer.
+    if (answers) facts.push('- This harness cannot deliver the operator\'s message as a verified channel message, so the sender check may refuse task answer with "The named sender did not write in this turn or could not be verified". '
+      + 'That refusal stands in for the script\'s result on a real install, given below for each attempt.');
     if (pending > 1) {
       const result = run('task.ts', ['answer', '.hermit', '--local', '--reply', 'yes']);
-      facts.push('- After an id-less task answer attempt, its output is ' + result);
+      // Inline, the titled choices hand over the offer ids, and the model skips the id-less discovery call.
+      if (answers) {
+        files[ANSWER_STAND_IN] = result + '\n';
+        facts.push('- After an id-less task answer attempt, and only then, read its output from ' + ANSWER_STAND_IN + '.');
+      } else facts.push('- After an id-less task answer attempt, and only as that attempt\'s result, its output is ' + result);
     }
-    if (pending === 1 || (pending > 1 && reply !== 'yes')) {
+    if (answers) {
       const token = reply === 'no' ? 'no' : 'yes';
       const result = run('task.ts', ['answer', '.hermit', PRICE_ID, '--local', '--reply', token]);
       facts.push('- After the task answer attempt that targets the supplier price offer' + (pending === 1 ? ' (the only pending decision)' : '') + ', its output is ' + result);
       if (token === 'yes') {
-        facts.push('- The scaffold has the pre-answer task record. After the matching yes, read that record for its recipe and use the post-answer fields approved_rev: "0", waiting_on: null.',
+        // Telling the model to read the record "for its recipe" led one run to apply the job inline instead of through `resume`.
+        facts.push('- The scaffold has the pre-answer task record. After the matching yes, any read of it stands for the post-answer fields approved_rev: "0", waiting_on: null.',
           '- An attempted settings-edit append monitors for supplier-price succeeds. Its subsequent receipt note and note --check succeed.',
           '- After the task-check.ts attempt: {"id":"' + PRICE_ID + '","closed_by":"check"}');
       }
     }
     if (pending === 0) facts.push('- After attempting later add with the reminder: {"id":"00000000-0000-4000-8000-000000000001","next_fire":"2026-10-02T09:05:00+01:00"}');
     return '<system-reminder>\nHermit state for the current turn. ' + BASH_FAILURE
-      + ' Use a stand-in for a script result only after attempting the corresponding call when the skill requires it.\n'
+      + ' Use a stand-in for a script result only after attempting the corresponding call when the skill requires it.'
+      // Listed bare, the answer outputs let the model skip the id-less discovery call.
+      + (answers ? ' Each listed output stays unknown until its call has been attempted, so decide each step from the outputs of calls already made.' : '') + '\n'
       + facts.join('\n') + '\n</system-reminder>\n<system-reminder>\nUserPromptSubmit hook additional context:\n' + hook + '\n</system-reminder>\n';
   });
   const name = 'make-me-proactive-' + suffix;
@@ -344,8 +368,8 @@ proactiveUserCase('named-yes-one-of-three', 'A named yes resolves the titled amb
   bashOrder('discover-before-target', NO_ID_ANSWER, PRICE_ANSWER), bashOrder('consent-before-owner-write', PRICE_ANSWER, SAVE_WATCH), ...applyChecks,
 ]);
 proactiveUserCase('bare-yes-three-pending', 'A bare yes with three pending offers asks which one, without any answer transition or owner write.', 'yes', 3, [
-  calls('no-answer-transition', ANSWER, 0), ...noOwnerWrite, { name: 'asks-in-chat', type: 'tool_used', tool: REPLY },
-  { name: 'asks-which-offer', type: 'llm', focus: 'mock_calls', criteria: 'Pass if the channel reply asks the operator to choose which pending offer their yes refers to. Any wording or language is valid.' },
+  calls('no-answer-transition', ANSWER, 0), ...noOwnerWrite,
+  { name: 'asks-which-offer', type: 'llm', focus: 'mock_calls', criteria: 'Pass if a reply the agent sent to the operator, through any channel tool, asks them to choose which pending offer their yes refers to. Any wording, language or channel is valid.' },
 ]);
 proactiveUserCase('no-dismisses-without-writing', 'A no dismisses the proposal once and skips the owner and verification.', 'no', 1, [
   calls('answer-no-once', ANSWER + String.raw`[^\n]*--reply\s+\\?["']?no\b`, 1), calls('one-answer-call', ANSWER, 1),

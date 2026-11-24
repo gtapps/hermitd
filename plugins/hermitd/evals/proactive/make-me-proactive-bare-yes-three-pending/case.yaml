@@ -81,7 +81,7 @@ execution:
     Hermit state for the current turn. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Use a stand-in for a script result only after attempting the corresponding call when the skill requires it.
     - task.ts list --open --conversation discord:400000000000000001: {"rows":[],"total":0,"omitted":0,"execution":{"state":"unknown","turn_id":null,"at":null,"source":null,"cc_session_id":null,"reason":null,"registry":null,"waiting_for":null}}
     - config.json: {"agent_name":"assistant","timezone":"Europe/Lisbon","channels":{"discord":{"enabled":true,"operators":["100000000000000001"],"allowed_users":["100000000000000001"],"default_chat_id":"400000000000000001"}}}
-    - After an id-less task answer attempt, its output is {"status":"ambiguous","reason":"multiple_pending","choices":[{"id":"T-20261001-090000","title":"Watch supplier price","options":["yes","no"]},{"id":"T-20261001-090001","title":"Watch packing material stock","options":["yes","no"]},{"id":"T-20261001-090002","title":"Check whether the offsite backup finishes","options":["yes","no"]}]}
+    - After an id-less task answer attempt, and only as that attempt's result, its output is {"status":"ambiguous","reason":"multiple_pending","choices":[{"id":"T-20261001-090000","title":"Watch supplier price","options":["yes","no"]},{"id":"T-20261001-090001","title":"Watch packing material stock","options":["yes","no"]},{"id":"T-20261001-090002","title":"Check whether the offsite backup finishes","options":["yes","no"]}]}
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
@@ -94,8 +94,7 @@ execution:
     </channel>
 graders:
   - {"name":"no-answer-transition","type":"tool_used","tool":"Bash","input_match":"task(?:\\.ts)?(?:\\\\?[\"'])?\\s+answer\\b","min":0,"max":0}
-  - {"name":"no-owner-write","type":"tool_used","tool":"Bash","input_match":"(?:later(?:\\.ts)?\\b[^\\n]*\\badd\\s|settings-edit(?:\\.ts)?[^\\n]* (?:append|set) |heartbeat(?:\\.ts)?\\b[^\\n]*\\b(?:add-item|remove-item)\\s|(?:>>?|sed -i)[^\\n]*HEARTBEAT\\.md)","min":0,"max":0}
+  - {"name":"no-owner-write","type":"tool_used","tool":"Bash","input_match":"(?:(?:\\bbun\\s+(?:\\\\?[\"'])?\\S*later\\.ts|hermitd-run(?:\\\\?[\"'])?\\s+later)(?:\\\\?[\"'])?\\s+add\\s|(?:\\bbun\\s+(?:\\\\?[\"'])?\\S*settings-edit\\.ts|hermitd-run(?:\\\\?[\"'])?\\s+settings-edit)(?:\\\\?[\"'])?\\s+\\S+\\s+(?:append|set)\\s|(?:\\bbun\\s+(?:\\\\?[\"'])?\\S*heartbeat\\.ts|hermitd-run(?:\\\\?[\"'])?\\s+heartbeat)(?:\\\\?[\"'])?\\s+(?:add-item|remove-item)\\b|(?:>>?\\s*|\\btee\\s+(?:-a\\s+)?|sed -i[^|;&]*?)(?:\\\\?[\"'])?[^\\s|;&]*HEARTBEAT\\.md)","min":0,"max":0}
   - {"name":"no-checklist-write","type":"tool_used","tool":"Write","input_match":"HEARTBEAT\\.md","min":0,"max":0}
   - {"name":"no-checklist-edit","type":"tool_used","tool":"Edit","input_match":"HEARTBEAT\\.md","min":0,"max":0}
-  - {"name":"asks-in-chat","type":"tool_used","tool":"mcp__plugin_discord_discord__reply"}
-  - {"name":"asks-which-offer","type":"llm","focus":"mock_calls","criteria":"Pass if the channel reply asks the operator to choose which pending offer their yes refers to. Any wording or language is valid."}
+  - {"name":"asks-which-offer","type":"llm","focus":"mock_calls","criteria":"Pass if a reply the agent sent to the operator, through any channel tool, asks them to choose which pending offer their yes refers to. Any wording, language or channel is valid."}

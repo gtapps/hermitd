@@ -262,6 +262,10 @@ project_supplier_price.md
 ## Verification
 The watch id is in .hermit/config.json.
 HERMIT_FIXTURE
+mkdir -p "eval-stand-ins"
+cat > 'eval-stand-ins/task-answer-without-id.json' <<'HERMIT_FIXTURE'
+{"status":"ambiguous","reason":"multiple_pending","choices":[{"id":"T-20261001-090000","title":"Watch supplier price","options":["yes","no"]},{"id":"T-20261001-090001","title":"Watch packing material stock","options":["yes","no"]},{"id":"T-20261001-090002","title":"Check whether the offsite backup finishes","options":["yes","no"]}]}
+HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'
 HERMIT_FIXTURE

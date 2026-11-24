@@ -24,7 +24,7 @@ Record the matching read-only command by appending `--check '<command>'` to `tas
 - Routine uses `jq -e '.routines[] | select(.id=="<id>" and .enabled==true)' .hermit/config.json`.
 - Heartbeat uses `grep -qF '<line>' .hermit/HEARTBEAT.md`.
 
-Run `task-check` (Commands), which invokes `task-check.ts <id>` without sender flags. A passing check closes the proposal. Reply in plain words with what was set up. A failed check leaves the task open with its receipt. Report the verification failure without repeating the owner write.
+Read the note's result before running `task-check` (Commands) in its own Bash call: a failed note goes to Renew consent below instead of the check. It invokes `task-check.ts <id>` without sender flags. A passing check closes the proposal. Reply in plain words with what was set up. A failed check leaves the task open with its receipt. Report the verification failure without repeating the owner write.
 
 ## Renew consent if setup fails
 

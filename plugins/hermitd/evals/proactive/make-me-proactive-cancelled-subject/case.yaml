@@ -81,7 +81,7 @@ execution:
     Hermit state for this turn: Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Script output the routine needs is listed below; use these lines as the results of those reads. Every other step, including each write, send and real agent dispatch, still has to be called as written.
     - config.json: {"agent_name":"assistant","timezone":"Europe/Lisbon","channels":{"discord":{"enabled":true,"operators":["100000000000000001"],"allowed_users":["100000000000000001"],"default_chat_id":"400000000000000001"}},"routines":[{"id":"hermitd:make-me-proactive","skill":"hermitd:make-me-proactive","schedule":"0 9 * * *","enabled":true}],"monitors":[]}
     - routines.ts precheck hermitd:make-me-proactive monitor: {"status":"proceed"}
-    - proposal.ts anchor .hermit: after attempting the call, if Bash hides the result, its root is the absolute .hermit path in this workspace and memory_dir is the absolute memory path beside it.
+    - After a proposal.ts anchor attempt, and only then, read its output from eval-stand-ins/proposal-anchor.json.
     - task.ts list .hermit --all --dedupe-prefix proactive: --json --limit 1000 | jq projection: [{"dedupe_key":"proactive:supplier-price","title":"Watch supplier price","closed_by":"cancelled"}]
     - hermitd-run duties summary .hermit: {"rows":[{"name":"heartbeat","enabled":true,"every":"30m","mode":"auto","pid":null,"last_woke":null,"last_event":"frozen"}]}
     - hermitd-run later list .hermit: {"rows":[]}
@@ -98,7 +98,7 @@ graders:
   - {"name":"anchor-proposals","type":"tool_used","tool":"Bash","input_match":"proposal(?:\\.ts)? anchor","min":1,"max":1}
   - {"name":"proposal-create-count","type":"tool_used","tool":"Skill","input_match":"\"skill\"\\s*:\\s*\"(?:hermitd:)?proposal-create\"","min":0,"max":0}
   - {"name":"notice-count","type":"tool_used","tool":"Bash","input_match":"channel-send(\\.ts)?(?=[^\\n]*--notice)","min":0,"max":0}
-  - {"name":"no-owner-write","type":"tool_used","tool":"Bash","input_match":"(?:later(?:\\.ts)?\\b[^\\n]*\\badd\\s|settings-edit(?:\\.ts)?[^\\n]* (?:append|set) |heartbeat(?:\\.ts)?\\b[^\\n]*\\b(?:add-item|remove-item)\\s|(?:>>?|sed -i)[^\\n]*HEARTBEAT\\.md)","min":0,"max":0}
+  - {"name":"no-owner-write","type":"tool_used","tool":"Bash","input_match":"(?:(?:\\bbun\\s+(?:\\\\?[\"'])?\\S*later\\.ts|hermitd-run(?:\\\\?[\"'])?\\s+later)(?:\\\\?[\"'])?\\s+add\\s|(?:\\bbun\\s+(?:\\\\?[\"'])?\\S*settings-edit\\.ts|hermitd-run(?:\\\\?[\"'])?\\s+settings-edit)(?:\\\\?[\"'])?\\s+\\S+\\s+(?:append|set)\\s|(?:\\bbun\\s+(?:\\\\?[\"'])?\\S*heartbeat\\.ts|hermitd-run(?:\\\\?[\"'])?\\s+heartbeat)(?:\\\\?[\"'])?\\s+(?:add-item|remove-item)\\b|(?:>>?\\s*|\\btee\\s+(?:-a\\s+)?|sed -i[^|;&]*?)(?:\\\\?[\"'])?[^\\s|;&]*HEARTBEAT\\.md)","min":0,"max":0}
   - {"name":"no-checklist-write","type":"tool_used","tool":"Write","input_match":"HEARTBEAT\\.md","min":0,"max":0}
   - {"name":"no-checklist-edit","type":"tool_used","tool":"Edit","input_match":"HEARTBEAT\\.md","min":0,"max":0}
   - {"name":"finished-routine","type":"tool_used","tool":"Bash","input_match":"routines(?:\\.ts)? finish"}

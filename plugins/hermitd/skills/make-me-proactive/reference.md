@@ -8,7 +8,7 @@ Use the supplied `plugin_root`, `memory_dir`, `duties_summary`, `later_list`, `p
 
 ## Generation
 
-Offer concrete jobs the operator would otherwise do by hand or miss. Cite at least one memory topic, compiled page, or job item per idea. Drop a subject when an existing job already covers it, any past subject row matches it, or memory records postponement. Use a stable lowercase slug as `subject_key`; use the existing key when comparing the same subject under different wording. Distinguish configured but disabled duties that can be re-enabled from jobs already doing the work.
+Offer concrete jobs the operator would otherwise do by hand or miss. Cite at least one memory topic, compiled page, or job item per idea that shows the operator doing this work or needing its result. A job missing from the config is not evidence on its own. Drop a subject when an existing job already covers it, any past subject row matches it, or memory records postponement. Use a stable lowercase slug as `subject_key`; use the existing key when comparing the same subject under different wording. Distinguish configured but disabled duties that can be re-enabled from jobs already doing the work.
 
 Choose the cheapest kind that fits:
 

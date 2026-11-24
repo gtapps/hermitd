@@ -396,7 +396,7 @@ function runCase(name: string, tag: string, desc: string, expected: string, seed
   // SessionStart injects only the language; the stand-in line keeps the rest of the config facts in front of the handler, as channel-routing does.
   const configLine = `- config.json: escalation=${escalation}; ${language ? `language=${language}` : 'language unset'}; channels.discord enabled, default_chat_id=${CHAT}`;
   const standInPolicy = seed.bashWithStandIns
-    ? `${BASH_FAILURE} Attempt the script calls as written and use their listed output only if Bash hides it. The evaluator result is supplied below; use it in place of dispatching the evaluator this turn.`
+    ? `${BASH_FAILURE} Attempt the script calls as written and use their listed output only if Bash hides it. Each listed output stays unknown until its call has been attempted, so decide each step from the outputs of calls already made. The evaluator result is supplied below; use it in place of dispatching the evaluator this turn.`
     : 'This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including the evaluation subagent dispatch, runs as written.';
   const state = '<system-reminder>\nHermit state for this turn. ' + standInPolicy + '\n' + [configLine, ...lines].join('\n') + '\n</system-reminder>';
   const tools = ['Skill', 'Read', 'Glob', 'Grep', 'Agent', ...seed.bashWithStandIns ? ['Bash', 'Write', 'Edit'] : []];
@@ -528,29 +528,35 @@ const met = evaluation([MIGRATION, 'The offsite backup migration finished.'], [D
 const itemKeyCall = String.raw`heartbeat\.ts(?:\\?["'])?\s+item-key\b`;
 const taskListCall = String.raw`task\.ts(?:\\?["'])?\s+list\b[^\n]*--all[^\n]*--dedupe-key`;
 const taskOpenCall = String.raw`task\.ts(?:\\?["'])?\s+open\b`;
+const listStandIn = (key: string) => `eval-stand-ins/list-heartbeat-stop-${key}.json`;
 const bashCount = (name: string, input_match: string, count: number): Grader =>
   ({ name, type: 'tool_used', tool: 'Bash', input_match, min: count, max: count });
 runCase('make-me-proactive-heartbeat-stop-once', 'heldout, make-me-proactive',
   'The two satisfied end conditions yield one new stop question and skip the previously answered one.',
   'Look up both item keys, queue one unbound admin question for the backup, and leave the checklist intact.',
-  { checklist: heartbeatMd(MIGRATION, DELIVERY), evaluation: met, files: { [stopFile]: stopRecord }, bashWithStandIns: true,
+  { checklist: heartbeatMd(MIGRATION, DELIVERY), evaluation: met, bashWithStandIns: true,
+    files: { [stopFile]: stopRecord, [listStandIn(migrationKey)]: '{"rows":[],"total":0}\n',
+      [listStandIn(deliveryKey)]: JSON.stringify({ rows: [{ id: 'T-20261001-080000', dedupe_key: deliveryStop, closed_by: 'confirmed' }], total: 1 }) + '\n' },
     writes: [
       '- Evaluator result: ' + JSON.stringify(met),
-      `- heartbeat.ts item-key with the backup line: ${JSON.stringify({ key: migrationKey })}`,
-      `- heartbeat.ts item-key with the carrier line: ${JSON.stringify({ key: deliveryKey })}`,
-      `- task.ts list with heartbeat-stop:${migrationKey}: {"rows":[],"total":0}`,
-      `- task.ts list with ${deliveryStop}: ${JSON.stringify({ rows: [{ id: 'T-20261001-080000', dedupe_key: deliveryStop, closed_by: 'confirmed' }], total: 1 })}`,
+      // Lookup results are phrased as the output of an attempted call: listed bare, the handler used them without calling the scripts.
+      `- After a heartbeat.ts item-key attempt with the backup line, and only as that attempt's result: ${JSON.stringify({ key: migrationKey })}`,
+      `- After a heartbeat.ts item-key attempt with the carrier line, and only as that attempt's result: ${JSON.stringify({ key: deliveryKey })}`,
+      // Inline, the carrier's existing record let the handler skip that list call, so each list result waits in a file.
+      `- After a task.ts list attempt for a heartbeat-stop:<item key>, and only then, read its output from ${listStandIn('<item key>')}.`,
       '- A matching task.ts open attempt would return {"id":"T-20261001-133000","created":true}.',
     ] },
-  [hbSkill(), bashCount('backup-item-key', itemKeyCall + String.raw`[\s\S]*offsite backup`, 1),
-    bashCount('carrier-item-key', itemKeyCall + String.raw`[\s\S]*carrier page`, 1),
+  // The checklist line reaches item-key on stdin, so it may sit before the command (a pipe) or after it (a heredoc).
+  [hbSkill(), bashCount('backup-item-key', `(?=[\\s\\S]*${itemKeyCall})[\\s\\S]*offsite backup`, 1),
+    bashCount('carrier-item-key', `(?=[\\s\\S]*${itemKeyCall})[\\s\\S]*carrier page`, 1),
     bashCount('list-backup-key', taskListCall + String.raw`[^\n]*heartbeat-stop:${migrationKey}`, 1),
     bashCount('list-carrier-key', taskListCall + String.raw`[^\n]*${deliveryStop}`, 1),
     bashCount('one-open-call', taskOpenCall, 1),
     bashCount('open-backup-question', taskOpenCall + String.raw`(?=[^\n]*--dedupe-key[^\n]*heartbeat-stop:${migrationKey})`
       + String.raw`(?=[^\n]*--waiting-on\s+admin)(?=[\s\S]*heartbeat edit --remove)(?![^\n]*--conversation)`, 1),
     bashCount('no-carrier-question', taskOpenCall + String.raw`[^\n]*${deliveryStop}`, 0),
-    bashCount('no-checklist-command-write', String.raw`(?:heartbeat(?:\.ts)?[^\n]*\b(?:add-item|remove-item)\b|(?:>>?|sed -i)[^\n]*HEARTBEAT\.md)`, 0),
+    // A redirect, `tee` or `sed -i` must target HEARTBEAT.md: JSON-encoded input lets `[^\n]` span reads like `2>&1; cat HEARTBEAT.md`.
+    bashCount('no-checklist-command-write', String.raw`(?:heartbeat(?:\.ts)?(?:\\?["'])?\s+(?:add-item|remove-item)\b|(?:>>?\s*|\btee\s+(?:-a\s+)?|sed -i[^|;&]*?)(?:\\?["'])?[^\s|;&]*HEARTBEAT\.md)`, 0),
     ...['Write', 'Edit'].map(tool => ({ name: 'no-checklist-' + tool.toLowerCase(), type: 'tool_used', tool, input_match: 'HEARTBEAT\\.md', min: 0, max: 0 }))]);
 
 report('heartbeat');

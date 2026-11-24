@@ -78,15 +78,14 @@ execution:
     - Files in the operator's project follow that project's own conventions.
   prompt: |
     <system-reminder>
-    Hermit state for this turn. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Attempt the script calls as written and use their listed output only if Bash hides it. The evaluator result is supplied below; use it in place of dispatching the evaluator this turn.
+    Hermit state for this turn. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Attempt the script calls as written and use their listed output only if Bash hides it. Each listed output stays unknown until its call has been attempted, so decide each step from the outputs of calls already made. The evaluator result is supplied below; use it in place of dispatching the evaluator this turn.
     - config.json: escalation=balanced; language unset; channels.discord enabled, default_chat_id=400000000000000001
     - heartbeat.ts tick .hermit: {"status":"evaluate","notifications":{"budget":[]},"model":"haiku","effort":"high"}
     - A channel-send --notice attempt returns {"status":"delivered"} if Bash hides the result.
     - Evaluator result: {"firing":[{"item":"- Check the offsite backup during check-ins until the migration finishes [note]","text":"The offsite backup migration finished."},{"item":"- Check the carrier page until the tea order has arrived [note]","text":"The carrier delivered the tea order."}]}
-    - heartbeat.ts item-key with the backup line: {"key":"checklist:checktheoffsitebackupduringcheck-7bd3f032"}
-    - heartbeat.ts item-key with the carrier line: {"key":"checklist:checkthecarrierpageuntiltheteaor-3f5785ba"}
-    - task.ts list with heartbeat-stop:checklist:checktheoffsitebackupduringcheck-7bd3f032: {"rows":[],"total":0}
-    - task.ts list with heartbeat-stop:checklist:checkthecarrierpageuntiltheteaor-3f5785ba: {"rows":[{"id":"T-20261001-080000","dedupe_key":"heartbeat-stop:checklist:checkthecarrierpageuntiltheteaor-3f5785ba","closed_by":"confirmed"}],"total":1}
+    - After a heartbeat.ts item-key attempt with the backup line, and only as that attempt's result: {"key":"checklist:checktheoffsitebackupduringcheck-7bd3f032"}
+    - After a heartbeat.ts item-key attempt with the carrier line, and only as that attempt's result: {"key":"checklist:checkthecarrierpageuntiltheteaor-3f5785ba"}
+    - After a task.ts list attempt for a heartbeat-stop:<item key>, and only then, read its output from eval-stand-ins/list-heartbeat-stop-<item key>.json.
     - A matching task.ts open attempt would return {"id":"T-20261001-133000","created":true}.
     - heartbeat.ts alert-state (once the evaluation subagent's return is piped to it on stdin): {"notifications":["The offsite backup migration finished.","The carrier delivered the tea order."],"self_eval_proposals":[],"heartbeat_result":"alert"}
     </system-reminder>
@@ -105,13 +104,13 @@ graders:
   - name: backup-item-key
     type: 'tool_used'
     tool: 'Bash'
-    input_match: 'heartbeat\.ts(?:\\?["''])?\s+item-key\b[\s\S]*offsite backup'
+    input_match: '(?=[\s\S]*heartbeat\.ts(?:\\?["''])?\s+item-key\b)[\s\S]*offsite backup'
     min: 1
     max: 1
   - name: carrier-item-key
     type: 'tool_used'
     tool: 'Bash'
-    input_match: 'heartbeat\.ts(?:\\?["''])?\s+item-key\b[\s\S]*carrier page'
+    input_match: '(?=[\s\S]*heartbeat\.ts(?:\\?["''])?\s+item-key\b)[\s\S]*carrier page'
     min: 1
     max: 1
   - name: list-backup-key
@@ -147,7 +146,7 @@ graders:
   - name: no-checklist-command-write
     type: 'tool_used'
     tool: 'Bash'
-    input_match: '(?:heartbeat(?:\.ts)?[^\n]*\b(?:add-item|remove-item)\b|(?:>>?|sed -i)[^\n]*HEARTBEAT\.md)'
+    input_match: '(?:heartbeat(?:\.ts)?(?:\\?["''])?\s+(?:add-item|remove-item)\b|(?:>>?\s*|\btee\s+(?:-a\s+)?|sed -i[^|;&]*?)(?:\\?["''])?[^\s|;&]*HEARTBEAT\.md)'
     min: 0
     max: 0
   - name: no-checklist-write

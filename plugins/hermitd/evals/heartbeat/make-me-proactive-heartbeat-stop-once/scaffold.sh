@@ -113,6 +113,14 @@ result_rev: 0
 ## Proposal
 Stop checking the carrier page?
 HERMIT_FIXTURE
+mkdir -p "eval-stand-ins"
+cat > 'eval-stand-ins/list-heartbeat-stop-checklist:checkthecarrierpageuntiltheteaor-3f5785ba.json' <<'HERMIT_FIXTURE'
+{"rows":[{"id":"T-20261001-080000","dedupe_key":"heartbeat-stop:checklist:checkthecarrierpageuntiltheteaor-3f5785ba","closed_by":"confirmed"}],"total":1}
+HERMIT_FIXTURE
+mkdir -p "eval-stand-ins"
+cat > 'eval-stand-ins/list-heartbeat-stop-checklist:checktheoffsitebackupduringcheck-7bd3f032.json' <<'HERMIT_FIXTURE'
+{"rows":[],"total":0}
+HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'
 HERMIT_FIXTURE
