@@ -18,7 +18,7 @@
    .hermit/bin/hermitd-run cloud-session start .hermit --environment <name> --task <T> --helper <n> [--model <m>] [--effort <e>] --prompt-file <file>
    ```
 
-   Remove the temporary brief after the call finishes. If launch is declined or fails, restore the bound task to resident ownership and report the reason. On success, record the helper name and returned session id on the task. For `--task`, also note the handoff and the helper task id on its source record. Tell the operator which environment the task was sent to. The report hook supplies the completion notice. Skip watch registration.
+   Remove the temporary brief after the call finishes. If launch is declined or fails, restore the bound task to resident ownership and report the reason. On success, record the helper name and returned session id on the task. For `--task`, also note the handoff and the helper task id on its source record. Check the helper's ListAgents row once and report its placement as in § Status and follow-ups; on a `cloud` row, also ask the operator to re-enroll the environment. Tell the operator which environment the task was sent to. The report hook supplies the completion notice. Skip watch registration.
 
 ## Status and follow-ups
 

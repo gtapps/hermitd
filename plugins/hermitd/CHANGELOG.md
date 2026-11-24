@@ -8,6 +8,8 @@
 ### Changed
 
 - Helpers on another machine fetch `origin` and work from the current remote branch before starting a task in a git repository, and name that commit in their report.
+- `hermit-settings remote-environments` points to `/remote-env` for environment IDs.
+- A helper launched with `--environment` is checked after launch, and a wrong ID that landed on hosted Claude is reported.
 
 ## [1.4.42] - 2026-11-24
 
