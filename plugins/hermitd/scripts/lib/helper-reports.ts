@@ -9,6 +9,8 @@ import { classifyChat } from './channel-chats';
 import { channelStateDirs } from './channel-config';
 import { clip, safeForLLM } from './sanitize';
 import { loadMessages } from './messages';
+import { postToSession } from './peer-post';
+import { readRuntimeJson } from './runtime';
 
 const REFUSALS = new Set(['not_owner', 'closed', 'empty', 'report_too_long', 'report_outside_state', 'consent_required', 'not_found', 'invalid_file']);
 type ReportKind = 'result' | 'needs-input' | 'note';
@@ -297,4 +299,11 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
   } finally {
     if (attachments) fs.rmSync(attachments.staging, { recursive: true, force: true });
   }
+}
+
+/** Tells the resident about a stored helper result or question; its receipt path skips a report it already handled. */
+export async function noticeStoredReport(dir: string, id: string, flags: TaskFlags): Promise<void> {
+  if (flags.as === 'worker' || flags.kind === 'note') return;
+  const socket = readRuntimeJson(path.join(dir, 'state'))?.inbox_socket;
+  if (typeof socket === 'string' && socket) await postToSession(socket, `REPORT_STORED ${id}`);
 }

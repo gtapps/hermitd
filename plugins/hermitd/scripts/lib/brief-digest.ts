@@ -75,6 +75,11 @@ export async function briefDigest(dir: string, mode: BriefMode, reference = new 
     return clipText(value, limit);
   };
   const nullable = (value: string | null) => value === null ? null : clip(value);
+  // A report's first line is its verdict; a longer first line is no verdict, so the brief falls back to title and outcome.
+  const verdictLine = (text: string) => {
+    const line = text.split(/\r?\n/).find(line => line.trim())?.trim() ?? '';
+    return line && line.length <= 200 ? line : null;
+  };
   const recordRow = (report: TaskReport, latest = false) => {
     const result = clip(report.result ?? '', !latest && report.lessons.length ? 4000 : 400);
     const result_truncated = result !== (report.result ?? '');
@@ -83,7 +88,7 @@ export async function briefDigest(dir: string, mode: BriefMode, reference = new 
       return true;
     });
     return { id: path.basename(report.source_path, '.md'), outcome: report.outcome, title: clip(report.title), result,
-      result_truncated, closed_reason: clip(report.closed_reason ?? ''), opened_at: report.opened_at,
+      result_truncated, result_verdict: result_truncated ? verdictLine(result) : null, closed_reason: clip(report.closed_reason ?? ''), opened_at: report.opened_at,
       closed_at: report.closed_at, waiting_on: nullable(report.waiting_on), lessons };
   };
   const records = mode === 'morning' ? [] : [...selected.closed_today, ...selected.opened_today.filter(row => row.closed_at === null)].filter(visibleReport).sort(newest).map(row => recordRow(row));
@@ -115,6 +120,7 @@ export async function briefDigest(dir: string, mode: BriefMode, reference = new 
       omitted.lessons++;
       // The long excerpt exists only to judge lessons.
       if (!withLessons.lessons.length && withLessons.result.length > 400) {
+        withLessons.result_verdict = verdictLine(withLessons.result);
         withLessons.result = clip(withLessons.result, 400);
         withLessons.result_truncated = true;
       }

@@ -140,7 +140,7 @@ Read `config.json` → `monitors[]`, `state/watch-monitor.runtime.json`, and `st
 
 ### Handling notices
 
-For `CLOUD_REPORT_STORED` or `CLOUD_REPORT_FAILED`, read [notices.md](notices.md) § Handling cloud report notices.
+For `REPORT_STORED`, `CLOUD_REPORT_STORED` or `CLOUD_REPORT_FAILED`, read [notices.md](notices.md) § Handling report notices.
 For a background completion matching `poll_task_id`, read [notices.md](notices.md) § Handling helper poll exits first.
 Check Monitor expiry below before self-exit. For other Monitor completions, read
 [notices.md](notices.md) § Handling self-exit notifications. For a watched-session idle

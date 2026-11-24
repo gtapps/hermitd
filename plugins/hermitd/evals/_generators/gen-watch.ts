@@ -137,4 +137,18 @@ watchCase('cloud-report-failed', 'heldout', 'A failed cloud report store is repo
     { name: 'no-close', type: 'tool_used', tool: 'Bash', input_match: 'task close', min: 0, max: 0, weight: 2 }],
   null);
 
+// A local helper's report stored after its session watch was consumed: `task report` posts REPORT_STORED to the resident.
+// The task row is stood in because eval-host Bash may not run; `cloud-report-stored` grades the lookup call itself.
+const LOCAL_TASK = 'T-20261021-090200';
+const localRow = JSON.stringify({ rows: [{ id: LOCAL_TASK, handle: 'fix-checkout-button', title: 'Fix the checkout button', status: 'open',
+  owner: 'helper:checkout-fix', delegated: true, result_rev: 2, report_id: 'q3n8v5c2z0', report_kind: 'result', delivery: 'no_channel',
+  report_verdict: 'Checkout fix done: two draft pull requests open, not merged', report_decisions: [], conversation: null,
+  card_chat_id: null, card_message_id: null, waiting_on: null }], total: 1, omitted: 0 });
+watchCase('report-stored-local', 'train', 'A local helper report stored outside any watch reaches the receipt path and its verdict reaches the operator.',
+  'A short report-back naming the open pull requests; no read of .hermit/helper-reports/',
+  withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`REPORT_STORED ${LOCAL_TASK}`),
+    [`- task list .hermit --all --id ${LOCAL_TASK} --json --with-decisions: ${localRow}`])),
+  [noReportRead, noBodyCat, { name: 'verdict-reported', type: 'regex', target: 'last_message', pattern: String.raw`pull request|\bPRs?\b`, flags: 'i', weight: 3 }],
+  null, `#!/usr/bin/env bash\ncat <<'JSON'\n${localRow}\nJSON\n`);
+
 report('watch');
