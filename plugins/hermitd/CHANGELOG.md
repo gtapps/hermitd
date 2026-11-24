@@ -5,6 +5,9 @@
 ### Added
 
 - Native file attachments for helper and worker reports submitted with `task report --file`.
+### Fixed
+
+- An update, restart or upgrade asked for in plain words in chat gets the typed-command reply instead of running.
 
 ## [1.4.41] - 2026-11-23
 
