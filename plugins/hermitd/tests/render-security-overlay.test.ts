@@ -353,7 +353,7 @@ describe('connector service', () => {
   test('runs in its own namespace, publishes only on host loopback, and gives the agent the socket folder read-only', () => {
     const overlay = Bun.YAML.parse(renderOverlayText({ toggles: {} }, undefined, connector)) as any;
     expect(overlay.services['hermit-connector']).toMatchObject({
-      image: 'oven/bun:1.4.2-distroless', command: ['/connector/sidecar/gateway.ts', '/connector'], user: '1000:1000',
+      image: 'oven/bun:1.4.5-distroless', command: ['/connector/sidecar/gateway.ts', '/connector'], user: '1000:1000',
       environment: ['CONNECTOR_HOSTNAME=0.0.0.0'], cap_drop: ['ALL'], security_opt: ['no-new-privileges:true'],
       restart: 'unless-stopped', ports: ['127.0.0.1:8790:8790'],
       volumes: [`${connector.store}/sidecar:/connector/sidecar:ro`, `${connector.store}/data:/connector/data`, `${connector.store}/bridge:/connector/bridge`],

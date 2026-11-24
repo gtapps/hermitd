@@ -13,7 +13,9 @@ function fixture() {
   const root = freshDir(), data = path.join(root, 'data');
   const src = path.join(root, 'src');
   fs.mkdirSync(path.join(src, 'package/bin'), { recursive: true });
-  fs.writeFileSync(path.join(src, 'package/bin/agent-browser-linux-x64'), '#!/bin/sh\nexit 0\n', { mode: 0o644 });
+  fs.writeFileSync(path.join(src, 'package/bin/agent-browser'), '#!/bin/sh\nexit 0\n', { mode: 0o644 });
+  fs.mkdirSync(path.join(src, 'package/skill-data/core'), { recursive: true });
+  fs.writeFileSync(path.join(src, 'package/skill-data/core/SKILL.md'), '# fixture');
   fs.mkdirSync(path.join(src, 'package/core'));
   fs.writeFileSync(path.join(src, 'package/core/rfb.js'), '// fixture');
   fs.mkdirSync(path.join(src, 'chrome-linux64'));
@@ -23,7 +25,7 @@ function fixture() {
   expect(Bun.spawnSync(['zip', '-qr', zip, 'chrome-linux64'], { cwd: src }).exitCode).toBe(0);
   const tgz = fs.readFileSync(tar), zipped = fs.readFileSync(zip);
   const pins = structuredClone(BROWSER_PINS) as any;
-  pins.agent.integrity = 'sha512-' + createHash('sha512').update(tgz).digest('base64');
+  pins.agent.integrity = pins.agent.native['linux-x64-gnu'] = 'sha512-' + createHash('sha512').update(tgz).digest('base64');
   pins.chrome.checksums.linux64 = createHash('sha256').update(zipped).digest('hex');
   pins.novnc.checksum = createHash('sha256').update(tgz).digest('hex');
   let downloads = 0;
@@ -35,9 +37,11 @@ test('publishes a complete executable install, no-ops, and keeps the prior folde
   expect(await installBrowser(f)).toMatchObject({ status: 'ready' });
   const current = installedBrowser(f.data)!;
   expect(fs.statSync(current.binary).mode & 0o111).toBe(0o111);
+  // Upstream finds skill-data from the package root above the binary.
+  expect(fs.existsSync(path.join(path.dirname(current.binary), '../skill-data/core/SKILL.md'))).toBe(true);
   expect(fs.readFileSync(current.config, 'utf8').trim()).toBe('{}');
   expect(await installBrowser(f)).toMatchObject({ status: 'ready' });
-  expect(f.downloads()).toBe(3);
+  expect(f.downloads()).toBe(4);
   f.pins.chrome.version = 'next';
   f.pins.agent.integrity = 'sha512-bad';
   expect(await installBrowser(f)).toMatchObject({ error: 'checksum_mismatch:agent.tgz' });
@@ -57,12 +61,13 @@ test('concurrent callers publish one folder and report contention', async () => 
   const f = fixture();
   const results = await Promise.all([installBrowser(f), installBrowser(f)]);
   expect(results.map(result => 'status' in result ? result.status : result.error).sort()).toEqual(['installing', 'ready']);
-  expect(f.downloads()).toBe(3);
+  expect(f.downloads()).toBe(4);
 });
 test('unsupported platforms return precise blockers and never fetch', async () => {
   const f = fixture();
   expect(await installBrowser({ ...f, platform: 'win32' })).toMatchObject({ error: 'unsupported_platform:win32-x64' });
   expect(f.downloads()).toBe(0);
-  expect(browserPlatform('linux', 'arm64', true).binary).toBe('agent-browser-linux-musl-arm64');
+  expect(browserPlatform('linux', 'arm64', true).native).toBe('linux-arm64-musl');
+  expect(browserPlatform('darwin', 'x64', false).native).toBe('darwin-x64');
   expect(browserPlatform('darwin', 'arm64', false).chrome).toBe('mac-arm64');
 });

@@ -199,10 +199,12 @@ describe('dumpYaml quoting of PyYAML-1.1-coercible strings', () => {
   });
 
   test('sequence items and nested mappings are processed', () => {
-    expect(dumpYaml({ l: ['10:30', '2024-01-01', 5] })).toBe(
-      'l: \n  - "10:30"\n  - "2024-01-01"\n  - 5',
+    // Bun 1.4.5 stopped emitting a trailing space after a key that opens a block.
+    const dump = (value: unknown) => dumpYaml(value).replace(/ +$/gm, '');
+    expect(dump({ l: ['10:30', '2024-01-01', 5] })).toBe(
+      'l:\n  - "10:30"\n  - "2024-01-01"\n  - 5',
     );
-    expect(dumpYaml({ triggers: [{ at: '7:15' }] })).toBe('triggers: \n  - at: "7:15"');
+    expect(dump({ triggers: [{ at: '7:15' }] })).toBe('triggers:\n  - at: "7:15"');
   });
 
   test('coercible KEYS are quoted too', () => {

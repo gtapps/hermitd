@@ -51,6 +51,8 @@ async function ghRequest(method: string, path: string, auth: string, body?: Json
     },
     body: data,
   }).catch((err) => {
+    // Bun 1.4.5+ rejects a refused CONNECT; earlier Bun returns the proxy's response (handled below).
+    if (proxied && err?.code === "ERR_PROXY_TUNNEL") throw new Fail(`proxy_refused:${`${err.status} ${err.statusText}`.trimEnd()}`);
     throw proxied ? new Fail(`proxy_unreachable:${err.message}`) : err;
   });
   if (res.status >= 400 && proxied && !res.headers.has("x-github-request-id")) {

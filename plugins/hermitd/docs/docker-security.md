@@ -245,7 +245,7 @@ hermitd restart
 
 ## Connector
 
-When `hermitd connector` is enabled, the overlay adds a `hermit-connector` service: the [connector](connector.md)'s trusted server on `oven/bun:1.4.2-distroless`, running as your host user with every capability dropped. It has its own network namespace and publishes its port on host loopback only, for your tunnel. The agent gets the store's socket folder read-only at `/run/hermit-connector`; the server's code, settings, sign-in state and record are not mounted into the agent. Enabling or disabling it changes no approval-tracked value, so it applies at the next restart without a prompt; enrolling its channel plugin is a tracked change and asks. A compose override that already defines a service named `hermit-connector` collides with it.
+When `hermitd connector` is enabled, the overlay adds a `hermit-connector` service: the [connector](connector.md)'s trusted server on `oven/bun:1.4.5-distroless`, running as your host user with every capability dropped. It has its own network namespace and publishes its port on host loopback only, for your tunnel. The agent gets the store's socket folder read-only at `/run/hermit-connector`; the server's code, settings, sign-in state and record are not mounted into the agent. Enabling or disabling it changes no approval-tracked value, so it applies at the next restart without a prompt; enrolling its channel plugin is a tracked change and asks. A compose override that already defines a service named `hermit-connector` collides with it.
 
 ## Reversal
 
