@@ -121,8 +121,9 @@ async function checklistVerb(verb: 'item-key' | 'add-item' | 'remove-item', args
     }
     writeFileAtomic(file, lines.join(''), fs.statSync(file).mode & 0o777);
     const audit = Bun.spawnSync([process.execPath, path.join(import.meta.dir, 'settings-edit.ts'), path.join(dir, 'config.json'), 'record-file', 'HEARTBEAT.md']);
-    if (audit.exitCode !== 0) return { error: 'record_file_failed' };
-    return verb === 'add-item' ? { status: 'added', key } : { status: 'removed' };
+    const result = verb === 'add-item' ? { status: 'added', key } : { status: 'removed' };
+    // The checklist is already written; a missed audit row must not read as a failed write.
+    return audit.exitCode === 0 ? result : { ...result, warnings: ['record_file_failed'] };
   } catch {
     return { error: 'checklist_update_failed' };
   } finally {
