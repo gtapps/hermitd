@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Helpers on another machine fetch the remote and branch from its current base before working in a git repository, and name that commit in their report.
+- Helpers on another machine fetch `origin` and work from the current remote branch before starting a task in a git repository, and name that commit in their report.
 
 ## [1.4.42] - 2026-11-24
 
