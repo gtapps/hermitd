@@ -63,6 +63,12 @@ This subcommand is the handler for `HEARTBEAT_EVALUATE` notifications emitted by
      - `indeterminate` means the evaluation was rejected and nothing was written; mention the `reason` once in your reply, respond `HEARTBEAT_INDETERMINATE (<reason>)`, and skip the rest of this bullet — a rejected tick carries no notifications and no proposals. An `error`, or empty or unparseable stdout, is reported the same way, with the `error` token or `no_output` as the reason.
      - For each `notifications` entry: notify the operator (per prompts/resident.md § Operator Notification). The script has already decided which ticks are notify-worthy (a new alert, a suppression transition, the daily digest) — send every entry it produced, unconditionally.
      - For each `self_eval_proposals` entry: invoke `/hermitd:proposal-create` with category `capability`, `source: auto-detected`, `Self-Eval-Key: <key>` (dedupe `self-eval:<key>`), and evidence written from the entry's `kind` and counts (a `clean` entry has been quiet for `clean_ticks` passes across `sessions_seen` sessions; `weight` means the checklist has outgrown its recommended size). The list is empty on every tick but the every-20-ticks self-evaluation.
+   - For a firing entry whose `item` states an end condition and whose `text` shows that condition has been met, report the outcome through the existing alert path. If no home chat is configured, use the Operator Notification fallback and say that `/hermitd:heartbeat edit` removes the check. Otherwise, pass the returned `item` line verbatim on stdin to `bun ${CLAUDE_PLUGIN_ROOT}/scripts/heartbeat.ts item-key`. Use its returned `key` as `<item key>`.
+   - Run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit --all --dedupe-key 'heartbeat-stop:<item key>' --json`. Any matching row, including a closed one, means the question was already queued. When the list succeeds with no rows, open one admin question in the operator's language:
+     ```bash
+     bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit --title '<plain question asking whether to stop>' --done 'Answer recorded' --requester agent --waiting-on admin --dedupe-key 'heartbeat-stop:<item key>' --decision '{"purpose":"input","authority":"admin","generation":1,"resume":"/hermitd:heartbeat edit --remove <item key> --answer {answer}"}'
+     ```
+     Keep the decision unbound by omitting `--conversation`. Let a later tick deliver it through `decision_refresh`; this turn sends only the existing alert. If queuing fails, report that failure and leave the item in place.
 6. Respond with `HEARTBEAT_OK`, `HEARTBEAT_ALERT`, or `HEARTBEAT_INDETERMINATE (<reason>)` per the **script's** `heartbeat_result` (`ok`, `alert`, `indeterminate`).
 
 ### start
@@ -105,6 +111,8 @@ Report current heartbeat state by reading:
 Report: monitor running (yes/no), configured interval, active hours window, total ticks since last clear, last-peek-at timestamp (or "never ticked" if liveness file absent).
 
 ### edit
+
+For `edit --remove <item key> --answer yes|no`, use the matching recorded answer. On yes, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/heartbeat.ts remove-item .hermit '<item key>'` and report its status. On no, acknowledge that the check stays. End this branch without opening the interactive editor.
 
 Open `.hermit/HEARTBEAT.md` for the operator to modify.
 - Display current checklist with item count.

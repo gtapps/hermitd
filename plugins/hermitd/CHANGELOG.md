@@ -5,9 +5,14 @@
 ### Added
 
 - Native file attachments for helper and worker reports submitted with `task report --file`.
+- Default-on `/hermitd:make-me-proactive` research preview for up to three standing job offers based on the operator's work, with a yes required before setup.
 ### Fixed
 
 - An update, restart or upgrade asked for in plain words in chat gets the typed-command reply instead of running.
+
+### Upgrade Instructions
+
+1. Read installed routines with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get routines`. If an entry has id `hermitd:make-me-proactive`, preserve it, including its schedule and enabled state. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json append routines '{"id":"hermitd:make-me-proactive","schedule":"0 10 15 * *","skill":"hermitd:make-me-proactive","enabled":true}'`. Tell the operator the routine checks for offers on the 15th of each month at 10:00 in the configured timezone. To disable it, find the entry's current index by id and run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set routines.<index>.enabled false` with that index.
 
 ## [1.4.41] - 2026-11-23
 

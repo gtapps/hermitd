@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { normalizeItemKey } from '../../scripts/lib/heartbeat-items';
-import { CHAT, EVALS, type Grader, PLUGIN, USER, agentBody, configJson, graderYaml, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
+import { BASH_FAILURE, CHAT, EVALS, type Grader, PLUGIN, USER, agentBody, configJson, decisionFixture, graderYaml, indent, report, residentPrompt, residentScaffold, withInstall, writeCase, yq } from './lib';
 
 const OUT = path.join(EVALS, 'heartbeat');
 const RUNNER_BODY = agentBody('skill-eval-runner');
@@ -345,6 +345,8 @@ interface RunSeed {
   queued?: boolean;                    // a resident record left past tasks.queue_nudge_minutes
   evaluation?: unknown;                // the evaluation return piped to alert-state
   writes?: string[];                   // stand-ins for steps that only write a file
+  files?: Record<string, string>;
+  bashWithStandIns?: boolean;          // script calls are graded and outputs are supplied on failure
 }
 
 /**
@@ -360,6 +362,7 @@ function runCase(name: string, tag: string, desc: string, expected: string, seed
   const files: Record<string, string> = {
     '.hermit/OPERATOR.md': '# Operator\n\nPrefers short messages.\n',
     '.hermit/HEARTBEAT.md': (seed.checklist ?? heartbeatMd(DISK)) + '\n',
+    ...seed.files,
   };
   for (const [file, body] of Object.entries(seed.state ?? {})) files[`.hermit/state/${file}`] = stateFile(body) + '\n';
 
@@ -372,7 +375,8 @@ function runCase(name: string, tag: string, desc: string, expected: string, seed
     }
     const tickOut = run('heartbeat.ts', ['tick', '.hermit'], { now: seed.clock });
     const tick = JSON.parse(tickOut);
-    const out = [`- heartbeat.ts tick .hermit: ${tickOut}`, NOTIFY];
+    const out = [`- heartbeat.ts tick .hermit: ${tickOut}`, seed.bashWithStandIns
+      ? '- A channel-send --notice attempt returns {"status":"delivered"} if Bash hides the result.' : NOTIFY];
     for (const { mark_key } of tick.notifications.budget) {
       out.push(`- cost-tracker.ts --mark-budget-notified ${mark_key}: ${run('cost-tracker.ts', ['--mark-budget-notified', mark_key], { now: seed.clock })}`);
     }
@@ -391,10 +395,12 @@ function runCase(name: string, tag: string, desc: string, expected: string, seed
 
   // SessionStart injects only the language; the stand-in line keeps the rest of the config facts in front of the handler, as channel-routing does.
   const configLine = `- config.json: escalation=${escalation}; ${language ? `language=${language}` : 'language unset'}; channels.discord enabled, default_chat_id=${CHAT}`;
-  const state = '<system-reminder>\nHermit state for this turn. This session has no shell: each line below is what that hermit script returns '
-    + 'right now. Use it as the script result; do not try to run scripts, directly or through subagents. '
-    + 'Every other step of the skill, including the evaluation subagent dispatch, runs as written.\n' + [configLine, ...lines].join('\n') + '\n</system-reminder>';
-  const y = caseYaml(name, tag, desc, expected, state + '\n' + MONITOR_EVENT, graders, ['Skill', 'Read', 'Glob', 'Grep', 'Agent'], 12,
+  const standInPolicy = seed.bashWithStandIns
+    ? `${BASH_FAILURE} Attempt the script calls as written and use their listed output only if Bash hides it. Each listed output stays unknown until its call has been attempted, so decide each step from the outputs of calls already made. The evaluator result is supplied below; use it in place of dispatching the evaluator this turn.`
+    : 'This session has no shell: each line below is what that hermit script returns right now. Use it as the script result; do not try to run scripts, directly or through subagents. Every other step of the skill, including the evaluation subagent dispatch, runs as written.';
+  const state = '<system-reminder>\nHermit state for this turn. ' + standInPolicy + '\n' + [configLine, ...lines].join('\n') + '\n</system-reminder>';
+  const tools = ['Skill', 'Read', 'Glob', 'Grep', 'Agent', ...seed.bashWithStandIns ? ['Bash', 'Write', 'Edit'] : []];
+  const y = caseYaml(name, tag, desc, expected, state + '\n' + MONITOR_EVENT, graders, tools, seed.bashWithStandIns ? 22 : 12,
     '  env: {EVAL_HERMIT_RESIDENT: "1"}\n  append_system_prompt: |\n' + indent(RESIDENT_PROMPT), 'context:\n  scaffold_script: scaffold.sh');
   writeCase(path.join(OUT, name), y, residentScaffold(config, files));
 }
@@ -506,5 +512,51 @@ runCase('run-two-notices-shop', 'train, varied-install', 'Two notifications from
   [hbSkill(), dispatch(null, 1), final('HEARTBEAT_ALERT'),
     mockMsg('invoice-notice', 'Oak', { weight: 2 }),
     mockMsg('stock-notice', 'teapot', { flags: 'i', weight: 2 })]);
+
+const MIGRATION = 'Check the offsite backup during check-ins until the migration finishes [note]';
+const DELIVERY = 'Check the carrier page until the tea order has arrived [note]';
+const migrationKey = itemKey('- ' + MIGRATION);
+const deliveryKey = itemKey('- ' + DELIVERY);
+const deliveryStop = 'heartbeat-stop:' + deliveryKey;
+const [stopFile, stopRecord] = decisionFixture('T-20261001-080000', 'Stop checking the carrier page?', {
+  kind: null, conversation: null, status: 'closed', closed_by: 'confirmed', closed_actor: USER,
+  closed_at: '2026-10-01T08:11:00.000Z', closed_reason: 'Keep checking', waiting_on: null, waiting_since: null,
+  dedupe_key: deliveryStop, decision: JSON.stringify({ purpose: 'input', authority: 'admin', generation: 1,
+    resume: `/hermitd:heartbeat edit --remove ${deliveryKey} --answer {answer}` }),
+});
+const met = evaluation([MIGRATION, 'The offsite backup migration finished.'], [DELIVERY, 'The carrier delivered the tea order.']);
+const itemKeyCall = String.raw`heartbeat\.ts(?:\\?["'])?\s+item-key\b`;
+const taskListCall = String.raw`task\.ts(?:\\?["'])?\s+list\b[^\n]*--all[^\n]*--dedupe-key`;
+const taskOpenCall = String.raw`task\.ts(?:\\?["'])?\s+open\b`;
+const listStandIn = (key: string) => `eval-stand-ins/list-heartbeat-stop-${key}.json`;
+const bashCount = (name: string, input_match: string, count: number): Grader =>
+  ({ name, type: 'tool_used', tool: 'Bash', input_match, min: count, max: count });
+runCase('make-me-proactive-heartbeat-stop-once', 'heldout, make-me-proactive',
+  'The two satisfied end conditions yield one new stop question and skip the previously answered one.',
+  'Look up both item keys, queue one unbound admin question for the backup, and leave the checklist intact.',
+  { checklist: heartbeatMd(MIGRATION, DELIVERY), evaluation: met, bashWithStandIns: true,
+    files: { [stopFile]: stopRecord, [listStandIn(migrationKey)]: '{"rows":[],"total":0}\n',
+      [listStandIn(deliveryKey)]: JSON.stringify({ rows: [{ id: 'T-20261001-080000', dedupe_key: deliveryStop, closed_by: 'confirmed' }], total: 1 }) + '\n' },
+    writes: [
+      '- Evaluator result: ' + JSON.stringify(met),
+      // Lookup results are phrased as the output of an attempted call: listed bare, the handler used them without calling the scripts.
+      `- After a heartbeat.ts item-key attempt with the backup line, and only as that attempt's result: ${JSON.stringify({ key: migrationKey })}`,
+      `- After a heartbeat.ts item-key attempt with the carrier line, and only as that attempt's result: ${JSON.stringify({ key: deliveryKey })}`,
+      // Inline, the carrier's existing record let the handler skip that list call, so each list result waits in a file.
+      `- After a task.ts list attempt for a heartbeat-stop:<item key>, and only then, read its output from ${listStandIn('<item key>')}.`,
+      '- A matching task.ts open attempt would return {"id":"T-20261001-133000","created":true}.',
+    ] },
+  // The checklist line reaches item-key on stdin, so it may sit before the command (a pipe) or after it (a heredoc).
+  [hbSkill(), bashCount('backup-item-key', `(?=[\\s\\S]*${itemKeyCall})[\\s\\S]*offsite backup`, 1),
+    bashCount('carrier-item-key', `(?=[\\s\\S]*${itemKeyCall})[\\s\\S]*carrier page`, 1),
+    bashCount('list-backup-key', taskListCall + String.raw`[^\n]*heartbeat-stop:${migrationKey}`, 1),
+    bashCount('list-carrier-key', taskListCall + String.raw`[^\n]*${deliveryStop}`, 1),
+    bashCount('one-open-call', taskOpenCall, 1),
+    bashCount('open-backup-question', taskOpenCall + String.raw`(?=[^\n]*--dedupe-key[^\n]*heartbeat-stop:${migrationKey})`
+      + String.raw`(?=[^\n]*--waiting-on\s+admin)(?=[\s\S]*heartbeat edit --remove)(?![^\n]*--conversation)`, 1),
+    bashCount('no-carrier-question', taskOpenCall + String.raw`[^\n]*${deliveryStop}`, 0),
+    // A redirect, `tee` or `sed -i` must target HEARTBEAT.md: JSON-encoded input lets `[^\n]` span reads like `2>&1; cat HEARTBEAT.md`.
+    bashCount('no-checklist-command-write', String.raw`(?:heartbeat(?:\.ts)?(?:\\?["'])?\s+(?:add-item|remove-item)\b|(?:>>?\s*|\btee\s+(?:-a\s+)?|sed -i[^|;&]*?)(?:\\?["'])?[^\s|;&]*HEARTBEAT\.md)`, 0),
+    ...['Write', 'Edit'].map(tool => ({ name: 'no-checklist-' + tool.toLowerCase(), type: 'tool_used', tool, input_match: 'HEARTBEAT\\.md', min: 0, max: 0 }))]);
 
 report('heartbeat');

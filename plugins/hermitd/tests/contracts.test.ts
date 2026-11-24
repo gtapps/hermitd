@@ -611,6 +611,17 @@ describe('routine precheck validation', () => {
     expect(entry.model).toBeUndefined();
     expect(runValidate({ routines: template.routines }).errors).toEqual([]);
   });
+
+  test('the monthly make-me-proactive routine is enabled and inherits the session model', () => {
+    const template = readJson(path.join(TEMPLATES, 'config.json.template'));
+    const id = 'hermitd:make-me-proactive';
+    expect(template.routines.find((routine: { id: string }) => routine.id === id)).toEqual({
+      id, schedule: '0 10 15 * *', skill: id, enabled: true,
+    });
+    const start = read(path.join(SCRIPTS, 'hermitd-start.ts'));
+    expect(start).toContain(`{ id: '${id}', schedule: '0 10 15 * *', skill: '${id}', enabled: true }`);
+    expect(runValidate({ routines: template.routines }).errors).toEqual([]);
+  });
 });
 
 // expect_artifact declares the exact file a routine must produce. Globs are
@@ -2128,6 +2139,14 @@ describe('capability-brainstorm delegation contract', () => {
   test('schema block is byte-identical in reference.md and SKILL.md', () => {
     const block = (text: string) => extractBlock(text, '<!-- brainstorm-eval-schema:start -->', '<!-- brainstorm-eval-schema:end -->');
     expect(block(refFile)).toBe(block(skill));
+  });
+});
+
+describe('make-me-proactive delegation contract', () => {
+  test('schema block is byte-identical in reference.md and SKILL.md', () => {
+    const dir = path.join(SKILLS, 'make-me-proactive');
+    const block = (file: string) => extractBlock(read(path.join(dir, file)), '<!-- proactive-eval-schema:start -->', '<!-- proactive-eval-schema:end -->');
+    expect(block('reference.md')).toBe(block('SKILL.md'));
   });
 });
 

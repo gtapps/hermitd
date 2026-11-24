@@ -165,6 +165,7 @@ const DEFAULT_CONFIG: Json = {
     { id: 'hermitd:weekly-review', schedule: '0 23 * * 0', skill: 'hermitd:weekly-review', enabled: true },
     { id: 'hermitd:later-check', schedule: '5 9 * * *', skill: 'hermitd:later run', enabled: true, precheck: 'later' },
     { id: 'hermitd:capability-brainstorm', schedule: '0 10 1 * *', skill: 'hermitd:capability-brainstorm', enabled: true },
+    { id: 'hermitd:make-me-proactive', schedule: '0 10 15 * *', skill: 'hermitd:make-me-proactive', enabled: true },
     { id: 'hermitd:doctor', schedule: '10 9 * * 1', skill: 'hermitd:hermit-doctor --maintainer', model: 'haiku', enabled: true, precheck: 'doctor', precheck_timeout_s: 120 },
   ],
   monitors: [],

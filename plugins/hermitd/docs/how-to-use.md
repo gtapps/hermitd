@@ -155,6 +155,7 @@ Hermit isn't just a work engine. During any session, you can ask it to reflect a
 - **"What permissions do you keep getting blocked on?"** — Suggests the exact `settings.json` entries to add so it stops getting prompted.
 - **"Suggest specialized agents for this project."** — Proposes new [sub-agents](https://code.claude.com/docs/en/sub-agents) based on the kind of work you've been doing. You approve, it creates them.
 - **"How can you be more efficient?"** — Suggests workflow improvements, configuration tweaks, or structural changes.
+- **"Make me proactive."** [Make me proactive](../skills/make-me-proactive/SKILL.md) offers up to three jobs based on work you already do. Say yes to set up an offer or no to dismiss it. The default routine checks for offers on the 15th of each month at 10:00 in your configured timezone. Ask to “brainstorm capabilities” for capability ideas.
 - **"Create a self-improvement proposal."** — Formalizes what it's learned into a proposal you can accept or reject.
 
 You're always in control. Hermit suggests. You decide.
@@ -354,6 +355,7 @@ Most common actions auto-trigger from natural language — just say what you mea
 | **Tasks**      | `resident-start`, `task`                        |
 | **Status**     | `brief`                                                            |
 | **Monitoring** | `watch`, `heartbeat`                                               |
+| **Proactive offers** | `make-me-proactive` |
 | **Learning**   | `proposal-create`, `reflect`, `dream`      |
 | **Config**     | `hermit-settings`, `hatch`; `hermit-update`, `hermit-restart`, `doctor-fix`, `hermit-evolve` (typed only) |
 | **Docker**     | `docker-customize`; `docker-setup`, `docker-security` (type the last two; they never auto-trigger) |

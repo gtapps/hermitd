@@ -22,6 +22,10 @@
 //   bun heartbeat.ts alert-state <state-file>
 //     Applies one alert-state update from stdin.
 //
+//   bun heartbeat.ts item-key                       # checklist line on stdin
+//   bun heartbeat.ts add-item <hermit-dir>           # checklist line on stdin
+//   bun heartbeat.ts remove-item <hermit-dir> <key>
+//
 // Exception to the helper-output convention: precheck, interval and control-state
 // keep the line grammar heartbeat-monitor.sh parses.
 //
@@ -32,7 +36,7 @@
 // reason it is in routines.ts: a precheck poll runs every interval and has no
 // business parsing the alert-update graph.
 
-import { exitError } from './lib/cli'; // fs only; every verb module stays dynamic
+import { emitJson, exitError, readStdin } from './lib/cli'; // fs only; every verb module stays dynamic
 
 const verb = process.argv[2];
 process.argv.splice(2, 1);
@@ -75,6 +79,54 @@ switch (verb) {
   case 'alert-state':
     await import('./lib/heartbeat/alert-update');
     break;
+  case 'item-key':
+  case 'add-item':
+  case 'remove-item':
+    emitJson(await checklistVerb(verb, process.argv.slice(2)));
+    break;
   default:
     exitError();
+}
+
+async function checklistVerb(verb: 'item-key' | 'add-item' | 'remove-item', args: string[]): Promise<object> {
+  const { normalizeItemKey, parseChecklistItems } = await import('./lib/heartbeat-items');
+  if (args.length !== (verb === 'item-key' ? 0 : verb === 'add-item' ? 1 : 2)) return { error: 'usage' };
+  const line = verb === 'remove-item' ? '' : (await readStdin()).replace(/\r?\n$/, '');
+  const key = verb === 'remove-item' ? args[1] : /[\r\n]/.test(line) ? null : normalizeItemKey(line);
+  if (!key) return { status: 'none', reason: 'no_key' };
+  if (verb === 'item-key') return { key };
+  if (verb === 'add-item' && parseChecklistItems(line).length === 0) return { error: 'invalid_checklist_line' };
+
+  const { pinStateDirOrExit } = await import('./lib/cc-compat');
+  const { acquireLockWithWait, releaseLock } = await import('./lib/lockfile');
+  const { writeFileAtomic } = await import('./lib/md-write');
+  const { default: fs } = await import('node:fs');
+  const { default: path } = await import('node:path');
+  const dir = pinStateDirOrExit(args[0]);
+  const file = path.join(dir, 'HEARTBEAT.md');
+  const lock = path.join(dir, 'state', 'heartbeat-items.lock');
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  if (!acquireLockWithWait(lock, 2000)) return { error: 'lock_unavailable' };
+  try {
+    const content = fs.readFileSync(file, 'utf8');
+    const lines: string[] = content.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+    const index = lines.findIndex(candidate => parseChecklistItems(candidate).length > 0 && normalizeItemKey(candidate) === key);
+    if (verb === 'remove-item') {
+      if (index === -1) return { status: 'none', reason: 'not_found' };
+      lines.splice(index, 1);
+    } else {
+      if (index !== -1) return { status: 'none', reason: 'exists', key };
+      const newline = content.includes('\r\n') ? '\r\n' : '\n';
+      lines.push((content && !content.endsWith('\n') ? newline : '') + line + newline);
+    }
+    writeFileAtomic(file, lines.join(''), fs.statSync(file).mode & 0o777);
+    const audit = Bun.spawnSync([process.execPath, path.join(import.meta.dir, 'settings-edit.ts'), path.join(dir, 'config.json'), 'record-file', 'HEARTBEAT.md']);
+    const result = verb === 'add-item' ? { status: 'added', key } : { status: 'removed' };
+    // The checklist is already written; a missed audit row must not read as a failed write.
+    return audit.exitCode === 0 ? result : { ...result, warnings: ['record_file_failed'] };
+  } catch {
+    return { error: 'checklist_update_failed' };
+  } finally {
+    releaseLock(lock);
+  }
 }

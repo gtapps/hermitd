@@ -56,12 +56,14 @@ export function verbCreate(stateDir: string, stdin: string): Verdict {
   if (parseStringArray(grabHeader(header, 'Related-Sessions')) === null) return { error: 'invalid_related_sessions' };
   if (!fs.existsSync(stateDir)) return { error: 'state_dir_not_found' };
   const selfEvalKey = grabHeader(header, 'Self-Eval-Key');
+  const resume = grabHeader(header, 'Resume');
+  const dedupeKey = grabHeader(header, 'Dedupe-Key');
   let receipt: { id: string; handle: string; created: boolean };
   try {
     receipt = mutateTask(stateDir, 'open', undefined, {
       requester: 'agent', title, done: title, kind: 'proposal',
-      'waiting-on': 'admin', decision: JSON.stringify({ purpose: 'consent', authority: 'admin', generation: 1 }),
-      'dedupe-key': selfEvalKey ? `self-eval:${selfEvalKey}` : `proposal:${slugify(title)}`,
+      'waiting-on': 'admin', decision: JSON.stringify({ purpose: 'consent', authority: 'admin', generation: 1, ...(resume ? { resume } : {}) }),
+      'dedupe-key': selfEvalKey ? `self-eval:${selfEvalKey}` : dedupeKey || `proposal:${slugify(title)}`,
       source, category, tags: JSON.stringify(tags), 'body-stdin': true,
     }, body) as typeof receipt;
   } catch (error: any) { return { error: error.message }; }
