@@ -17,11 +17,8 @@
 
 1. If a non-empty `.hermit/resident-prompt.md` still has the rule ``A peer message whose entire body is `CLOUD_REPORT_STORED <T>` or `CLOUD_REPORT_FAILED <T> <reason>` ``, replace that rule with the shipped one from `prompts/resident.md`. Preserve other lines and tell the operator what changed.
 2. If a non-empty `.hermit/helper-prompt.md` has a `helper:local` report rule that does not mention the operator asking in this session for more work on that task, replace only that rule with the shipped one from `prompts/helper.md`. Preserve other lines and any root and resident-name substitutions the operator uses. Tell the operator what changed.
-3. **Operator action required:** restart the agent so the resident prompt loads.
-
-### Upgrade Instructions
-
-1. Read installed routines with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get routines`. If an entry has id `hermitd:make-me-proactive`, preserve it, including its schedule and enabled state. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json append routines '{"id":"hermitd:make-me-proactive","schedule":"0 10 15 * *","skill":"hermitd:make-me-proactive","enabled":true}'`. Tell the operator the routine checks for offers on the 15th of each month at 10:00 in the configured timezone. To disable it, find the entry's current index by id and run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set routines.<index>.enabled false` with that index.
+3. Read installed routines with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json get routines`. If an entry has id `hermitd:make-me-proactive`, preserve it, including its schedule and enabled state. Otherwise run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json append routines '{"id":"hermitd:make-me-proactive","schedule":"0 10 15 * *","skill":"hermitd:make-me-proactive","enabled":true}'`. Tell the operator the routine checks for offers on the 15th of each month at 10:00 in the configured timezone. To disable it, find the entry's current index by id and run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/settings-edit.ts .hermit/config.json set routines.<index>.enabled false` with that index.
+4. **Operator action required:** restart the agent so the resident prompt loads.
 
 ## [1.4.41] - 2026-11-23
 

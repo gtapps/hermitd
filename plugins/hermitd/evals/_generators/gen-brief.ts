@@ -167,6 +167,7 @@ const helperResult = 'Storefront photos done: two draft pull requests open, not 
 const steeredRecord = helperRecord
   .replace('owner: resident', 'owner: helper:photos')
   .replaceAll('2026-10-20T09:00:00.000Z', `${TODAY}T00:05:00.000Z`)
+  .replace('result_at: 2026-10-21T10:00:00.000Z', `result_at: ${TODAY}T00:30:00.000Z`)
   .replace(/result: "[^\n]*"/, `result: ${JSON.stringify(helperResult)}`)
   .replace(/## Lessons\n[\s\S]*?\n\n## Decisions/, '## Lessons\n\n## Decisions');
 runCase('run-truncated-verdict', ['brief-run'], 'A truncated helper result keeps its first line, over an earlier conversation that predates it.', EVENING,

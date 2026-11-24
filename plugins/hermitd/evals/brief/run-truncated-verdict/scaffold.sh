@@ -31,7 +31,7 @@ card_message_id: null
 waiting_on: null
 waiting_since: null
 result: "Storefront photos done: two draft pull requests open, not merged or deployed\n\nEach photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. Each photo was resized, compressed and checked on a phone screen. "
-result_at: 2026-10-21T10:00:00.000Z
+result_at: __TODAY__T00:30:00.000Z
 stall_at: null
 stall_status: null
 stall_next: null
