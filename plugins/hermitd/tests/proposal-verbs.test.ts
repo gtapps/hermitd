@@ -30,6 +30,28 @@ describe('task-backed proposal creation', () => {
     expect(rows[0]).toMatchObject({ type: 'created', proposal_id: receipt.id, source: record.source, category: record.category, tags: ['architecture'] });
     expect(fs.existsSync(path.join(base, 'proposals'))).toBe(false);
   }));
+  test('custom resume and dedupe key survive open and cancelled replays', withDir(async dir => {
+    const base = seed(dir);
+    const resume = '/hermitd:make-me-proactive apply';
+    const headers = `Resume: ${resume}\nDedupe-Key: proactive:supplier-price\n`;
+    const receipt = verbCreate(base, headers + input('Supplier price'));
+    const record = decodeTask(fs.readFileSync(path.join(base, 'tasks', receipt.id + '.md'), 'utf8'));
+    expect(record.dedupe_key).toBe('proactive:supplier-price');
+    expect(JSON.parse(record.decision!)).toEqual({ purpose: 'consent', authority: 'admin', generation: 1, resume });
+    const replay = () => verbCreate(base, headers + input('Renamed supplier price'));
+    expect(replay()).toEqual({ ...receipt, created: false });
+    mutateTask(base, 'answer', receipt.id, { local: true, reply: 'no' }, '');
+    expect(decodeTask(fs.readFileSync(path.join(base, 'tasks', receipt.id + '.md'), 'utf8')).closed_by).toBe('cancelled');
+    expect(replay()).toEqual({ ...receipt, created: false });
+  }));
+
+  test('Self-Eval-Key takes precedence over Dedupe-Key', withDir(async dir => {
+    const base = seed(dir);
+    const receipt = verbCreate(base, 'Self-Eval-Key: sample\nDedupe-Key: proactive:supplier-price\n' + input());
+    const record = decodeTask(fs.readFileSync(path.join(base, 'tasks', receipt.id + '.md'), 'utf8'));
+    expect(record.dedupe_key).toBe('self-eval:sample');
+  }));
+
   test.each([
     ['Title: x\nbody', 'missing_separator'],
     ['Title: x\n---\n ', 'empty_body'],

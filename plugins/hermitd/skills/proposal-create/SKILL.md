@@ -34,7 +34,7 @@ Without a caller `Triage-Verdict:`, call `hermitd:proposal-triage` before creati
 ```
 Anchor: root=<absolute hermit root> memory_dir=<absolute auto-memory dir>
 Title: <proposal title>
-Evidence Source: <archived-session | current-session | scheduled-check/<id> | operator-request | capability-brainstorm>
+Evidence Source: <archived-session | current-session | scheduled-check/<id> | operator-request | capability-brainstorm | make-me-proactive>
 Evidence Origin: <own-work | external-content>
 Evidence: <one-paragraph evidence summary>
 ```
@@ -104,6 +104,8 @@ Header fields:
 - `Title:` — required.
 - `Source:` — `manual` (default), `auto-detected` (when invoked by `reflect`), or `operator-request` (when triggered by a direct operator request). Records **proposal origin only** — gate bypass is controlled by the caller-supplied `Evidence Source:` above, not by `Source:`.
 - `Self-Eval-Key:`: optional; preserve the exact `self_eval_key` supplied by heartbeat so later decisions remain linked to that checklist item. Omit for other proposals.
+- `Dedupe-Key:` is an optional stable key for matching open and cancelled proposals. `Self-Eval-Key:` takes precedence.
+- `Resume:` is an optional owning procedure to continue with the recorded consent verdict.
 - `Session:` — optional; defaults to the active session from `state/runtime.json` when omitted.
 - `Category:` — optional (default `improvement`); one of:
   - `improvement` — workflow or tooling fix

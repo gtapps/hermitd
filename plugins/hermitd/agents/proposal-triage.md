@@ -24,7 +24,7 @@ The caller passes an `Anchor:` line, then one or more candidate blocks, separate
 ```
 Anchor: root=<absolute hermit root> memory_dir=<absolute auto-memory dir>
 Title: <title>
-Evidence Source: archived-session | current-session | scheduled-check/<id> | operator-request | capability-brainstorm | settled-memory
+Evidence Source: archived-session | current-session | scheduled-check/<id> | operator-request | capability-brainstorm | settled-memory | make-me-proactive
 Evidence Origin: own-work | external-content
 Evidence: <one-paragraph evidence summary>
 Artifact: <machine-written state file> — <cited value/pattern>   (optional)
@@ -65,6 +65,8 @@ Read `<memory_dir>/MEMORY.md` (the operator-facing index of `- [title](file) —
 
 **Ledger exemption:** a candidate whose `Artifact:` cites `state/observations.jsonl` is never suppressed `covered-by-memory`. The ledger is the recurrence store these candidates graduate from, not operator memory: recording there is how graduation works, not evidence the pattern is already handled. Candidates citing `cost-log.jsonl` or `proposal-metrics.jsonl` get the normal check.
 
+**Make-me-proactive exemption:** for `Evidence Source: make-me-proactive`, memory that records the operator's pattern is evidence for the offer. Continue to Step 2 unless the memory records a decision against the offered job or a postponement of that job. Only those recorded decisions trigger `covered-by-memory` for this source.
+
 **Consolidation exception:** a candidate proposing to *relocate* operator-endpoint content — a settled procedure, format, or quality bar moving from memory or duplicated prose into the skill that owns the task — is not covered by the memory that records it: the memory records the decision; the candidate targets where the operative content lives. Do not suppress it as `covered-by-memory`; continue to Step 2. A candidate whose evidence cites no explicit operator endpoint, or that removes no duplicate or misplaced copy, does not receive this exception — apply the normal Step 1.5 test.
 
 ## Step 2 — OPERATOR.md alignment (lexical check)
@@ -81,6 +83,7 @@ Only if no duplicate found and no `covered-by-memory` suppression, check applica
 
 1. **Repeated pattern** — required only when `Evidence Source` is `archived-session` (or absent) and the candidate cites no machine-written `Artifact:`; then a single incident does not qualify. Every other source, and any artifact-cited candidate, had recurrence established upstream (the check's own interval analysis, the operator's request, the brainstorm pass, or `reflection-judge`'s verification of the cited sessions, ledger, or file). Do not re-check it here.
 2. **Meaningful consequence** — does something actually go wrong without fixing this? (Mild inconvenience does not qualify.) Always required.
+   For `Evidence Source: make-me-proactive`, this condition holds when the cited evidence shows what the operator relies on the offered job for, such as what they would miss or have to do by hand without it.
 3. **Operator-actionable change** — is there something the operator can concretely approve and implement? (Vague improvements do not qualify.) Always required.
 
 ## Output

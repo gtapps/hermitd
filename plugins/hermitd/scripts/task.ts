@@ -27,7 +27,7 @@ async function main(): Promise<void> {
     block: ['decision', 'waiting-on', 'result-stdin', 'status-line', 'next'],
     close: ['local', 'chat', 'user', 'by', 'actor', 'result-rev', 'reason-stdin', 'claim'], cancel: ['chat', 'user', 'actor', 'reason-stdin'], dismiss: ['reason-stdin'],
     'helper-eligible': ['conversation', 'folder'],
-    list: ['open', 'all', 'conversation', 'requester', 'handle', 'id', 'dedupe-key', 'json', 'owner', 'with-check', 'with-decisions', 'limit'], standup: ['json', 'days'],
+    list: ['open', 'all', 'conversation', 'requester', 'handle', 'id', 'dedupe-key', 'dedupe-prefix', 'json', 'owner', 'with-check', 'with-decisions', 'limit'], standup: ['json', 'days'],
   };
   if (!allowed[verb]) throw new Error('invalid_verb');
   const requiresId = ['note', 'block', 'close', 'cancel', 'dismiss', 'lesson', 'check-snapshot'].includes(verb);

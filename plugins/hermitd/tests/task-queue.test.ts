@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test';
 import { taskFixture, taskLib } from './helpers/tasks';
+import { verbCreate } from '../scripts/proposal';
 
 test('only runnable resident records queue and close/cancel hands off the next one', async () => {
   const f = taskFixture();
@@ -46,6 +47,37 @@ test('a cancelled proposal latches its dedupe key but a completed proposal allow
     expect(await f.ok('answer', [second.id, '--chat', 'discord:home', '--user', 'admin', '--reply', 'yes'])).toMatchObject({ status: 'match' });
     await f.ok('close', [second.id, '--by', 'confirmed', '--chat', 'discord:home', '--user', 'admin', '--reason-stdin'], 'Completed');
     expect(await f.open(['--kind', 'proposal', '--dedupe-key', 'proposal:completed'])).toMatchObject({ created: true });
+  } finally { f.cleanup(); }
+});
+
+test('dedupe prefix filters open, cancelled and confirmed rows and preserves their keys', async () => {
+  const f = taskFixture();
+  try {
+    const open = verbCreate(f.dir, 'Title: Price\nDedupe-Key: proactive:price\n---\nWatch the price.');
+    const cancelled = verbCreate(f.dir, 'Title: Stock\nDedupe-Key: proactive:stock\n---\nCheck stock.');
+    const confirmed = verbCreate(f.dir, 'Title: Renewal\nDedupe-Key: proactive:renewal\n---\nTrack renewals.');
+    const other = verbCreate(f.dir, 'Title: Other proposal\n---\nOther work.');
+    const unkeyed = await f.open();
+    await f.ok('answer', [cancelled.id, '--local', '--reply', 'no']);
+    await f.ok('answer', [confirmed.id, '--local', '--reply', 'yes']);
+    await f.ok('close', [confirmed.id, '--by', 'confirmed', '--local', '--reason-stdin'], 'Completed');
+
+    const filtered = await f.ok('list', ['--all', '--dedupe-prefix', 'proactive:', '--json']);
+    expect(filtered.total).toBe(3);
+    expect(filtered.rows).toHaveLength(3);
+    const expected = [
+      { id: open.id, dedupe_key: 'proactive:price', closed_by: null },
+      { id: cancelled.id, dedupe_key: 'proactive:stock', closed_by: 'cancelled' },
+      { id: confirmed.id, dedupe_key: 'proactive:renewal', closed_by: 'confirmed' },
+    ];
+    expect(filtered.rows).toEqual(expect.arrayContaining(expected.map(row => expect.objectContaining(row))));
+    const all = await f.ok('list', ['--all', '--json']);
+    expect(all.rows).toHaveLength(5);
+    expect(all.rows).toEqual(expect.arrayContaining([
+      ...filtered.rows,
+      expect.objectContaining({ id: other.id, dedupe_key: 'proposal:other-proposal' }),
+      expect.objectContaining({ id: unkeyed.id, dedupe_key: null }),
+    ]));
   } finally { f.cleanup(); }
 });
 
