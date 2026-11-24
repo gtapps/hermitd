@@ -80,7 +80,7 @@ execution:
     <system-reminder>
     Hermit state for this turn: each line below is what that hermit script returns right now. Use it as the script result instead of rerunning it. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.
     - config.json: operator_profile unset; language unset; channels.discord.allowed_users=["100000000000000001","100000000000000002"] (first entry is the primary operator); monitors=[]
-    - .hermit/bin/hermitd-run task receipt .hermit T-20261021-090200: {"status":"watched","followup":"Also update the checkout tests.","row":{"id":"T-20261021-090200","handle":"fix-checkout-button","title":"Fix the checkout button","status":"open","owner":"helper:checkout-fix","delegated":true,"result_rev":2,"report_id":"q3n8v5c2z0","report_kind":"result","delivery":"no_channel","report_verdict":"Auto mode denied writing the checkout test file; nothing changed","report_decisions":[],"conversation":null,"card_chat_id":null,"card_message_id":null,"waiting_on":null}}
+    - task.ts receipt .hermit T-20261021-090200: {"status":"watched","followup":"Also update the checkout tests.","row":{"id":"T-20261021-090200","handle":"fix-checkout-button","title":"Fix the checkout button","status":"open","owner":"helper:checkout-fix","delegated":true,"result_rev":2,"report_id":"q3n8v5c2z0","report_kind":"result","delivery":"no_channel","report_verdict":"Auto mode denied writing the checkout test file; nothing changed","report_decisions":[],"conversation":null,"card_chat_id":null,"card_message_id":null,"waiting_on":null}}
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:
@@ -92,6 +92,6 @@ execution:
 graders:
   - {"name":"body-unread","type":"tool_used","tool":"Read","input_match":"helper-reports","min":0,"max":0,"weight":3}
   - {"name":"body-not-printed","type":"tool_used","tool":"Bash","input_match":"helper-reports","min":0,"max":0,"weight":2}
-  - {"name":"not-claimed","type":"tool_used","tool":"Bash","input_match":"task receipt[^\\n]*--report","min":0,"max":0,"weight":3}
+  - {"name":"not-claimed","type":"tool_used","tool":"Bash","input_match":"task(?:\\.ts)? receipt[^\\n]*--report","min":0,"max":0,"weight":3}
   - {"name":"no-resume","type":"tool_used","tool":"Bash","input_match":"--resume","min":0,"max":0,"weight":2}
   - {"name":"no-verdict","type":"regex","target":"last_message","pattern":"denied","flags":"i","match":"not_contains","weight":2}

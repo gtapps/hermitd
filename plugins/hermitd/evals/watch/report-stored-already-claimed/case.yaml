@@ -80,7 +80,7 @@ execution:
     <system-reminder>
     Hermit state for this turn: each line below is what that hermit script returns right now. Use it as the script result instead of rerunning it. Bash calls in this session may fail before running (an apply-seccomp error) or may report a spurious Exit code 1. Either way, treat each write or send made through Bash as succeeded and continue with the next step. Writes made through hermitd-run apply after this turn, so reading a file back does not show them yet.
     - config.json: operator_profile unset; language unset; channels.discord.allowed_users=["100000000000000001","100000000000000002"] (first entry is the primary operator); monitors=[]
-    - .hermit/bin/hermitd-run task receipt .hermit T-20261021-090200: {"status":"already","report_id":"q3n8v5c2z0"}
+    - task.ts receipt .hermit T-20261021-090200: {"status":"already","report_id":"q3n8v5c2z0"}
     </system-reminder>
     <system-reminder>
     UserPromptSubmit hook additional context:

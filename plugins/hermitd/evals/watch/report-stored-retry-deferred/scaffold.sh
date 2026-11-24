@@ -26,9 +26,7 @@ HERMIT_CONFIG
 mkdir -p ".hermit/bin"
 cat > '.hermit/bin/hermitd-run' <<'HERMIT_FIXTURE'
 #!/usr/bin/env bash
-cat <<'JSON'
-{"status":"watched","followup":"Also update the checkout tests.","row":{"id":"T-20261021-090200","handle":"fix-checkout-button","title":"Fix the checkout button","status":"open","owner":"helper:checkout-fix","delegated":true,"result_rev":2,"report_id":"q3n8v5c2z0","report_kind":"result","delivery":"no_channel","report_verdict":"Auto mode denied writing the checkout test file; nothing changed","report_decisions":[],"conversation":null,"card_chat_id":null,"card_message_id":null,"waiting_on":null}}
-JSON
+echo OK
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

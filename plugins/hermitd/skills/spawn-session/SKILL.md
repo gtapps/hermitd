@@ -94,6 +94,7 @@ alternate invocation, or weaker permission mode. The exceptions are
 - `trust-workspace`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/trust-workspace.ts`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
 - `task-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit`
+- `task-receipt`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts receipt .hermit`
 
 ## Plan
 

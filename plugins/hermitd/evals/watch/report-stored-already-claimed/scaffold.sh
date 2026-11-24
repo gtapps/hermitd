@@ -26,9 +26,7 @@ HERMIT_CONFIG
 mkdir -p ".hermit/bin"
 cat > '.hermit/bin/hermitd-run' <<'HERMIT_FIXTURE'
 #!/usr/bin/env bash
-cat <<'JSON'
-{"status":"already","report_id":"q3n8v5c2z0"}
-JSON
+echo OK
 HERMIT_FIXTURE
 mkdir -p "memory"
 cat > 'memory/MEMORY.md' <<'HERMIT_FIXTURE'

@@ -17,6 +17,7 @@ Classes:
 - `task-open`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts open .hermit`
 - `task-block`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts block .hermit`
 - `task-list`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts list .hermit`
+- `task-receipt`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts receipt .hermit`
 - `task-note`: `bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit`
 
 ## Usage

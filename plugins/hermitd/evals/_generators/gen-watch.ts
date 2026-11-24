@@ -126,9 +126,9 @@ const noBodyCat: Grader = { name: 'body-not-printed', type: 'tool_used', tool: '
 
 watchCase('cloud-report-stored', 'train', 'A stored cloud helper report reaches the report receipt path without its body being read.',
   'Bash task receipt for the task id; no read of .hermit/helper-reports/',
-  withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`CLOUD_REPORT_STORED ${CLOUD_TASK}`), [])),
-  [{ name: 'looked-up-task', type: 'tool_used', tool: 'Bash', input_match: String.raw`task receipt[^\n]*${CLOUD_TASK}`, weight: 3 }, noReportRead, noBodyCat],
-  null, `#!/usr/bin/env bash\ncat <<'JSON'\n${cloudRow}\nJSON\n`);
+  withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`CLOUD_REPORT_STORED ${CLOUD_TASK}`), [`- task.ts receipt .hermit ${CLOUD_TASK}: ${cloudRow}`])),
+  [{ name: 'looked-up-task', type: 'tool_used', tool: 'Bash', input_match: String.raw`task(?:\.ts)? receipt[^\n]*${CLOUD_TASK}`, weight: 3 }, noReportRead, noBodyCat],
+  null);
 
 watchCase('cloud-report-failed', 'heldout', 'A failed cloud report store is reported once and nothing is stored or read.',
   'No task report, no read of .hermit/helper-reports/',
@@ -145,21 +145,20 @@ const localFields = { id: LOCAL_TASK, handle: 'fix-checkout-button', title: 'Fix
   report_verdict: 'Checkout fix done: two draft pull requests open, not merged', report_decisions: [], conversation: null,
   card_chat_id: null, card_message_id: null, waiting_on: null };
 const localRow = JSON.stringify({ status: 'claimed', row: localFields });
-const localState = (claim: string) => [`- .hermit/bin/hermitd-run task receipt .hermit ${LOCAL_TASK}: ${claim}`];
-const stub = (claim: string) => `#!/usr/bin/env bash\ncat <<'JSON'\n${claim}\nJSON\n`;
+const localState = (claim: string) => [`- task.ts receipt .hermit ${LOCAL_TASK}: ${claim}`];
 watchCase('report-stored-local', 'train', 'A local helper report stored outside any watch reaches the receipt path and its verdict reaches the operator.',
   'A short report-back naming the open pull requests; no read of .hermit/helper-reports/',
   withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`REPORT_STORED ${LOCAL_TASK}`),
     localState(localRow))),
   [noReportRead, noBodyCat, { name: 'verdict-reported', type: 'regex', target: 'last_message', pattern: String.raw`pull request|\bPRs?\b`, flags: 'i', weight: 3 }],
-  null, stub(localRow));
+  null);
 
 const alreadyClaimed = JSON.stringify({ status: 'already', report_id: localFields.report_id });
 watchCase('report-stored-already-claimed', 'heldout', 'A report another notice already announced gets no second report-back.',
   'No report-back and no read of .hermit/helper-reports/',
   withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`REPORT_STORED ${LOCAL_TASK}`), localState(alreadyClaimed))),
   [noReportRead, noBodyCat, { name: 'no-verdict', type: 'regex', target: 'last_message', pattern: String.raw`pull request|\bPRs?\b`, flags: 'i', match: 'not_contains', weight: 3 }],
-  null, stub(alreadyClaimed));
+  null);
 
 const deferred = JSON.stringify({ status: 'watched', followup: 'Also update the checkout tests.',
   row: { ...localFields, report_verdict: 'Auto mode denied writing the checkout test file; nothing changed' } });
@@ -167,9 +166,9 @@ watchCase('report-stored-retry-deferred', 'heldout', 'A report that qualifies fo
   'No claim with --report, no resume, no report-back',
   withInstall({ '.hermit/config.json': configJson(CONFIG) }, ({ run }) => prompt(run, cloudNotice(`REPORT_STORED ${LOCAL_TASK}`), localState(deferred))),
   [noReportRead, noBodyCat,
-    { name: 'not-claimed', type: 'tool_used', tool: 'Bash', input_match: String.raw`task receipt[^\n]*--report`, min: 0, max: 0, weight: 3 },
+    { name: 'not-claimed', type: 'tool_used', tool: 'Bash', input_match: String.raw`task(?:\.ts)? receipt[^\n]*--report`, min: 0, max: 0, weight: 3 },
     { name: 'no-resume', type: 'tool_used', tool: 'Bash', input_match: String.raw`--resume`, min: 0, max: 0, weight: 2 },
     { name: 'no-verdict', type: 'regex', target: 'last_message', pattern: String.raw`denied`, flags: 'i', match: 'not_contains', weight: 2 }],
-  null, stub(deferred));
+  null);
 
 report('watch');

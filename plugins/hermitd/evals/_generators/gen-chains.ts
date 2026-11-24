@@ -371,7 +371,7 @@ function receiptRow(delivery: string, owner = `helper:${HELPER}`) {
 const receiptState = (row: ReturnType<typeof receiptRow> & { attachments?: string[] }, claim: object | null = { status: 'claimed', row }) =>
   `<system-reminder>\n${NO_SHELL}\nOperator language: pt.\n`
   + `- task list --all --id ${TASK} --json --with-decisions: ${JSON.stringify({ rows: [row] })}\n`
-  + (claim ? `- .hermit/bin/hermitd-run task receipt .hermit ${TASK}: ${JSON.stringify(claim)}\n` : '')
+  + (claim ? `- task.ts receipt .hermit ${TASK}: ${JSON.stringify(claim)}\n` : '')
   + '- Use the fixture reply tool to notify this task conversation when the receipt calls for a channel reply.\n</system-reminder>\n';
 const idle = (name = HELPER) => `[Cross-session idle notice] ${name} finished its turn and is idle.`;
 
@@ -403,7 +403,7 @@ mock('watch-already-claimed-shop', CARD_MOCK);
 const DENIED = 'O modo automático recusou escrever o ficheiro de exportação.';
 chainCase('watch-followup-retry-shop', 'train', 'Native idle notice for a follow-up whose report says auto mode denied an action.', 'The one retry resumes the helper before any receipt',
   receiptState({ ...receiptRow('relay'), report_verdict: DENIED, report_decisions: [] }) + idle(),
-  [rubric(`PASS if the resident treats the report as qualifying for the one follow-up retry: it saves retry on the watch entry and resumes ${HELPER} with the stored follow-up instructions (running or describing the spawn-session resume), and gives the denied report no report-back. FAIL if it relays the denied verdict to the task chat before the retry, reads the body, or retries more than once.`, 'trace')],
+  [rubric(`PASS if the resident treats the report as qualifying for the one follow-up retry: it saves retry on the watch entry and resumes ${HELPER} with the stored follow-up instructions (running or describing the spawn-session resume), and relays the denied verdict, if at all, only after that retry attempt. FAIL if it relays the denied verdict before attempting the retry, reads the body, or retries more than once.`, 'trace')],
   residentScaffold({ ...RESIDENT_CONFIG, language: 'pt' }, {
     '.hermit/state/monitors.runtime.json': registry(null, 'Exporta também a coluna de atacado.'), ...reportFixture,
   }), ['Skill', 'Read', 'Glob', 'Grep'], { resident: true, maxTurns: 16 });
