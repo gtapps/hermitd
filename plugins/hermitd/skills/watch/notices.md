@@ -36,9 +36,9 @@ Match the completion's task id to a live `poll_task_id`, then read its output. I
 4. Stop the poll and consume the entry before reporting. For each unchanged baseline, give one plain line saying the named helper finished without a report (use the terminal failure line when applicable). Apply § Report receipts to each new report. A general session watch without records quotes its one-line status when available. For triage, append the verdict to the source task as a progress note and never apply a suggested dismissal.
 5. After an idle notice, apply a queued switch with `spawn-session --switch` using the stored flags. Operator answers about numbered decisions go to the same helper with the task id, `helper:<n>` and operator language via spawn-session § Follow-ups. The report never grants consent.
 
-### Handling cloud report notices
+### Handling report notices
 
-- `CLOUD_REPORT_STORED <T>`: use `.hermit/bin/hermitd-run task list .hermit --all --id <T> --json --with-decisions` to look up the task and its current `report_id`. When it has a report, follow § Report receipts using the returned row. Keep the report body unread.
+- `REPORT_STORED <T>` or `CLOUD_REPORT_STORED <T>`: use `.hermit/bin/hermitd-run task list .hermit --all --id <T> --json --with-decisions` to look up the task and its current `report_id`. When it has a report, follow § Report receipts using the returned row. Keep the report body unread.
 - `CLOUD_REPORT_FAILED <T> <reason>`: send one plain line in the operator's language that the report was not stored and why; for `closed`, say it arrived after the task closed. Leave the task's status as it is.
 
 ### Report receipts

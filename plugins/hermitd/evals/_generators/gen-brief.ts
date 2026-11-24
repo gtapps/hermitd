@@ -161,4 +161,16 @@ runCase('run-stale-context', ['brief-run'], 'Earlier conversation says closed wo
   {}, history([['Where do things stand?', `Waiting on you: ${STALE}, I need your decision on the gift box count before I can finish it.`],
     ['I will get back to you on the gift box stock.', `Understood. ${STALE} stays waiting on your reply.`]]));
 
+// A helper's long result opened today: the digest truncates it, and the earlier conversation predates the helper's second report.
+const [helperPath, helperRecord] = record(10, 'unconfirmed');
+const helperResult = 'Storefront photos done: two draft pull requests open, not merged or deployed\n\n' + 'Each photo was resized, compressed and checked on a phone screen. '.repeat(12);
+const steeredRecord = helperRecord
+  .replace('owner: resident', 'owner: helper:photos')
+  .replaceAll('2026-10-20T09:00:00.000Z', `${TODAY}T00:05:00.000Z`)
+  .replace(/result: "[^\n]*"/, `result: ${JSON.stringify(helperResult)}`)
+  .replace(/## Lessons\n[\s\S]*?\n\n## Decisions/, '## Lessons\n\n## Decisions');
+runCase('run-truncated-verdict', ['brief-run'], 'A truncated helper result keeps its first line, over an earlier conversation that predates it.', EVENING,
+  [present('verdict-kept', 'pull request|\\bPRs?\\b'), absent('no-stale-plan', '(?:^|\\n)(?![^\\n]*\\b(?:said|told|earlier|correct)\\w*\\b)[^\\n]*(?:only investigated|nothing (?:was |has been )?(?:opened|implemented)|no pull requests)'), present('unconfirmed-photos', 'storefront photos')],
+  { [helperPath]: steeredRecord }, history([['What is happening with the storefront photos?', 'A helper only investigated the storefront photos so far: the fix plan is in its thread and nothing has been opened yet.']]));
+
 report('brief');

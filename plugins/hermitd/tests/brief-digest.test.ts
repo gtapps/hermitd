@@ -107,7 +107,7 @@ test('clips safely, excludes long evidence and counts truncated-result lessons',
     save(f.dir, row);
     const digest = await briefDigest(f.dir, 'daily', reference, { agent: true });
     if (!('records' in digest)) throw new Error('Expected daily records');
-    expect(digest.records![0]).toMatchObject({ title: 'x'.repeat(199), result_truncated: true, lessons: [] });
+    expect(digest.records![0]).toMatchObject({ title: 'x'.repeat(199), result_truncated: true, result_verdict: 'r'.repeat(200), lessons: [] });
     expect(digest.records![0].result).toHaveLength(4000);
     expect(digest.omitted).toMatchObject({ clipped: 6, lessons: 2, decisions: 1 });
   } finally { f.cleanup(); }

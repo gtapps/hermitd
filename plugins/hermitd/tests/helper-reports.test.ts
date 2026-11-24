@@ -1,9 +1,13 @@
 import { expect, test } from 'bun:test';
 import fs from 'node:fs';
+import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
+import { once } from 'node:events';
 import { storeHelperReport, submitHelperReport } from '../scripts/lib/helper-reports';
 import { decodeTask, encodeTask, mutateTask, settleReportDelivery } from '../scripts/lib/tasks';
 import { taskFixture } from './helpers/tasks';
+import { postToSession } from '../scripts/lib/peer-post';
 import { PLUGIN_ROOT, runScript } from './helpers/run';
 
 const author = 'helper:review';
@@ -16,6 +20,7 @@ test('report passes repeatable file flags as an array in argv order', async () =
     const code = `
       import { mock } from 'bun:test';
       mock.module(${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/lib/helper-reports.ts'))}, () => ({
+        noticeUnwatchedReport: async () => {},
         reportAttachments: () => ({}),
         reportSummary: () => ({}),
         submitHelperReport: (_dir, _id, flags) => flags.file,
@@ -414,4 +419,54 @@ test('a report killed during delivery leaves a pending receipt without resending
       expect(files(f.dir)).toContain(record.report_id + '.md');
     } finally { proc.kill(); }
   } finally { server.stop(true); f.cleanup(); }
+});
+
+test('a stored helper result or question reaches the resident only when no live watch lists the record', async () => {
+  const f = taskFixture();
+  const sockets = fs.mkdtempSync(path.join(os.tmpdir(), 'rs-'));
+  const socket = path.join(sockets, 'in');
+  const messages: string[] = [];
+  let flushed = () => {};
+  const server = net.createServer(connection => {
+    let frame = '';
+    connection.setEncoding('utf8');
+    connection.on('data', chunk => { frame += chunk; });
+    connection.on('end', () => {
+      const text = JSON.parse(frame).message.content;
+      if (text === 'FLUSH') flushed(); else messages.push(text);
+    });
+  });
+  await once(server.listen(socket), 'listening');
+  // Reports post before their process exits, so a later marker arrives after them.
+  const settle = async () => {
+    const done = new Promise<void>(resolve => { flushed = resolve; });
+    await postToSession(socket, 'FLUSH');
+    await done;
+  };
+  try {
+    f.put('state/runtime.json', { inbox_socket: socket });
+    const watched = await f.open(['--owner', author, '--title', 'Watched work']);
+    const unwatched = await f.open(['--owner', 'helper:steer', '--title', 'Steered work']);
+    const steer = (id: string, kind = 'result') => [id, '--as', 'helper:steer', '--kind', kind];
+    f.put('state/monitors.runtime.json', { monitors: [{ id: 'session-review', class: 'peer-idle', target: 'review', records: [{ record: watched.id, prior_report: null }] }] });
+
+    await f.ok('report', args(watched.id, 'needs-input'), 'Which branch?');
+    await f.ok('report', steer(unwatched.id, 'note'), 'Progress.');
+    await settle();
+    expect(messages).toEqual([]);
+
+    await f.ok('report', steer(unwatched.id, 'needs-input'), 'Which branch?');
+    await f.ok('report', steer(unwatched.id), '1. Merge both PRs?');
+    await settle();
+    expect(messages).toEqual([`REPORT_STORED ${unwatched.id}`, `REPORT_STORED ${unwatched.id}`]);
+
+    const worker = await f.open(['--owner', 'worker:a123456789']);
+    await f.ok('report', [worker.id, '--as', 'worker', '--kind', 'result'], 'Worker result');
+    await settle();
+    expect(messages).toHaveLength(2);
+  } finally {
+    server.close();
+    fs.rmSync(sockets, { recursive: true, force: true });
+    f.cleanup();
+  }
 });
