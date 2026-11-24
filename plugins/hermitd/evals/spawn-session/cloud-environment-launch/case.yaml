@@ -7,7 +7,7 @@ context:
 execution:
   max_turns: 16
   timeout_seconds: 300
-  allowed_tools: [Skill, Read, Glob, Grep, Bash, Write]
+  allowed_tools: [Skill, Read, Glob, Grep, Bash, Write, ListAgents]
   env: {EVAL_HERMIT_RESIDENT: "1"}
   prompt: |
     The operator asked: run a helper on my laptop to check why the nightly
@@ -35,3 +35,7 @@ graders:
     min: 0
     max: 0
     weight: 2
+  - name: checked-placement
+    type: tool_used
+    tool: ListAgents
+    weight: 1

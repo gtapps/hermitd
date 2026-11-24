@@ -103,16 +103,18 @@ status — the server's TUI redraws continuously and floods any follower.
 
 ## Use it as a helper environment
 
-On the machine that will run the helper, open a trusted project folder with a
+A folder the Claude app already serves needs no setup. Otherwise, on the
+machine that will run the helper, open a trusted project folder with a
 committed checkout and start the Remote Control spawn server:
 
 ```bash
 claude remote-control --spawn worktree --permission-mode auto
 ```
 
-Copy the environment link and enroll it on the resident with
-`/hermitd:hermit-settings remote-environments <name> <link>`. The resident
-needs `remote: true` and a claude.ai login. Ask the resident to spawn a helper
+Run `/remote-env` and copy that folder's `env_` ID, then enroll it on the
+resident with `/hermitd:hermit-settings remote-environments <name> <env_id>`.
+The resident needs `remote: true` and a claude.ai login. Ask the resident to
+spawn a helper
 on that environment with `/hermitd:spawn-session <work> --environment <name>`.
 
 Work queues while the machine is offline. Anyone signed into the account can
