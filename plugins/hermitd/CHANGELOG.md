@@ -1,11 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.43] - 2026-11-24
 
 ### Fixed
 
 - A helper result or question under a session watch reaches the agent only once, with any follow-up retry before the report, including after compaction or `/clear`.
 - `skills get core` finds upstream's command guidance on tmux agents, whose managed browser install now keeps the agent-browser package layout.
+
 ### Changed
 
 - Helpers on another machine fetch `origin` and work from the current remote branch before starting a task in a git repository, and name that commit in their report.
@@ -17,6 +18,8 @@
 ### Upgrade Instructions
 
 1. **Tmux and interactive agents only:** when `browser.enabled` is not false, run `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-install.ts >/dev/null 2>&1 &` once in the background so the browser moves to the new pins. Do not wait for the download. Docker agents pick up the new browser and Bun on the image rebuild that the host `hermitd update` runs.
+
+No `config.json` changes required.
 
 ## [1.4.42] - 2026-11-24
 
