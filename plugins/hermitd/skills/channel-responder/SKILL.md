@@ -95,7 +95,7 @@ Before archive traversal, multi-file search or delegated execution, apply **Cont
 
 - **Slash command** (message starts with `/`, e.g. `/simplify`, `/plugin:command`)
   - Invoke the matching skill, slash command, or subagent via the appropriate tool. Pass any remaining text as arguments/prompt.
-  - A `Skill` refusal with `disable-model-invocation` makes it a **Typed-only command**. Trust the actual refusal, since flags change across releases. `/code-review` (alias `/review`) is invocable on the supported Claude Code version.
+  - A `Skill` refusal with `disable-model-invocation` makes it a **Typed-only command**. Trust the actual refusal, since flags change across releases.
   - If nothing matches, say so briefly.
 
 - **Status request** ("what are you working on?", "how's it going", "progress", or a bare "status" — the deterministic reply needs `!status`, so anything short of that reaches you; a question that names routines, watches, or rules is **Standing work** below)
