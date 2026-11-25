@@ -140,3 +140,24 @@ export function processRunning(cmd: string): boolean {
   if (ps.exitCode !== 0) throw new Error('ps failed');
   return ps.stdout.toString().split('\n').some(line => line.trim().replace(/^\d+\s+/, '') === cmd);
 }
+
+/** Subprocess runner for the bash scripts under test (check-upgrade.sh etc.). */
+export async function runBash(
+  scriptPath: string,
+  opts: { args?: string[]; cwd?: string; env?: Record<string, string> } = {},
+) {
+  const proc = Bun.spawn({
+    cmd: ['bash', scriptPath, ...(opts.args ?? [])],
+    cwd: opts.cwd,
+    env: { ...process.env, ...opts.env },
+    stdin: Buffer.from(''),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { exitCode, stdout, stderr };
+}

@@ -1,6 +1,9 @@
-import { test, expect } from 'bun:test';
+import { test, expect, describe } from 'bun:test';
 import { validate } from '../scripts/validate-config';
 import { TABLE, specAt, type Spec } from '../scripts/lib/config-read';
+import fs from 'node:fs';
+import path from 'node:path';
+import { PLUGIN_ROOT } from './helpers/run';
 
 test('standalone clear settings are validated and the retired flag is ignored', () => {
   const valid = { context_hygiene: { clear: { enabled: true, quiet: '1h', max_age: '24h', min_tokens: 20000 } }, tasks: { queue_nudge_minutes: 60 } };
@@ -133,4 +136,18 @@ test('timezone validation names unusable values and accepts null', () => {
   for (const timezone of [null, 'UTC', 'Europe/Lisbon', 'WET', 'EST']) {
     expect(validate({ timezone }).errors.filter(e => e.startsWith('timezone:'))).toEqual([]);
   }
+});
+
+describe('session-check config validation', () => {
+  test('rejects legacy cadence fields and preserves custom session fields', async () => {
+    const { validate } = await import('../scripts/validate-config');
+    const config = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates/config.json.template'), 'utf-8'));
+    const check = { id: 'custom-check', skill: 'custom:check', trigger: 'session', enabled: true, custom_key: 'preserved' };
+    const errorsFor = (entry: object) => validate({ ...config, scheduled_checks: [entry] }).errors.filter((e: string) => e.startsWith('scheduled_checks'));
+    expect(errorsFor(check)).toEqual([]);
+    for (const entry of [{ ...check, trigger: 'interval' }, { ...check, interval_days: 7 }, { ...check, interval_days: null }]) {
+      expect(errorsFor(entry)).toHaveLength(1);
+      expect(errorsFor(entry)[0]).toContain('routines');
+    }
+  });
 });

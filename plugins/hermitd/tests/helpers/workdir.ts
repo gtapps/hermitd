@@ -93,3 +93,9 @@ export function setupGitWorkdir(): Workdir {
   git('add', 'newfile.txt');
   return wd;
 }
+
+export const hermit = (dir: string, ...p: string[]) => path.join(dir, '.hermit', ...p);
+
+export const write = (p: string, content: string) => fs.writeFileSync(p, content);
+
+export const readJson = (p: string) => JSON.parse(fs.readFileSync(p, 'utf-8'));

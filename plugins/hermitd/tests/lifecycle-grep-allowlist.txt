@@ -7,7 +7,9 @@ plugins/hermitd/tests/watchdog.test.ts
 plugins/hermitd/tests/hooks.contract.test.ts
 plugins/hermitd/tests/routine-finish.test.ts
 plugins/hermitd/tests/heartbeat-tick.test.ts
-plugins/hermitd/tests/scripts.test.ts
+plugins/hermitd/tests/update-alert-state.test.ts
+plugins/hermitd/tests/heartbeat-monitor.test.ts
+plugins/hermitd/tests/reflect-precheck.test.ts
 plugins/hermitd/tests/apply-reflection-actions.test.ts
 plugins/hermitd/tests/brief-task-readers.test.ts
 plugins/hermitd/tests/evolve-plan.test.ts

@@ -353,3 +353,14 @@ test('brief visibility expands only the selected public children', async () => {
     expect((await briefVisibility(dir, config, null, records)).unresolved).toEqual([]);
   } finally { wd.cleanup(); }
 });
+
+describe('rowAudience', () => {
+  test('string-coerces shared ids and defaults to the channel audience', async () => {
+    const { rowAudience } = await import('../scripts/lib/channel-auth');
+    const config = { channels: { telegram: { shared_chats: [42, '43'] } } };
+    expect(rowAudience(config, 'telegram', '42')).toBe('shared');
+    expect(rowAudience(config, 'telegram', 43)).toBe('shared');
+    expect(rowAudience(config, 'telegram', 44)).toBe('telegram:44');
+    expect(rowAudience({}, 'discord', '1')).toBe('discord:1');
+  });
+});
