@@ -8,7 +8,7 @@
 
 ### Upgrade Instructions
 
-1. Run `.hermit/bin/hermitd-run task list .hermit --open --owner 'worker:*' --json`. For each row whose `report_kind` is `result` or `needs-input` and whose `waiting_on` is not null, run `.hermit/bin/hermitd-run task note .hermit <id> --owner resident </dev/null`. Leave every other row alone: its worker may still be running.
+1. Run `.hermit/bin/hermitd-run task list .hermit --open --owner 'worker:*' --json`. For each row whose `report_kind` is `result` or `needs-input` and whose `waiting_on` is not null, read `.hermit/tasks/<id>.md`. When no `## Progress` line is timestamped after its `waiting_since`, run `.hermit/bin/hermitd-run task note .hermit <id> --owner resident </dev/null`. Leave every other row alone: its worker may have been steered and still be running.
 
 ## [1.4.43] - 2026-11-24
 
