@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'bun:test';
 import { resolvePricing, calculateCost, PRICING } from '../scripts/lib/pricing';
+import * as pricing from '../scripts/lib/pricing';
 
 const empty = { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0 };
 
@@ -133,5 +134,35 @@ describe('calculateCost', () => {
     });
     const s = r.byType.input + r.byType.cacheWrite + r.byType.cacheRead + r.byType.output;
     expect(s).toBeCloseTo(r.total, 12);
+  });
+});
+
+// Validates that extracting pricing into lib didn't change any output.
+// Golden values computed from the original cost-tracker.ts constants.
+// -------------------------------------------------------
+
+describe('pricing', () => {
+  test('pricing.js: exports PRICING, resolvePricing, calculateCost', () => {
+    for (const k of ['PRICING', 'resolvePricing', 'calculateCost']) {
+      expect((pricing as any)[k]).toBeDefined();
+    }
+  });
+
+  test('pricing.js: calculateCost golden (sonnet-5 1M cache_read = $0.20)', () => {
+    const empty = { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 0, output: 0 };
+    expect(calculateCost('claude-sonnet-5', { ...empty, cacheRead: 1_000_000 }).total).toBeCloseTo(0.20, 9);
+  });
+
+  test('pricing.js: byType sums equal total', () => {
+    const r = calculateCost('opus', { input: 100, cacheWrite5m: 200, cacheWrite1h: 0, cacheRead: 300, output: 400 });
+    const s = r.byType.input + r.byType.cacheWrite + r.byType.cacheRead + r.byType.output;
+    expect(Math.abs(s - r.total)).toBeLessThan(1e-12);
+  });
+
+  test('pricing.js: unknown model falls back to sonnet-5', () => {
+    const t = { input: 0, cacheWrite5m: 0, cacheWrite1h: 0, cacheRead: 1_000_000, output: 0 };
+    expect(Math.abs(
+      calculateCost('unknown-model', t).total - calculateCost('claude-sonnet-5', t).total,
+    )).toBeLessThan(1e-12);
   });
 });

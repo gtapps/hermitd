@@ -12,6 +12,8 @@ import { runScript } from './helpers/run';
 import { readFileWithFrontmatter } from '../scripts/lib/frontmatter';
 import { costLogPath } from '../scripts/lib/cc-compat';
 import { dutySummary } from '../scripts/lib/duty-summary';
+import { withDir, hermit, write } from './helpers/workdir';
+import { utcDate } from './helpers/fixture-dates';
 
 function makeHermitDir(): { hermitDir: string; cleanup(): void } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-weekly-review-'));
@@ -424,3 +426,81 @@ test('weekly dream digest counts only this week and tolerates malformed rows', w
   expect(result.exitCode).toBe(0);
   expect(JSON.parse(result.stdout).dream).toEqual({ runs: 2, flagged: 1, changes: 5 });
 }));
+
+describe('weekly-review', () => {
+  const runWeeklyReview = (dir: string) =>
+    runScript('weekly-review.ts', { args: [hermit(dir)] });
+
+  function seedWeeklyReview(dir: string) {
+    // Minimal hermit layout weekly-review.ts needs to not crash
+    fs.mkdirSync(hermit(dir, 'sessions'), { recursive: true });
+    fs.mkdirSync(hermit(dir, 'state'), { recursive: true });
+    fs.mkdirSync(hermit(dir, 'proposals'), { recursive: true });
+  }
+
+  // weekly-review: observations.jsonl entries surface in ### Reflect
+  test('weekly-review (observations.jsonl count in Reflect line)', withDir(async (dir) => {
+    seedWeeklyReview(dir);
+    // Session report requires id + date (weekly-review filters on fm.id && fm.date)
+    const now = new Date();
+    const dateStr = utcDate(now);
+    const hhmm = now.toISOString().slice(11, 16);
+    write(hermit(dir, 'sessions', 'S-001-REPORT.md'), [
+      '---',
+      'id: S-001',
+      'type: report',
+      `date: ${dateStr}`,
+      'operator_turns: 0',
+      '---',
+      '## Progress Log',
+      `- [${hhmm}] reflect (adult) — 1 candidates; verdicts: accept=1 downgrade=0 suppress=0; outcomes: none`,
+    ].join('\n'));
+    // Seed 2 observations entries timestamped in the current week
+    const ts = now.toISOString();
+    write(hermit(dir, 'state', 'observations.jsonl'), [
+      JSON.stringify({ ts, pattern: 'p1', session_id: 'S-000', source: 'reflect' }),
+      JSON.stringify({ ts, pattern: 'p2', session_id: 'S-001', source: 'reflect' }),
+      '',
+    ].join('\n'));
+    const r = await runWeeklyReview(dir);
+    expect(r.exitCode).toBe(0);
+    // Report written to compiled/
+    const compiledDir = hermit(dir, 'compiled');
+    const files = fs.readdirSync(compiledDir);
+    const reportFile = files.find(f => f.startsWith('review-weekly-'));
+    expect(reportFile).toBeTruthy();
+    const content = fs.readFileSync(path.join(compiledDir, reportFile!), 'utf-8');
+    // Frontmatter counter
+    expect(content).toContain('reflect_observations: 2');
+    // Body line: obs count + this-week increment
+    expect(content).toContain('obs: 2 ledger (+2 this week)');
+  }));
+
+  // weekly-review: missing observations.jsonl fails open (obs: 0)
+  test('weekly-review (missing observations.jsonl shows obs: 0)', withDir(async (dir) => {
+    seedWeeklyReview(dir);
+    const now = new Date();
+    const dateStr = utcDate(now);
+    const hhmm = now.toISOString().slice(11, 16);
+    write(hermit(dir, 'sessions', 'S-001-REPORT.md'), [
+      '---',
+      'id: S-001',
+      'type: report',
+      `date: ${dateStr}`,
+      'operator_turns: 0',
+      '---',
+      '## Progress Log',
+      `- [${hhmm}] reflect (adult) — 0 candidates; verdicts: accept=0 downgrade=0 suppress=0; outcomes: none`,
+    ].join('\n'));
+    // No observations.jsonl seeded
+    const r = await runWeeklyReview(dir);
+    expect(r.exitCode).toBe(0);
+    const compiledDir = hermit(dir, 'compiled');
+    const files = fs.readdirSync(compiledDir);
+    const reportFile = files.find(f => f.startsWith('review-weekly-'));
+    expect(reportFile).toBeTruthy();
+    const content = fs.readFileSync(path.join(compiledDir, reportFile!), 'utf-8');
+    expect(content).toContain('reflect_observations: 0');
+    expect(content).toContain('obs: 0 ledger');
+  }));
+});

@@ -4,14 +4,17 @@
 // Covers: by_week/by_month aggregation incl. a tz day/week/month boundary case,
 // INDEX_VERSION-bump rebuild, week/month pruning, scanUnpricedModels.
 
-import { describe, test, expect } from 'bun:test';
+import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
   updateCostIndex, readCostIndex, computeIndex, scanUnpricedModels, scanRoutineLedger,
-  scanRoutineCostWindow, buildMainCostRow, buildSubagentCostRow, appendCostRows,
+  scanRoutineCostWindow, buildMainCostRow, buildSubagentCostRow, appendCostRows, costIndexPath,
 } from '../scripts/lib/cost-log';
+import { setupWorkdir, withDir, type Workdir, hermit, write } from './helpers/workdir';
+import * as costLog from '../scripts/lib/cost-log';
+import { daysAgo } from './helpers/fixture-dates';
 
 function withTmpdir(fn: (dir: string) => void) {
   return () => {
@@ -493,4 +496,153 @@ describe('scanRoutineCostWindow', () => {
     expect(scanRoutineCostWindow(logPath, since, asOf).perRoutine.get('brief')).toBe(2);
     expect(scanRoutineCostWindow('/nonexistent/cost-log.jsonl', since, asOf).perRoutine.size).toBe(0);
   }));
+});
+
+// Local calendar date, matching python's datetime.date.today() in the bash suite.
+const localDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+describe('cost-log', () => {
+  let wd: Workdir;
+  let costIndexFile = '';
+  let costLogFile = '';
+  // Recent dates so by_date buckets survive the retention-window prune.
+  const D1 = localDate(new Date());
+  const D2 = localDate(daysAgo(1));
+
+  beforeAll(() => {
+    wd = setupWorkdir();
+    costIndexFile = hermit(wd.dir, 'state', 'cost-index.json');
+    costLogFile = path.join(wd.dir, '.claude', 'cost-log.jsonl');
+    write(costLogFile, [
+      `{"timestamp":"${D2}T10:00:00.000Z","cc_session_id":"s1","source":"heartbeat","model":"sonnet","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":100000,"output_tokens":0,"total_tokens":100000,"estimated_cost_usd":0.03}`,
+      `{"timestamp":"${D2}T10:01:00.000Z","cc_session_id":"s1","source":"other","model":"sonnet","input_tokens":0,"cache_write_tokens":50000,"cache_read_tokens":0,"output_tokens":500,"total_tokens":50500,"estimated_cost_usd":0.195}`,
+      `{"timestamp":"${D1}T10:00:00.000Z","cc_session_id":"s2","source":"other","model":"haiku","input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":200000,"output_tokens":2000,"total_tokens":202000,"estimated_cost_usd":0.024}`,
+      '',
+    ].join('\n'));
+  });
+  afterAll(() => wd.cleanup());
+
+  test('cost-log.js: exports required symbols', () => {
+    for (const k of ['costIndexPath', 'readCostIndex', 'updateCostIndex', 'rebuildCostIndex']) {
+      expect(typeof (costLog as any)[k]).toBe('function');
+    }
+  });
+
+  test('cost-log.js: costIndexPath resolves to state/cost-index.json', () => {
+    const p = costIndexPath('/proj/.hermit');
+    expect(p.endsWith('/.hermit/state/cost-index.json')).toBe(true);
+  });
+
+  test('cost-log.js: readCostIndex absent → null', () => {
+    expect(readCostIndex('/tmp/no-such-index.json')).toBeNull();
+  });
+
+  test('cost-log.js: updateCostIndex computes correct totals', () => {
+    const idx = updateCostIndex(costLogFile, costIndexFile);
+    expect(idx.total_cost_usd).toBeCloseTo(0.03 + 0.195 + 0.024, 9);
+    expect(idx.total_tokens).toBe(100000 + 50500 + 202000);
+    expect(idx.total_sessions).toBe(2);
+  });
+
+  test('cost-log.js: by_date populated for both dates', () => {
+    const idx = readCostIndex(costIndexFile)!;
+    expect(idx.by_date[D2]).toBeTruthy();
+    expect(idx.by_date[D1]).toBeTruthy();
+    expect(idx.by_date[D2].session_ids.length).toBe(1);
+  });
+
+  // Old by_date buckets are pruned to the retention window; totals are not affected
+  test('cost-log.js: old by_date buckets pruned, totals retained', () => {
+    const pruneLog = path.join(wd.dir, '.claude', 'cost-log-prune.jsonl');
+    const pruneIndex = hermit(wd.dir, 'state', 'cost-index-prune.json');
+    write(pruneLog, [
+      '{"timestamp":"2020-01-01T10:00:00.000Z","cc_session_id":"old","source":"other","total_tokens":1000,"estimated_cost_usd":0.01}',
+      `{"timestamp":"${D1}T10:00:00.000Z","cc_session_id":"new","source":"other","total_tokens":2000,"estimated_cost_usd":0.02}`,
+      '',
+    ].join('\n'));
+    const idx = updateCostIndex(pruneLog, pruneIndex);
+    expect(idx.by_date['2020-01-01']).toBeFalsy();
+    expect(idx.by_date[D1]).toBeTruthy();
+    expect(idx.total_cost_usd).toBeCloseTo(0.03, 9);
+    expect(idx.total_sessions).toBe(2);
+  });
+
+  test('cost-log.js: by_source buckets heartbeat vs other', () => {
+    const idx = readCostIndex(costIndexFile)!;
+    expect(idx.by_source.heartbeat).toBeTruthy();
+    expect(idx.by_source.heartbeat.cost).toBeCloseTo(0.03, 9);
+  });
+
+  // Acceptance criterion: replaying a log where a formerly-'other' turn is now tagged
+  // channel:* must shrink other's share while conserving the grand total — by_source
+  // storage is key-agnostic (it buckets on entry.source verbatim), so this proves the
+  // classifySource → cost-log → index pipeline end-to-end without a live transcript.
+  test('cost-log.js: channel:* tagging shrinks other share, conserves total', withDir((dir) => {
+    const baselineLog = path.join(dir, '.claude', 'cost-log-baseline.jsonl');
+    const baselineIndex = hermit(dir, 'state', 'cost-index-baseline.json');
+    write(baselineLog, [
+      '{"timestamp":"2026-01-01T10:00:00.000Z","cc_session_id":"s1","source":"other","total_tokens":1000,"estimated_cost_usd":0.10}',
+      '{"timestamp":"2026-01-01T10:01:00.000Z","cc_session_id":"s1","source":"other","total_tokens":2000,"estimated_cost_usd":0.20}',
+      '',
+    ].join('\n'));
+    const baseline = updateCostIndex(baselineLog, baselineIndex);
+
+    const taggedLog = path.join(dir, '.claude', 'cost-log-tagged.jsonl');
+    const taggedIndex = hermit(dir, 'state', 'cost-index-tagged.json');
+    write(taggedLog, [
+      '{"timestamp":"2026-01-01T10:00:00.000Z","cc_session_id":"s1","source":"channel:discord","total_tokens":1000,"estimated_cost_usd":0.10}',
+      '{"timestamp":"2026-01-01T10:01:00.000Z","cc_session_id":"s1","source":"other","total_tokens":2000,"estimated_cost_usd":0.20}',
+      '',
+    ].join('\n'));
+    const tagged = updateCostIndex(taggedLog, taggedIndex);
+
+    expect(tagged.by_source.other.cost).toBeLessThan(baseline.by_source.other.cost);
+    expect(tagged.by_source['channel:discord'].cost).toBeCloseTo(0.10, 9);
+    expect(tagged.total_cost_usd).toBeCloseTo(baseline.total_cost_usd, 9);
+  }));
+
+  test('cost-log.js: byte_offset advances to file size', () => {
+    const idx = readCostIndex(costIndexFile)!;
+    expect(idx.byte_offset).toBe(fs.statSync(costLogFile).size);
+  });
+
+  // Second call with no new bytes is a no-op (offset stable, totals unchanged)
+  test('cost-log.js: second updateCostIndex call is a no-op', () => {
+    const before = readCostIndex(costIndexFile)!;
+    const after = updateCostIndex(costLogFile, costIndexFile);
+    expect(after.byte_offset).toBe(before.byte_offset);
+    expect(after.total_cost_usd).toBe(before.total_cost_usd);
+  });
+
+  test('cost-log.js: corrupt line increments skipped_corrupt_lines', () => {
+    const corruptLog = path.join(wd.dir, '.claude', 'cost-log-corrupt.jsonl');
+    const corruptIndex = hermit(wd.dir, 'state', 'cost-index-corrupt.json');
+    write(corruptLog, [
+      '{"timestamp":"2026-01-01T10:00:00.000Z","cc_session_id":"x","model":"sonnet","total_tokens":1000,"estimated_cost_usd":0.01}',
+      'NOT VALID JSON AT ALL',
+      '{"timestamp":"2026-01-01T10:01:00.000Z","cc_session_id":"x","model":"sonnet","total_tokens":2000,"estimated_cost_usd":0.02}',
+      '',
+    ].join('\n'));
+    const idx = updateCostIndex(corruptLog, corruptIndex);
+    expect(idx.skipped_corrupt_lines).toBe(1);
+    expect(idx.total_tokens).toBe(3000);
+  });
+
+  // Truncated log triggers rebuild (byte_offset > new fileSize)
+  test('cost-log.js: truncated log triggers rebuild', () => {
+    const corruptLog = path.join(wd.dir, '.claude', 'cost-log-corrupt.jsonl');
+    const corruptIndex = hermit(wd.dir, 'state', 'cost-index-corrupt.json');
+    // Manufacture a stale index (current schema) with a large offset → truncation rebuild
+    const stale = {
+      version: 2, byte_offset: 999999, total_cost_usd: 99, total_tokens: 99,
+      total_sessions: 0, last_session_id: null, by_source: {}, by_date: {},
+      skipped_corrupt_lines: 0, updated_at: '2020-01-01T00:00:00.000Z',
+    };
+    write(corruptIndex, JSON.stringify(stale) + '\n');
+    const idx = updateCostIndex(corruptLog, corruptIndex);
+    expect(idx.byte_offset).not.toBe(999999);
+    expect(idx.total_cost_usd).toBeLessThanOrEqual(10);
+  });
+
 });

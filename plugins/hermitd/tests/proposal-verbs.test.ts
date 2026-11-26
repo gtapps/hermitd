@@ -1,9 +1,11 @@
-import { describe, test, expect, spyOn } from 'bun:test';
+import { describe, test, expect, spyOn, beforeAll, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { verbCreate, verbRoutine, grabHeader, parseStringArray, proposalDigest } from '../scripts/proposal';
 import { decodeTask, mutateTask } from '../scripts/lib/tasks';
-import { withDir } from './helpers/workdir';
+import { withDir, setupWorkdir, type Workdir, hermit, write } from './helpers/workdir';
+import os from 'node:os';
+import { runProposal } from './helpers/run';
 
 function seed(dir: string): string {
   const base = path.join(dir, '.hermit');
@@ -140,4 +142,304 @@ test('header parsing preserves validation distinctions', () => {
   expect(parseStringArray(null)).toEqual([]);
   expect(parseStringArray('["x"]')).toEqual(['x']);
   expect(parseStringArray('[1]')).toBeNull();
+});
+
+describe('proposal gate', () => {
+  async function gate(dir: string, opts: { gate: 'triage' | 'judge'; caller?: string; evidenceSource?: string; tags?: string[] }, title: string, verdict: string) {
+    const args = ['gate', '--gate', opts.gate, '--caller', opts.caller ?? 'reflect'];
+    if (opts.evidenceSource) args.push('--evidence-source', opts.evidenceSource);
+    if (opts.tags) args.push('--tags', JSON.stringify(opts.tags));
+    const r = await runProposal(hermit(dir), args, { stdin: `Title: ${title}\nVerdict: ${verdict}\n` });
+    const out = JSON.parse(r.stdout);
+    expect(r.exitCode).toBe('error' in out ? 1 : 0);
+    return out;
+  }
+  function ledgerLines(dir: string): any[] {
+    const p = hermit(dir, 'state', 'proposal-metrics.jsonl');
+    if (!fs.existsSync(p)) return [];
+    return fs.readFileSync(p, 'utf-8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
+  }
+
+  test('gate (triage CREATE -> create + triage-verdict event)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage', caller: 'proposal-create', evidenceSource: 'capability-brainstorm', tags: ['capability-brainstorm'] }, 'Foo', 'CREATE: Foo');
+    expect(out).toEqual({ status: 'create' });
+    const lines = ledgerLines(dir);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ type: 'triage-verdict', verdict: 'CREATE', caller: 'proposal-create', evidence_source: 'capability-brainstorm', tags: ['capability-brainstorm'] });
+  }));
+
+  test('gate (triage SUPPRESS -> suppress with code)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'SUPPRESS: Foo — weak-recurrence: one-off ("excerpt")');
+    expect(out).toEqual({ status: 'suppress', code: 'weak-recurrence' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'SUPPRESS' });
+  }));
+
+  test('gate (triage DUPLICATE -> duplicate with PROP-ID)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'DUPLICATE: Foo — PROP-019: same problem');
+    expect(out).toEqual({ status: 'duplicate', id: 'PROP-019' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'DUPLICATE' });
+  }));
+
+  test('gate (triage SUPPRESS with the reason dropped -> suppress with code)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'SUPPRESS: Foo — weak-consequence');
+    expect(out).toEqual({ status: 'suppress', code: 'weak-consequence' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'SUPPRESS' });
+  }));
+
+  test('gate (triage SUPPRESS with only the excerpt kept -> suppress with code)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'SUPPRESS: Foo — weak-consequence ("one-off")');
+    expect(out).toEqual({ status: 'suppress', code: 'weak-consequence' });
+  }));
+
+  test('gate (triage SUPPRESS ending in title words, no code -> gate-failed)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Cache layer — eviction', 'SUPPRESS: Cache layer — eviction');
+    expect(out).toEqual({ status: 'gate_failed' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'proposal-triage' });
+  }));
+
+  test('gate (triage DUPLICATE with the reason dropped -> duplicate with PROP-ID)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'DUPLICATE: Foo — PROP-019-cache-103612');
+    expect(out).toEqual({ status: 'duplicate', id: 'PROP-019-cache-103612' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'triage-verdict', verdict: 'DUPLICATE' });
+  }));
+
+  test('gate (triage DUPLICATE with a PROP-ID in the title -> the verdict PROP-ID wins)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Fix — PROP-012 regression', 'DUPLICATE: Fix — PROP-012 regression — PROP-019');
+    expect(out).toEqual({ status: 'duplicate', id: 'PROP-019' });
+  }));
+
+  test('gate (triage garbled verdict -> gate-failed + gate-failed event)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'garbled nonsense');
+    expect(out).toEqual({ status: 'gate_failed' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'proposal-triage', title: 'Foo', verdict: 'garbled nonsense' });
+  }));
+
+  test('gate (triage GATE_BLIND -> gate-failed, blind line kept in the gate-failed event)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'triage' }, 'Foo', 'GATE_BLIND: Foo — missing Anchor: line');
+    expect(out).toEqual({ status: 'gate_failed' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', verdict: 'GATE_BLIND: Foo — missing Anchor: line' });
+  }));
+
+  test('gate (gate-failed event caps the stored verdict at 200 chars)', withDir(async (dir) => {
+    await gate(dir, { gate: 'triage' }, 'Foo', 'x'.repeat(500));
+    expect(ledgerLines(dir)[0].verdict).toBe('x'.repeat(200));
+  }));
+
+  test('gate (judge ACCEPT -> accept, no ledger event)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'ACCEPT: Bar');
+    expect(out).toEqual({ status: 'accept' });
+    expect(ledgerLines(dir)).toHaveLength(0);
+  }));
+
+  test('gate (judge ACCEPT with source tag)', withDir(async (dir) => {
+    expect(await gate(dir, { gate: 'judge' }, 'Bar', 'ACCEPT (current-session): Bar')).toEqual({ status: 'accept' });
+  }));
+
+  test('gate (judge DOWNGRADE -> downgrade with tier)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'DOWNGRADE:2: Bar — weak-recurrence');
+    expect(out).toEqual({ status: 'downgrade', tier: 2 });
+  }));
+
+  test('gate (judge DOWNGRADE quarantine — tier passes through as-is)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'DOWNGRADE:3 (current-session): Bar — quarantine: external origin');
+    expect(out).toEqual({ status: 'downgrade', tier: 3 });
+  }));
+
+  test('gate (judge SUPPRESS -> suppress with code, no ledger event)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'SUPPRESS: Bar — no-sessions: no cross-session evidence cited');
+    expect(out).toEqual({ status: 'suppress', code: 'no-sessions' });
+    expect(ledgerLines(dir)).toHaveLength(0);
+  }));
+
+  test('gate (judge SUPPRESS with the reason dropped -> suppress with code)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'SUPPRESS (current-session): Bar — no-evidence');
+    expect(out).toEqual({ status: 'suppress', code: 'no-evidence' });
+  }));
+
+  test('gate (judge SUPPRESS with the reason dropped and the capped suffix -> suppress with code)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'SUPPRESS: Bar — no-evidence (evidence-capped)');
+    expect(out).toEqual({ status: 'suppress', code: 'no-evidence' });
+  }));
+
+  test('gate (judge SUPPRESS ending in title words, no code -> gate-failed)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Retry storm — backoff', 'SUPPRESS: Retry storm — backoff');
+    expect(out).toEqual({ status: 'gate_failed' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge' });
+  }));
+
+  test('gate (judge empty verdict -> gate-failed + gate-failed event tagged reflection-judge)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', '');
+    expect(out).toEqual({ status: 'gate_failed' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', title: 'Bar', verdict: '' });
+  }));
+
+  test('gate (judge GATE_BLIND -> gate-failed, blind line kept in the gate-failed event)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'judge' }, 'Bar', 'GATE_BLIND: Bar — missing Anchor: line');
+    expect(out).toEqual({ status: 'gate_failed' });
+    expect(ledgerLines(dir)[0]).toMatchObject({ type: 'gate-failed', agent: 'reflection-judge', verdict: 'GATE_BLIND: Bar — missing Anchor: line' });
+  }));
+
+  test('gate (invalid --gate value -> gate-failed)', withDir(async (dir) => {
+    const out = await gate(dir, { gate: 'bogus' as any }, 'Foo', 'CREATE: Foo');
+    expect(out).toEqual({ status: 'gate_failed' });
+  }));
+
+  test('gate (missing state/ subdir does not crash — creates it before appending)', async () => {
+    // Regression: appendJsonlLine's fs.appendFileSync throws ENOENT if state/ doesn't
+    // exist yet, which would crash a recognized verdict instead of routing it.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'record-gate-nodir-'));
+    try {
+      const r = await runProposal(dir, ['gate', '--gate', 'triage', '--caller', 'test'], { stdin: 'Title: Foo\nVerdict: CREATE: Foo\n' });
+      expect(r.exitCode).toBe(0);
+      expect(JSON.parse(r.stdout)).toEqual({ status: 'create' });
+      const line = JSON.parse(fs.readFileSync(path.join(dir, 'state', 'proposal-metrics.jsonl'), 'utf-8').trim());
+      expect(line).toMatchObject({ type: 'triage-verdict', verdict: 'CREATE' });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('proposal metrics', () => {
+  const runReport = async (dir: string, ...extra: string[]) => {
+    const r = await runProposal(hermit(dir), ['metrics', ...extra]);
+    expect(r.exitCode).toBe(0);
+    return JSON.parse(r.stdout);
+  };
+  const metricsFile = (dir: string) => hermit(dir, 'state', 'proposal-metrics.jsonl');
+
+  // Missing / empty file — fails open
+  test('metrics (missing file exits 0)', withDir(async (dir) => {
+    expect(await runReport(dir)).toEqual({ status: 'none', reason: 'no_metrics' });
+  }));
+
+  test('metrics (empty file exits 0)', withDir(async (dir) => {
+    write(metricsFile(dir), '');
+    expect(await runReport(dir, '--source=reflect')).toEqual({ status: 'none', reason: 'no_metrics' });
+  }));
+
+  // Insufficient sample (<8)
+  test('metrics --source (insufficient_data, n<8)', withDir(async (dir) => {
+    // 3 triage-verdicts from brainstorm + 2 created tagged brainstorm, 1 accepted
+    write(metricsFile(dir), [
+      '{"ts":"2026-01-01T00:00:00Z","type":"triage-verdict","verdict":"CREATE","caller":"proposal-create","evidence_source":"capability-brainstorm","tags":["capability-brainstorm"]}',
+      '{"ts":"2026-01-01T00:01:00Z","type":"triage-verdict","verdict":"SUPPRESS","caller":"proposal-create","evidence_source":"capability-brainstorm","tags":["capability-brainstorm"]}',
+      '{"ts":"2026-01-01T00:02:00Z","type":"triage-verdict","verdict":"SUPPRESS","caller":"proposal-create","evidence_source":"capability-brainstorm","tags":["capability-brainstorm"]}',
+      '{"ts":"2026-01-01T01:00:00Z","type":"created","proposal_id":"PROP-001","source":"auto-detected","category":"capability","tags":["capability-brainstorm"]}',
+      '{"ts":"2026-01-01T02:00:00Z","type":"created","proposal_id":"PROP-002","source":"auto-detected","category":"capability","tags":["capability-brainstorm"]}',
+      '{"ts":"2026-01-01T03:00:00Z","type":"responded","proposal_id":"PROP-001","action":"accept"}',
+      '',
+    ].join('\n'));
+    expect(await runReport(dir, '--source=capability-brainstorm')).toEqual({
+      source: 'capability_brainstorm',
+      status: 'insufficient_data',
+      sample: 3,
+      min_sample: 8,
+      triage_survival_pct: 33,
+      triage_created: 1,
+      triage_total: 3,
+      kill_survival_pct: 25,
+      acceptance_pct: 50,
+      accepted: 1,
+      created: 2,
+      kill_acceptance_pct: 30,
+    });
+  }));
+
+  // Full sample (>=8) — correct rates and kill verdict
+  // 10 triage-verdicts: 4 CREATE, 6 SUPPRESS → survival 40%
+  // 4 created tagged, 1 accepted → acceptance 25% → kill (acceptance < 30%)
+  describe('full sample', () => {
+    let wd: Workdir;
+    let out: any;
+
+    beforeAll(async () => {
+      wd = setupWorkdir();
+      const lines: string[] = [];
+      for (let i = 1; i <= 4; i++) {
+        lines.push(`{"ts":"2026-01-01T00:0${i}Z","type":"triage-verdict","verdict":"CREATE","caller":"proposal-create","evidence_source":"capability-brainstorm","tags":["capability-brainstorm"]}`);
+      }
+      for (let i = 5; i <= 10; i++) {
+        lines.push(`{"ts":"2026-01-01T00:0${i}Z","type":"triage-verdict","verdict":"SUPPRESS","caller":"proposal-create","evidence_source":"capability-brainstorm","tags":["capability-brainstorm"]}`);
+      }
+      for (let i = 1; i <= 4; i++) {
+        lines.push(`{"ts":"2026-01-01T01:0${i}Z","type":"created","proposal_id":"PROP-00${i}","source":"auto-detected","category":"capability","tags":["capability-brainstorm"]}`);
+      }
+      lines.push('{"ts":"2026-01-01T02:00:00Z","type":"responded","proposal_id":"PROP-001","action":"accept"}');
+      write(metricsFile(wd.dir), lines.join('\n') + '\n');
+      out = await runReport(wd.dir, '--source=capability-brainstorm');
+    });
+    afterAll(() => wd.cleanup());
+
+    test('metrics --source (survival 40%)', () => {
+      expect(out).toMatchObject({ triage_survival_pct: 40, triage_created: 4, triage_total: 10, sample: 10 });
+    });
+    test('metrics --source (acceptance 25%)', () => {
+      expect(out).toMatchObject({ acceptance_pct: 25, accepted: 1, created: 4 });
+    });
+    test('metrics --source (kill verdict)', () => {
+      expect(out.status).toBe('kill');
+      expect(out.kill_reasons).toEqual(['acceptance']);
+    });
+  });
+
+  // Default mode — every segment appears as an object
+  describe('segments mode', () => {
+    let wd: Workdir;
+    let out: any;
+
+    beforeAll(async () => {
+      wd = setupWorkdir();
+      write(metricsFile(wd.dir), [
+        '{"ts":"2026-01-01T00:01:00Z","type":"triage-verdict","verdict":"CREATE","caller":"reflect"}',
+        '{"ts":"2026-01-01T00:02:00Z","type":"triage-verdict","verdict":"SUPPRESS","caller":"reflect"}',
+        '{"ts":"2026-01-01T01:00:00Z","type":"created","proposal_id":"PROP-R1","source":"auto-detected","category":"improvement","tags":[]}',
+        '{"ts":"2026-01-01T02:00:00Z","type":"responded","proposal_id":"PROP-R1","action":"accept"}',
+        '',
+      ].join('\n'));
+      out = await runReport(wd.dir);
+    });
+    afterAll(() => wd.cleanup());
+
+    test('metrics segments (every source, snake_case)', () => {
+      expect(out.segments.map((s: any) => s.source)).toEqual(['reflect', 'capability_brainstorm', 'scheduled_check']);
+    });
+    test('metrics segments (reflect rates)', () => {
+      expect(out.segments[0]).toMatchObject({ status: 'insufficient_data', triage_survival_pct: 50, acceptance_pct: 100, accepted: 1, created: 1 });
+    });
+    test('metrics segments (zero denominators are null)', () => {
+      expect(out.segments[1]).toMatchObject({ triage_survival_pct: null, acceptance_pct: null, sample: 0 });
+    });
+    test('metrics segments (scheduled-check omits the acceptance keys)', () => {
+      const sched = out.segments[2];
+      for (const key of ['acceptance_pct', 'accepted', 'created', 'kill_acceptance_pct']) expect(sched).not.toHaveProperty(key);
+      expect(sched).not.toHaveProperty('kill_reasons');
+    });
+  });
+
+  // Malformed line is skipped; valid events still counted
+  test('metrics (malformed line skipped)', withDir(async (dir) => {
+    write(metricsFile(dir), [
+      'this is not json at all',
+      '{"ts":"2026-01-01T00:01:00Z","type":"triage-verdict","verdict":"CREATE","caller":"reflect"}',
+      '',
+    ].join('\n'));
+    expect((await runReport(dir)).segments[0]).toMatchObject({ triage_created: 1, triage_total: 1 });
+  }));
+
+  // --source with an unknown key is an error at exit 1
+  test('metrics (unknown --source key)', withDir(async (dir) => {
+    write(metricsFile(dir),
+      '{"ts":"2026-01-01T00:01:00Z","type":"triage-verdict","verdict":"CREATE","caller":"reflect"}\n');
+    const r = await runProposal(hermit(dir), ['metrics', '--source=nonexistent']);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'unknown_source:nonexistent' });
+  }));
+
+  test('metrics (unreadable file is metrics_failed at exit 1)', withDir(async (dir) => {
+    fs.mkdirSync(metricsFile(dir), { recursive: true });
+    const r = await runProposal(hermit(dir), ['metrics']);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout)).toEqual({ error: 'metrics_failed' });
+  }));
 });

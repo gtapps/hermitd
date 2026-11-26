@@ -1221,7 +1221,7 @@ describe('kill metrics contract', () => {
 
   test('proposal-create triage-verdict event must include evidence_source', () => {
     // missing → triage-survival rate cannot be segmented by brainstorm origin.
-    // the gate verb (tests/scripts.test.ts describe('proposal gate')) guards that the
+    // the gate verb (tests/proposal-verbs.test.ts describe('proposal gate')) guards that the
     // flag actually lands in the appended event; this guards the call site passes it.
     expect(proposalCreate).toContain('--evidence-source "<evidence source>"');
   });
@@ -3560,7 +3560,7 @@ describe('hermit-evolve permission delegation contract', () => {
 // status (and the section startup-context.ts renders from it) has to stay distinct and
 // its consumers must not treat it as an upgrade. Without this pin a later prose edit can
 // quietly collapse both back into one "any banner -> run evolve" rule, which is the loop
-// this contract exists to prevent. The rendered text is pinned in scripts.test.ts.
+// this contract exists to prevent. The rendered text is pinned in startup-context-upgrade.test.ts.
 describe('stale plugin runtime header', () => {
   const HEADER = '---Stale Plugin Runtime---';
   const STATUS = 'stale_plugin_runtime';

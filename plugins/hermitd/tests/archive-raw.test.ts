@@ -15,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { runScript } from './helpers/run';
+import { setupWorkdir, type Workdir, hermit, write } from './helpers/workdir';
 
 const PAST = '2020-01-01';
 const RECENT = '2099-12-31';
@@ -429,5 +430,52 @@ describe('purge: -latest pin in .archive survives purge', () => {
   });
   test('purge: regular expired .archive entry is deleted', () => {
     expect(fs.existsSync(raw(h.dir, '.archive', `note-${PAST}.md`))).toBe(false);
+  });
+});
+
+describe('archive-raw', () => {
+  // review-weekly must not pin expired raw files, but a real compiled work product must
+  let wd: Workdir;
+  let lintOut = '';
+  let archiveOut = '';
+
+  beforeAll(async () => {
+    wd = setupWorkdir();
+    const dir = wd.dir;
+    fs.mkdirSync(hermit(dir, 'raw'), { recursive: true });
+    fs.mkdirSync(hermit(dir, 'compiled'), { recursive: true });
+    write(hermit(dir, 'config.json'), '{}');
+    // Expired raw named ONLY by a review file -> should archive.
+    // Very old dates so this test is stable regardless of the current wall clock.
+    write(hermit(dir, 'raw', 'expired-snap.md'),
+      '---\ntitle: expired\ncreated: 2000-01-01T00:00:00+00:00\n---\ndata');
+    // Expired raw named by a genuine compiled work product -> should stay retained
+    write(hermit(dir, 'raw', 'cited-snap.md'),
+      '---\ntitle: cited\ncreated: 2000-01-01T00:00:00+00:00\n---\ndata');
+    write(hermit(dir, 'compiled', 'review-weekly-2025-W03.md'),
+      '---\ntype: review\ncreated: 2000-01-15T00:00:00+00:00\n---\n### Knowledge Health\n- raw/expired-snap.md [14d] — Past retention.\n');
+    write(hermit(dir, 'compiled', 'work.md'),
+      '---\ntype: briefing\ncreated: 2000-01-15T00:00:00+00:00\n---\nDerived from cited-snap.md.\n');
+
+    const lint = await runScript('knowledge-lint.ts', { args: [hermit(dir)] });
+    lintOut = lint.stdout + lint.stderr;
+    const arch = await runScript('archive-raw.ts', { args: [hermit(dir)] });
+    archiveOut = arch.stdout;
+  });
+  afterAll(() => wd.cleanup());
+
+  // Regression: review-weekly must not mask stale raw in knowledge-lint
+  test('knowledge-lint (review-weekly does not mask stale)', () => {
+    expect(JSON.parse(lintOut).findings.stale.map((f: any) => f.file)).toEqual(['raw/expired-snap.md']);
+  });
+
+  test('archive-raw (review-weekly does not pin, real ref does)', () => {
+    expect(JSON.parse(archiveOut)).toMatchObject({ archived: 1, retained: 1 });
+  });
+  test('archive-raw (review-named file archived)', () => {
+    expect(fs.existsSync(hermit(wd.dir, 'raw', '.archive', 'expired-snap.md'))).toBe(true);
+  });
+  test('archive-raw (work-product-cited file retained)', () => {
+    expect(fs.existsSync(hermit(wd.dir, 'raw', 'cited-snap.md'))).toBe(true);
   });
 });
