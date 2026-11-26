@@ -18,7 +18,7 @@ test('execution boundary checks identity, idle age, workers and token floor', as
     f.put('state/execution.json', execution);
     const { id } = await f.open(['--owner', 'worker:a3b2c3d4e5f6a7b8c']);
     expect(passesExecutionBoundary(f.dir)).toEqual({ ok: false, reason: 'worker-running' });
-    await f.ok('cancel', [id, '--actor', 'discord:u1', '--reason-stdin'], 'Cancelled');
+    await f.ok('report', [id, '--as', 'worker', '--kind', 'result'], 'Worker result');
     expect(passesExecutionBoundary(f.dir, { minTokens: 20000 })).toEqual({ ok: false, reason: 'under-token-floor' });
     await f.open(['--owner', 'helper:review']);
     expect(passesExecutionBoundary(f.dir)).toEqual({ ok: true });

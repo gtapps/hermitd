@@ -167,9 +167,10 @@ it('checks helper availability only when binding a different record', async () =
     await f.ok('note', [b.id, '--clear-waiting'], '');
     const worker = 'worker:a123456789';
     const w = await f.open(['--owner', worker]);
-    await f.ok('report', [w.id, '--as', 'worker', '--kind', 'result'], 'Done');
     const d = await f.open(['--title', 'Fourth']);
     expect(await bind(d.id, worker)).toMatchObject({ reason: 'owner_busy' });
+    await f.ok('report', [w.id, '--as', 'worker', '--kind', 'result'], 'Done');
+    expect(await bind(d.id, worker)).toMatchObject({ id: d.id });
     expect(await bind(c.id, 'resident')).toMatchObject({ id: c.id });
   } finally { f.cleanup(); }
 });
