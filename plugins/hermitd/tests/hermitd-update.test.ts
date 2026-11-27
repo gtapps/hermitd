@@ -9,7 +9,7 @@ describe('static file checks', () => {
   test('hermitd-update refreshes marketplaces (core first), then moves the pin', () => {
     const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'update-sequence.ts'), 'utf8');
     const marketplaceIdx = src.indexOf("'plugin', 'marketplace', 'update'");
-    const updateLoopIdx = src.indexOf("'plugin', 'update', id, '--scope', scope");
+    const updateLoopIdx = src.indexOf('await target.updatePlugin(row)');
     expect(marketplaceIdx).toBeGreaterThan(-1);
     expect(updateLoopIdx).toBeGreaterThan(-1);
     expect(marketplaceIdx).toBeLessThan(updateLoopIdx);

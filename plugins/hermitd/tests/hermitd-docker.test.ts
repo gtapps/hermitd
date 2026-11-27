@@ -12,21 +12,12 @@ const { freshDir: freshDockerHome, cleanup: cleanupDockerHomes } = freshDirFacto
 afterAll(cleanupDockerHomes);
 
 describe('static file checks', () => {
-  test('hermitd-docker update refreshes marketplaces (core first), then moves the pin', () => {
+  test('hermitd-docker update hands off to the shared update sequence', () => {
     const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'hermitd-docker.sh'), 'utf8');
-    // Durable `plugin update` per plugin with explicit scope...
-    expect(src).toContain('claude plugin update');
-    expect(src).toContain('--scope');
-    expect(src).toContain('hermit-evolve unattended');
-    // ...preceded by a marketplace refresh — `plugin update` only moves the pin against
-    // whatever is already in the local cache, it does not git-pull the catalog itself.
-    const marketplaceIdx = src.indexOf('claude plugin marketplace update');
-    const updateLoopIdx = src.indexOf('claude plugin update "$pid"');
-    expect(marketplaceIdx).toBeGreaterThan(-1);
-    expect(updateLoopIdx).toBeGreaterThan(-1);
-    expect(marketplaceIdx).toBeLessThan(updateLoopIdx);
-    // Core-first ordering so `^core`-dependent siblings re-resolve against the new core.
-    expect(src).toContain('.sort((a, b) =>');
+    const update = src.slice(src.indexOf('\n  update)'), src.indexOf('\n  update-step)'));
+    // The running check and the boot-owner verdict come before anything moves.
+    expect(update.indexOf('_require_running')).toBeLessThan(update.indexOf('_refuse_if_host_tmux_owner'));
+    expect(update.indexOf('_refuse_if_host_tmux_owner')).toBeLessThan(update.indexOf('exec bun "$HOST_SCRIPTS/lib/update-sequence.ts" docker'));
   });
 
   test('hermitd-docker warns when the container runs a stale baked entrypoint', () => {

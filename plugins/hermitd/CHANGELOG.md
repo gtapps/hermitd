@@ -9,6 +9,7 @@
 ### Changed
 
 - A `settings-edit migrate` that would change a protected setting raises the native permission prompt, judged by its effect on the current config
+- `hermitd update` runs one update sequence for host and Docker agents, so both wait for hermit-evolve and restart in the same order
 
 ### Upgrade Instructions
 
