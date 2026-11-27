@@ -1,5 +1,6 @@
 import { readTaskReports, type TaskReport } from './task-report';
-import { readExecution, taskStandup, type PersonTasks } from './tasks';
+import { taskStandup, type PersonTasks } from './tasks';
+import { readExecution } from './turn-state';
 // Deterministic renderer for the Hermit Dashboard artifact — the render itself is
 // script-authored, not model-authored, so a publish costs a render (pennies) instead
 // of a generation (dollars). Reads only state already on disk (runtime.json,

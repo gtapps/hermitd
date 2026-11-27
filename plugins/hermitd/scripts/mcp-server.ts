@@ -19,7 +19,7 @@ import { postToSession } from './lib/peer-post';
 import { readRuntimeState, type RuntimeRead } from './lib/runtime';
 import { findResident } from './lib/session-registry';
 import { readTaskReports } from './lib/task-report';
-import { readExecution } from './lib/tasks';
+import { readExecution } from './lib/turn-state';
 
 type Json = any;
 

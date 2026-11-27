@@ -1,7 +1,8 @@
 import { hintFor } from './lib/channel-format';
 import { getEnabledChannels } from './lib/channel-config';
 import { readTaskReports } from './lib/task-report';
-import { observeExecution, readExecution, startupTasks } from './lib/tasks';
+import { startupTasks } from './lib/tasks';
+import { seedOperatorActivity, sessionStarted } from './lib/turn-state';
 // Suppress EPIPE errors (e.g. when stdout pipe closes early in tests)
 process.stdout.on('error', () => {});
 
@@ -27,7 +28,6 @@ import { readRuntimeJson, writeRuntimeJson } from './lib/runtime';
 import { ownsResidentIdentity, residentPeerName } from './lib/session-registry';
 import { defaultConfigDir, envAuthPresent, resolveAuthMode } from './lib/setup-token';
 import { actSurfaceLine } from './lib/act-surface';
-import { seedOperatorActivity } from './record-operator-action';
 import { clearGuest, markGuest, pruneGuestMarkers } from './lib/guest-marker';
 import { recordContextPolicy } from './lib/context-policy';
 import { applyContextReset } from './lib/context-reset';
@@ -302,17 +302,14 @@ function main(source: string | null, sessionId: string | null) {
   // (resume/compact reuse it; /clear mints a new one): this session is the resident now, so drop
   // the verdict rather than leave it silently muting its own liveness signal.
   clearGuest(stateDir, sessionId);
-  // A clear only runs between turns; compaction keeps the PreCompact state, and a manual
-  // compaction's idle restarts its clock here, once the compaction itself has finished.
-  if (source !== 'compact') observeExecution(AGENT_DIR, source === 'clear' ? 'idle' : 'unknown', sessionId, null, `resident-start:${source ?? 'startup'}`);
-  else if (readExecution(AGENT_DIR).state === 'idle') observeExecution(AGENT_DIR, 'idle', sessionId, null, 'resident-start:compact');
+  sessionStarted(AGENT_DIR, sessionId, source ?? null);
   if (source === 'clear') recordClear(stateDir);
   // Only SessionStart writes this, so a prompt right after cannot erase it: the core mod
   // confirms a queued clear or compaction from it when the classic events pass it over.
   try {
     writeFileAtomic(path.join(stateDir, 'session-start.json'), JSON.stringify({ source: source ?? 'startup', at: new Date().toISOString() }) + '\n');
   } catch { /* fail-open: the mod falls back to the classic events and its deadline */ }
-  seedOperatorActivity();
+  seedOperatorActivity(AGENT_DIR);
   if (source === 'compact') {
     emitCompactCapsule();
   } else {

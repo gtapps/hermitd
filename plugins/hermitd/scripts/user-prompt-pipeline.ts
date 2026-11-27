@@ -40,7 +40,7 @@ import { conversationKey } from './lib/conversation-key';
 import { isLoggingEnabled } from './lib/channel-log';
 import { isAllowedSender, senderRole, atLeast } from './lib/channel-auth';
 import type { HarnessDecision } from './lib/harness-mod';
-import { observeExecution } from './lib/tasks';
+import { openOperatorTurn, turnStarted } from './lib/turn-state';
 import { classifySource } from './lib/trigger-source';
 
 import { hermitDir, transcriptPath as ccTranscriptPath, sessionId as ccSessionId } from './lib/cc-compat';
@@ -51,7 +51,7 @@ import { ownsResidentIdentity } from './lib/session-registry';
 import { isGuest } from './lib/guest-marker';
 import type { StageContext, StageResult } from './lib/prompt-stages/types';
 
-import { openTurnMarker, run as recordOperatorAction } from './record-operator-action';
+import { run as recordOperatorAction } from './record-operator-action';
 import { run as conversation } from './lib/prompt-stages/conversation';
 import { run as promptContext } from './lib/prompt-stages/prompt-context';
 import { run as channelReplyReminder, invokeResponder } from './lib/prompt-stages/channel-reply-reminder';
@@ -248,13 +248,13 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     // Last, and only here: the disposition is now settled as "the model will take
     // this turn". Written after stdout so a throw on this write can never swallow
     // the decision or the injected context — emit()'s caller catches and exits 0.
-    if (operatorActivityKept) openTurnMarker();
+    if (operatorActivityKept) openOperatorTurn(hermitDir());
     if (residentAdmitted && admittedConversation) {
       try {
         markUnfinished(hermitDir(), admittedConversation, admittedSince);
       } catch { /* Recovery admission never changes prompt output. */ }
     }
-    if (residentAdmitted) observeExecution(hermitDir(), 'in_flight', admittedSession, admittedSource, null);
+    if (residentAdmitted) turnStarted(hermitDir(), admittedSession, admittedSource);
   }
 
   await main(raw);

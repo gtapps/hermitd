@@ -1,4 +1,4 @@
-import { observeExecution } from './lib/tasks';
+import { compacted } from './lib/turn-state';
 process.stdout.on('error', () => {});
 
 // PreCompact records resident execution and stamps its context reset.
@@ -30,7 +30,7 @@ function main(raw: string): void {
   // longer exists. The guest's own compaction says nothing about the resident's context.
   if (!guest) {
     stampContextReset(agentDir);
-    observeExecution(agentDir, trigger === 'manual' ? 'idle' : 'unknown', payload.session_id ?? null, null, 'precompact');
+    compacted(agentDir, payload.session_id ?? null, trigger === 'manual');
   }
 }
 

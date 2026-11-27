@@ -1,7 +1,8 @@
 import { test, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { readExecution, passesExecutionBoundary } from '../scripts/lib/tasks';
+import { passesExecutionBoundary } from '../scripts/lib/tasks';
+import { readExecution } from '../scripts/lib/turn-state';
 import { procStartOf, localPidDomain } from './helpers/registry-fixture';
 import { taskFixture } from './helpers/tasks';
 

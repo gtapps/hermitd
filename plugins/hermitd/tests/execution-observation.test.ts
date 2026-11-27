@@ -1,7 +1,8 @@
 import { it, expect } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
-import { taskFixture, taskLib } from './helpers/tasks';
+import { taskFixture } from './helpers/tasks';
+import * as turnState from '../scripts/lib/turn-state';
 import { runScript } from './helpers/run';
 import { markGuest } from '../scripts/lib/guest-marker';
 
@@ -66,43 +67,43 @@ it('resident SessionStart records its source in session-start.json and a later p
   expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'state/session-start.json'), 'utf8'))).toMatchObject({ source: 'compact' });
 } finally { f.cleanup(); } });
 it('blocked guest prompt does not write execution', async () => { const f = taskFixture(); try { markGuest(path.join(f.dir, 'state'), 'guest'); await runScript('user-prompt-pipeline.ts', { cwd: f.dir, env: { AGENT_DIR: f.dir }, stdin: JSON.stringify({ session_id: 'guest', prompt: '<channel source="discord" chat_id="c1" user="u1">Hello</channel>' }) }); expect(fs.existsSync(path.join(f.dir, 'state/execution.json'))).toBe(false); } finally { f.cleanup(); } });
-it('old in_flight and malformed observations read unknown', async () => { const f = taskFixture(); try { const lib = await taskLib(); f.put('state/execution.json', { state: 'in_flight', at: '2020-01-01T00:00:00Z' }); expect(lib.readExecution(f.dir).state).toBe('unknown'); fs.writeFileSync(path.join(f.dir, 'state/execution.json'), '{'); expect(lib.readExecution(f.dir).state).toBe('unknown'); } finally { f.cleanup(); } });
+it('old in_flight and malformed observations read unknown', async () => { const f = taskFixture(); try { f.put('state/execution.json', { state: 'in_flight', at: '2020-01-01T00:00:00Z' }); expect(turnState.readExecution(f.dir).state).toBe('unknown'); fs.writeFileSync(path.join(f.dir, 'state/execution.json'), '{'); expect(turnState.readExecution(f.dir).state).toBe('unknown'); } finally { f.cleanup(); } });
 
 it('a compaction keeps the source only of a tracked running turn', async () => {
   const f = taskFixture(); try {
-    const { observeExecution, readExecution } = await taskLib();
-    observeExecution(f.dir, 'in_flight', 's', 'upgrade', null);
-    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
+    const { turnStarted, compacted, turnEnded, readExecution } = turnState;
+    turnStarted(f.dir, 's', 'upgrade');
+    compacted(f.dir, 's', false);
     expect(readExecution(f.dir).source).toBe('upgrade');
-    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
+    compacted(f.dir, 's', false);
     expect(readExecution(f.dir).source).toBe('upgrade');
-    observeExecution(f.dir, 'idle', 's', null, null);
+    turnEnded(f.dir, { cause: 'stop', session: 's', backgroundTasks: [] });
     expect(readExecution(f.dir).source).toBe('upgrade');
     // A turn that never stamped in_flight compacts without taking the last turn's source.
-    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
+    compacted(f.dir, 's', false);
     expect(readExecution(f.dir).source).toBeNull();
   } finally { f.cleanup(); }
 });
 
 it('a reported turn end idles only a turn that started by then', async () => {
   const f = taskFixture(); try {
-    const { observeExecution, readExecution, evolveTurnRunning } = await taskLib();
+    const { turnEnded, readExecution, evolveTurnRunning } = turnState;
     const stamp = (state: string, at: number, extra: object = {}) => f.put('state/execution.json', { state, turn_id: 't', at: new Date(at).toISOString(), source: null, cc_session_id: 's', reason: null, ...extra });
     const now = Date.now();
     stamp('in_flight', now - 1000);
-    observeExecution(f.dir, 'idle', 's', null, 'aborted', now);
+    turnEnded(f.dir, { cause: 'interrupt', session: 's', at: now, reason: 'aborted' });
     expect(readExecution(f.dir)).toMatchObject({ state: 'idle', reason: 'aborted', turn_id: 't' });
     // The next prompt stamped its turn before the late report landed.
     stamp('in_flight', now + 50);
-    observeExecution(f.dir, 'idle', 's', null, 'aborted', now);
+    turnEnded(f.dir, { cause: 'interrupt', session: 's', at: now, reason: 'aborted' });
     expect(readExecution(f.dir).state).toBe('in_flight');
     // An interrupt after an auto-compaction ends a running hermit-evolve turn.
     stamp('unknown', now - 1000, { source: 'upgrade', reason: 'precompact' });
     expect(evolveTurnRunning(readExecution(f.dir))).toBe(true);
-    observeExecution(f.dir, 'idle', 's', null, 'aborted', now);
+    turnEnded(f.dir, { cause: 'interrupt', session: 's', at: now, reason: 'aborted' });
     expect(evolveTurnRunning(readExecution(f.dir))).toBe(false);
     stamp('idle', now - 1000, { reason: 'stop' });
-    observeExecution(f.dir, 'idle', 's', null, 'aborted', now);
+    turnEnded(f.dir, { cause: 'interrupt', session: 's', at: now, reason: 'aborted' });
     expect(readExecution(f.dir).reason).toBe('stop');
   } finally { f.cleanup(); }
 });
@@ -128,19 +129,19 @@ it('classifySource marks only hermit-evolve as an upgrade', async () => {
 
 it('a prompt arriving mid-turn keeps a running hermit-evolve turn marked until Stop', async () => {
   const f = taskFixture(); try {
-    const { observeExecution, readExecution } = await taskLib();
-    observeExecution(f.dir, 'in_flight', 's', 'upgrade', null);
-    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    const { turnStarted, compacted, turnEnded, readExecution } = turnState;
+    turnStarted(f.dir, 's', 'upgrade');
+    turnStarted(f.dir, 's', 'channel:discord');
     expect(readExecution(f.dir)).toMatchObject({ state: 'in_flight', source: 'upgrade' });
-    observeExecution(f.dir, 'unknown', 's', null, 'precompact');
-    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    compacted(f.dir, 's', false);
+    turnStarted(f.dir, 's', 'channel:discord');
     expect(readExecution(f.dir).source).toBe('upgrade');
-    observeExecution(f.dir, 'idle', 's', null, null);
-    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    turnEnded(f.dir, { cause: 'stop', session: 's', backgroundTasks: [] });
+    turnStarted(f.dir, 's', 'channel:discord');
     expect(readExecution(f.dir).source).toBe('channel:discord');
     // A compacted evolve mark older than an hour no longer claims the next turn.
     f.put('state/execution.json', { state: 'unknown', turn_id: null, at: new Date(Date.now() - 2 * 3600000).toISOString(), source: 'upgrade', cc_session_id: 's', reason: 'precompact' });
-    observeExecution(f.dir, 'in_flight', 's', 'channel:discord', null);
+    turnStarted(f.dir, 's', 'channel:discord');
     expect(readExecution(f.dir).source).toBe('channel:discord');
   } finally { f.cleanup(); }
 });
@@ -155,8 +156,8 @@ for (const [script, event, extra] of [['stop-pipeline.ts', 'Stop', {}], ['stop-f
     ['another running subagent releases the upgrade mark', [runner('running', 'hermitd:task-worker')], 'upgrade', 'idle'],
     ['a running evolve-runner does not hold a non-upgrade turn', [runner('running')], 'channel:discord', 'idle'],
   ] as [string, object[], string, string][]) it(`${event}: ${label}`, async () => { const f = taskFixture(); try {
-    const { observeExecution, readExecution } = await taskLib();
-    observeExecution(f.dir, 'in_flight', 'resident', source, null);
+    const { turnStarted, readExecution } = turnState;
+    turnStarted(f.dir, 'resident', source);
     expect((await endTurn(f.dir, script, event, tasks, extra)).exitCode).toBe(0);
     expect(readExecution(f.dir)).toMatchObject({ state, source });
   } finally { f.cleanup(); } });
@@ -164,11 +165,11 @@ for (const [script, event, extra] of [['stop-pipeline.ts', 'Stop', {}], ['stop-f
 
 it('the evolve-runner hand-back turn inherits the held upgrade mark and its Stop ends it', async () => {
   const f = taskFixture(); try {
-    const { observeExecution, readExecution, evolveTurnRunning } = await taskLib();
-    observeExecution(f.dir, 'in_flight', 'resident', 'upgrade', null);
+    const { turnStarted, readExecution, evolveTurnRunning } = turnState;
+    turnStarted(f.dir, 'resident', 'upgrade');
     await endTurn(f.dir, 'stop-pipeline.ts', 'Stop', [runner('running')]);
     expect(evolveTurnRunning(readExecution(f.dir))).toBe(true);
-    observeExecution(f.dir, 'in_flight', 'resident', 'other', null);
+    turnStarted(f.dir, 'resident', 'other');
     expect(readExecution(f.dir).source).toBe('upgrade');
     await endTurn(f.dir, 'stop-pipeline.ts', 'Stop', []);
     expect(evolveTurnRunning(readExecution(f.dir))).toBe(false);
