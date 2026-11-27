@@ -330,6 +330,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   }
   realBinary ??= host ? install!.binary : REAL_BINARY;
   const env = { ...process.env };
+  if (config.timezone) env.TZ = config.timezone;
   const browserData = options.browserData ?? path.dirname(browserProfile(dir, deployment));
   env.AGENT_BROWSER_ENCRYPTION_KEY = vaultKey(browserData);
   const vaultLinked = !host && linkContainerVault(browserData);

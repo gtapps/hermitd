@@ -22,6 +22,7 @@
 
 ### Fixed
 
+- The agent's browser reports the configured time zone instead of UTC on Docker.
 - A Docker agent no longer stays inert with a boot conflict over liveness files left by a session that died before the last reboot or launch. The container, `hermitd start` and `hermitd docker up` now share one boot-ownership check, so `hermitd docker up` also refuses a live host instance whose tmux session is gone.
 - A follow-up for a helper whose session stopped resumes it on this machine instead of reporting the message as queued. For a helper offline on another machine, the agent offers a new helper there, since its queued message is never delivered.
 - Connector access requests in `/hermitd:channel-access` point to `hermitd connector pair` and `revoke` instead of adding an `allowed_users` entry that shut out every other paired person.
