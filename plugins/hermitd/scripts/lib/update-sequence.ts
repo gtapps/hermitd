@@ -205,9 +205,12 @@ export async function runUpdate(target: UpdateTarget, opts: UpdateOptions): Prom
   const onSignal = (code: number) => () => { noteInterrupt(); removeMarker(); process.exit(code); };
   const onSigint = onSignal(130);
   const onSigterm = onSignal(143);
+  // A closed terminal has nowhere to print; the marker still goes, as the shell's EXIT trap did.
+  const onSighup = () => { removeMarker(); process.exit(129); };
   if (opts.handleSignals) {
     process.on('SIGINT', onSigint);
     process.on('SIGTERM', onSigterm);
+    process.on('SIGHUP', onSighup);
     process.on('exit', removeMarker);
   }
 
@@ -231,15 +234,17 @@ export async function runUpdate(target: UpdateTarget, opts: UpdateOptions): Prom
     if (opts.dryRun) { out('[hermit] --dry-run: no changes made.'); return 0; }
     if (rows.length === 0) { out('[hermit] Nothing to update.'); return 0; }
     if (!opts.assumeYes) {
-      const ans = (await askLine('Continue? [y/N] ')).trim();
-      if (!/^(y|yes)$/i.test(ans)) { out('[hermit] Aborted.'); return 0; }
+      const ans = await askLine('Continue? [y/N] ');
+      // End of input with no newline fails, as `read` under `set -e` did.
+      if (ans === null) return 1;
+      if (!/^(y|yes)$/i.test(ans.trim())) { out('[hermit] Aborted.'); return 0; }
     }
 
     // `claude plugin update` moves the pin against the local catalog cache and does not
     // fetch, so each backing marketplace is refreshed first.
     out('[hermit] Refreshing plugin marketplaces...');
     for (const mp of new Set(rows.map(r => r.id.split('@')[1]).filter(Boolean))) {
-      const r = await run(['claude', 'plugin', 'marketplace', 'update', mp], { stdout: 'ignore' });
+      const r = await run(['claude', 'plugin', 'marketplace', 'update', mp], { stdout: 'inherit' });
       if (r.code !== 0) err(`[hermit] Warning: could not refresh marketplace ${mp} — updates may resolve against a stale catalog`);
     }
 
@@ -335,10 +340,13 @@ export async function runUpdate(target: UpdateTarget, opts: UpdateOptions): Prom
         err(`[hermit] Warning: permission list not applied (${r?.out || 'core install not found'}); hermit-evolve reports the command to run.`);
         return;
       }
-      try {
-        const summary = JSON.parse(r.out.trim().split('\n').pop() ?? '').summary;
+      // Captured stderr follows stdout, so the result is the last line that parses.
+      for (const line of r.out.trim().split('\n').reverse()) {
+        let summary: unknown;
+        try { summary = JSON.parse(line).summary; } catch { continue; }
         if (summary) out('[hermit] Permission list: ' + summary);
-      } catch {}
+        break;
+      }
     }
 
     function stampMarker(): void {
@@ -449,22 +457,35 @@ export async function runUpdate(target: UpdateTarget, opts: UpdateOptions): Prom
     if (opts.handleSignals) {
       process.off('SIGINT', onSigint);
       process.off('SIGTERM', onSigterm);
+      process.off('SIGHUP', onSighup);
     }
   }
 }
 
-/** One line from stdin; the prompt shows only on a terminal, as `read -p` does. */
-async function askLine(prompt: string): Promise<string> {
+/** One line from stdin, or null at end of input before a newline; the prompt shows only on a terminal, as `read -p` does. */
+// Read without blocking the event loop, so Ctrl-C at the prompt reaches the SIGINT handler.
+async function askLine(prompt: string): Promise<string | null> {
   if (process.stdin.isTTY) fs.writeSync(2, prompt);
-  const buf = Buffer.alloc(1);
-  let line = '';
-  for (;;) {
-    let n = 0;
-    try { n = fs.readSync(0, buf, 0, 1, null); } catch { break; }
-    if (n === 0 || buf[0] === 0x0a) break;
-    line += String.fromCharCode(buf[0]);
-  }
-  return line;
+  const stdin = process.stdin;
+  return new Promise(resolve => {
+    let buf = '';
+    const done = (line: string | null) => {
+      stdin.off('data', onData);
+      stdin.off('end', onEnd);
+      stdin.off('error', onEnd);
+      stdin.pause();
+      resolve(line);
+    };
+    const onData = (chunk: Buffer | string) => {
+      buf += chunk.toString();
+      const i = buf.indexOf('\n');
+      if (i >= 0) done(buf.slice(0, i));
+    };
+    const onEnd = () => done(null);
+    stdin.on('data', onData);
+    stdin.on('end', onEnd);
+    stdin.on('error', onEnd);
+  });
 }
 
 if (import.meta.main) {

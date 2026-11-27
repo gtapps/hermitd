@@ -325,6 +325,24 @@ printf 'printf "bootstrapped\\n"\\n' > "$HERMIT_PLUGIN_ROOT/scripts/hermitd-upda
     } finally { f.wd.cleanup(); }
   });
 
+  // The confirm prompt reads one line: yes proceeds, anything else aborts cleanly, and input
+  // that ends before a newline fails as `read` under `set -e` did.
+  for (const [input, exitCode, updated] of [['y\n', 0, true], ['n\n', 0, false], ['', 1, false]] as const) {
+    test(`confirm prompt with ${JSON.stringify(input)} exits ${exitCode}`, async () => {
+      const f = fixture({ listJson: listThreeScopes });
+      try {
+        const proc = Bun.spawn({
+          cmd: ['bash', hermit(f.proj, 'bin', 'hermitd-update')], cwd: f.proj,
+          env: { ...process.env, ...f.env }, stdin: Buffer.from(input), stdout: 'pipe', stderr: 'pipe',
+        });
+        const [stdout] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+        expect(await proc.exited).toBe(exitCode);
+        expect(fs.existsSync(f.recFile)).toBe(updated);
+        expect(stdout.includes('[hermit] Aborted.')).toBe(input === 'n\n');
+      } finally { f.wd.cleanup(); }
+    });
+  }
+
   test('--dry-run records no update calls', async () => {
     const f = fixture({ listJson: listThreeScopes });
     try {
