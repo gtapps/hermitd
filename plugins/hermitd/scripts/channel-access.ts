@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pinStateDirOrExit } from './lib/cc-compat';
+import { senderRole } from './lib/channel-auth';
 import { isThreadChannelType, lookupChat } from './lib/channel-chats';
 import { homeSeedBlock, isDict } from './lib/channel-config';
 import { channelStateDir } from './lib/channel-token';
@@ -239,7 +240,6 @@ async function main(): Promise<void> {
     const access = readAccess(file);
     const previous = access.allowFrom ?? [];
     const allowFrom = previous.filter(id => id !== value);
-    const channelConfig = config.channels[channel];
     let markerRemoved = false;
     try {
       fs.unlinkSync(path.join(path.dirname(file), 'approved', value));
@@ -256,12 +256,8 @@ async function main(): Promise<void> {
     if (allowFrom.length !== previous.length) writeAccess(dir, channel, file, access, { ...access, allowFrom });
     const warnings = [];
     if (previous.length && !allowFrom.length) warnings.push('last_approver');
-    // Mirrors senderRole's operator tier: `operators`, when present, replaces the first `allowed_users` entry.
-    if (channelConfig.operators !== undefined
-      ? configuredIds(channelConfig.operators).includes(value)
-      : configuredIds(channelConfig.allowed_users)[0] === value) {
-      warnings.push('primary_operator');
-    }
+    // No chat id: only a listed operator (or first allowed user) counts, never a home or maintainer chat.
+    if (senderRole(config, channel, value, null) === 'operator') warnings.push('primary_operator');
     printJson({ changed: true, channel, sender_id: value, warnings });
     return;
   }
