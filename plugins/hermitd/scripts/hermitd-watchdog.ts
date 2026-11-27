@@ -33,7 +33,7 @@ import { acquireLock, releaseLock, pidAlive } from './lib/lockfile';
 import { readExecution, passesExecutionBoundary, evolveTurnRunning, type BoundaryReason } from './lib/tasks';
 import { contextPolicyHash } from './lib/context-policy';
 import { utcISOStamp as utcStamp, currentHHMM, currentHHMMOrUTC, friendlyBoundary, parseDuration as parseDurationMs } from './lib/time';
-import { writeRuntimeJson, readRuntimeJson, refuseProjectionRoot, STATE_DIR, LIFECYCLE_LOCK } from './lib/runtime';
+import { writeRuntimeJson, readRuntimeJson, refuseProjectionRoot, STATE_DIR } from './lib/runtime';
 import { tmuxSessionAlive, getSessionName as deriveSessionName } from './lib/tmux';
 import { enqueue, failedLeg, readOutcome, type EnqueueResult, type QueueOutcome, type QueueRequest } from './lib/harness-mod';
 import { paneRootPids, collectTree, verifyTreeExited } from './lib/proc';
@@ -105,11 +105,27 @@ const REAUTH_SKILL_MARKER_MAX_AGE_MS = 2 * 3600000;
  * Two implementations only: REAL_WORLD below (production, delegating to the same
  * lib functions the file already used) and whatever a test constructs.
  */
+type ProcTree = ReturnType<typeof collectTree>;
+
 export type World = {
   liveness: { ageSecs(): number | null };
   registry: { resident(runtime: Json): SessionEntry | null };
   notify: { operator: typeof pushOperatorMessage; maintainer: typeof pushMaintainerOnly };
-  actions: { restart: typeof doRestart; nudge: typeof doNudge; reauth: typeof evaluateReauth };
+  actions: {
+    restart(...args: Parameters<typeof doRestart> extends [World, ...infer Rest] ? Rest : never): Promise<void>;
+    nudge: typeof doNudge;
+    reauth: typeof evaluateReauth;
+  };
+  /** The restart action's process and credential effects (doRestart drives them in order). */
+  restart: {
+    captureTree(sessionName: string): ProcTree;
+    kill(sessionName: string): void;
+    verifyExited(tree: ProcTree): Promise<{ orphaned: boolean; reportedPids: number[] }>;
+    commitCredential(): void;
+    writeRuntime(runtime: Json): void;
+    /** Spawn hermitd-start; false when the start binary is missing. */
+    start(args: string[]): boolean;
+  };
   proc: { heartbeatMonitorDead(): boolean };
   clock: { nowMs(): number };
   tmux: { alive(s: string): boolean; capture(s: string): string | null };
@@ -127,7 +143,15 @@ const REAL_WORLD: World = {
   liveness: { ageSecs: () => REAL_LIVENESS_DEPS().livenessAgeSecs() },
   registry: { resident: resolveResident },
   notify: { operator: pushOperatorMessage, maintainer: pushMaintainerOnly },
-  actions: { restart: doRestart, nudge: doNudge, reauth: evaluateReauth },
+  actions: { restart: (...args) => doRestart(REAL_WORLD, ...args), nudge: doNudge, reauth: evaluateReauth },
+  restart: {
+    captureTree: (s) => collectTree(paneRootPids(s)),
+    kill: (s) => { spawnSync('tmux', ['kill-session', '-t', s], { stdio: 'ignore' }); },
+    verifyExited: verifyTreeExited,
+    commitCredential: commitPendingCredential,
+    writeRuntime: writeRuntimeJson,
+    start: spawnStart,
+  },
   proc: { heartbeatMonitorDead },
   clock: { nowMs: () => Date.now() },
   tmux: {
@@ -583,9 +607,9 @@ function readTranscriptTail(transcriptId: string | null, world: World = REAL_WOR
 // --- Lifecycle lock ---
 
 /** The lifecycle lock file under the world's state dir. Must resolve to the same
- *  path as lib/runtime's LIFECYCLE_LOCK for the real world — the restart, nudge and
- *  post-close-clear paths still lock via that constant, and the two only exclude
- *  each other while both name the same file. */
+ *  path as lib/runtime's LIFECYCLE_LOCK for the real world — hermitd-start and
+ *  hermitd-stop lock via that constant, and the two only exclude each other while
+ *  both name the same file. */
 function lifecycleLockPath(world: World): string {
   return path.join(world.paths.stateDir, '.lifecycle.lock');
 }
@@ -868,12 +892,16 @@ function copyOauthAccount(stagedDir: string): void {
 
 /** Try-acquire lock, mark runtime, kill session, verify the old tree died, spawn hermitd-start.
  *  `requested` is true for restarts someone asked for (cmdRestart: manual, login renewal):
- *  they count as planned and resume without the loop guard. Detected restarts resume too. */
-async function doRestart(sessionName: string, reason: string, runtime: Json, timezone: string, requested = false): Promise<void> {
-  if (!tryAcquireLifecycleLock()) {
+ *  they count as planned and resume without the loop guard. Detected restarts resume too.
+ *  Process and credential effects go through `world.restart`, so a test world can
+ *  drive each step and outcome in process. */
+export async function doRestart(world: World, sessionName: string, reason: string, runtime: Json, timezone: string, requested = false): Promise<void> {
+  if (!tryAcquireLifecycleLock(world)) {
     process.stderr.write('[watchdog] lifecycle lock held — backing off restart\n');
     return;
   }
+  const lock = lifecycleLockPath(world);
+  const fx = world.restart;
 
   try {
     // Mark runtime before killing so resident-start recovery sees the reason
@@ -883,29 +911,29 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
       runtime.last_error = 'unclean_shutdown';
     }
     runtime.watchdog_restart_reason = reason;
-    writeRuntimeJson(runtime);
+    fx.writeRuntime(runtime);
 
     // Capture the pane's process tree BEFORE the kill so we can verify the old
     // claude actually died. (For a dead-session restart tmux is already gone, so
     // this is empty and the restart proceeds unchanged.)
-    const tree = collectTree(paneRootPids(sessionName));
-    spawnSync('tmux', ['kill-session', '-t', sessionName], { stdio: 'ignore' });
-    const { orphaned, reportedPids } = await verifyTreeExited(tree);
+    const tree = fx.captureTree(sessionName);
+    fx.kill(sessionName);
+    const { orphaned, reportedPids } = await fx.verifyExited(tree);
 
     if (orphaned) {
       // The old process survived the kill. Spawning a replacement now would
       // recreate the duplicate-instance incident, so abort and alert instead.
       // The old process lives on, so a later death is not this planned restart.
       delete runtime.planned_restart_at;
-      writeRuntimeJson(runtime);
-      releaseLock(LIFECYCLE_LOCK);
-      appendEvent('restart-aborted', `survivors: ${reportedPids.join(' ')}`);
+      fx.writeRuntime(runtime);
+      releaseLock(lock);
+      appendEvent('restart-aborted', `survivors: ${reportedPids.join(' ')}`, world);
       process.stderr.write(`[watchdog] restart aborted — process survived kill: ${reportedPids.join(' ')}\n`);
-      pushOperatorMessage(composeOrphanMessage(timezone));
+      world.notify.operator(composeOrphanMessage(timezone));
       // Same episode as the orphan verdict the next tick sees: one notice covers both.
-      const ws = readWatchdogState();
+      const ws = readWatchdogState(world);
       ws.orphan_notified = true;
-      writeWatchdogState(ws);
+      writeWatchdogState(ws, world);
       return;
     }
 
@@ -913,52 +941,57 @@ async function doRestart(sessionName: string, reason: string, runtime: Json, tim
     // verifiably dead and the new one has not started. A renewal written at any
     // other time can be clobbered by the resident's own ~8-hourly refresh, which is
     // why the mint stages it and leaves the commit here.
-    commitPendingCredential();
+    fx.commitCredential();
 
     // Release before spawning hermitd-start (it re-acquires)
-    releaseLock(LIFECYCLE_LOCK);
+    releaseLock(lock);
 
     // Resume the conversation unless there is none to resume, or a detected restart
     // already happened inside the loop guard (a requested restart skips the guard).
     // hermitd-start still starts fresh when the transcript has no user turn
     // (resolveResumeTarget).
     const id = runtime.cc_session_id;
-    const ws = readWatchdogState();
-    const sinceLast = typeof ws.last_restart_at === 'string' ? ageSecs(ws.last_restart_at) : null;
+    const ws = readWatchdogState(world);
+    const sinceLast = typeof ws.last_restart_at === 'string' ? ageSecs(ws.last_restart_at, world) : null;
     const initialSkip = typeof id !== 'string' || !id.trim() ? 'no-session-id'
       : !requested && sinceLast !== null && sinceLast < RESUME_LOOP_GUARD_SECS ? 'recent-restart'
       : null;
-    ws.last_restart_at = worldStamp(REAL_WORLD);
-    writeWatchdogState(ws);
-    const target = initialSkip ? { skip: initialSkip } : resolveResumeTarget(runtime, process.cwd(), runtime.config_dir);
+    ws.last_restart_at = worldStamp(world);
+    writeWatchdogState(ws, world);
+    const target = initialSkip ? { skip: initialSkip } : resolveResumeTarget(runtime, path.resolve(world.paths.hermitRoot, '..'), runtime.config_dir);
     const resumed = 'id' in target;
     const resumeArgs = resumed ? ['--resume', target.id] : [];
     const resumeDetail = resumed ? `resume ${target.id}` : `fresh: ${target.skip}`;
-    const startBin = '.hermit/bin/hermitd-start';
-    const child = spawn(startBin, resumeArgs, {
-      detached: true,
-      stdio: 'ignore',
-      // No explicit env: hermitd-start reads the setup token from defaultConfigDir()
-      // and forwards CLAUDE_CONFIG_DIR into the new session's tmux env-file, and
-      // adoptSessionConfigDir() already assigned the session's own value onto
-      // process.env on both paths that reach here — which spawn passes on by default.
-    });
-    child.on('error', (e) => process.stderr.write(`[watchdog] restart failed: ${e}\n`));
-    child.unref();
+    const startPresent = fx.start(resumeArgs);
     // doctor-check.ts checkWatchdog counts `upgrade,` and `rules,` reasons and `requested: true` as planned.
-    appendEvent('restart', `${reason}, tree-verified, ${resumeDetail}`, REAL_WORLD, requested ? { requested: true } : {});
+    appendEvent('restart', `${reason}, tree-verified, ${resumeDetail}`, world, requested ? { requested: true } : {});
     process.stderr.write(`[watchdog] attempting restart of "${sessionName}", reason: ${reason}\n`);
-    // Only announce a restart attempt when the start binary is actually
-    // present — a missing/ENOENT binary makes spawn fail asynchronously via the
-    // 'error' handler above, after this synchronous path already returned, so
-    // guard the push on the binary existing rather than on spawn's async result.
+    // Only announce a restart attempt when the start binary is actually present.
     // The lock is already released above, so a slow send never holds it.
-    if (fs.existsSync(startBin)) pushOperatorMessage(composeRestartMessage(requested ? 'requested' : reason, resumed, timezone));
+    if (startPresent) world.notify.operator(composeRestartMessage(requested ? 'requested' : reason, resumed, timezone));
   } catch (e) {
     process.stderr.write(`[watchdog] restart failed: ${e}\n`);
   } finally {
-    releaseLock(LIFECYCLE_LOCK); // no-op once already released
+    releaseLock(lock); // no-op once already released
   }
+}
+
+/** Spawn hermitd-start detached and unref'd. Returns whether the start binary is
+ *  present: a missing binary makes spawn fail asynchronously via the 'error'
+ *  handler, after the caller has moved on, so presence is the synchronous signal. */
+function spawnStart(args: string[]): boolean {
+  const startBin = '.hermit/bin/hermitd-start';
+  const child = spawn(startBin, args, {
+    detached: true,
+    stdio: 'ignore',
+    // No explicit env: hermitd-start reads the setup token from defaultConfigDir()
+    // and forwards CLAUDE_CONFIG_DIR into the new session's tmux env-file, and
+    // adoptSessionConfigDir() already assigned the session's own value onto
+    // process.env on both paths that reach here — which spawn passes on by default.
+  });
+  child.on('error', (e) => process.stderr.write(`[watchdog] restart failed: ${e}\n`));
+  child.unref();
+  return fs.existsSync(startBin);
 }
 
 // --- Re-auth relay (step 3a) ---
@@ -2479,7 +2512,7 @@ async function cmdRestart(reason: string): Promise<void> {
   const sessionName = runtime.tmux_session || deriveSessionName(config);
   if (!sessionName) process.exit(0);
   OPERATOR_MESSAGES = loadMessages(HERMIT_ROOT, config.language);
-  await doRestart(sessionName, reason, runtime, config.timezone ?? 'UTC', true);
+  await doRestart(REAL_WORLD, sessionName, reason, runtime, config.timezone ?? 'UTC', true);
 }
 
 export type QuietRestart = UpgradeReadiness | { status: 'replaced' };
