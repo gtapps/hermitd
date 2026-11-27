@@ -150,11 +150,9 @@ function shlexJoin(args: string[]): string {
   return args.map(shlexQuote).join(' ');
 }
 
-/** True when config.json exists but could not be parsed — gates the write-back. */
+/** True when config.json exists but did not parse as an object: its settled
+ *  `channels` is empty, so the boot settings sweep must not act on it. */
 let configReadFailed = false;
-/** The exact on-disk object, kept beside the settled view so the always-on
- *  write-back patches only the fields boot owns (see markAlwaysOn). */
-let configRaw: Json = null;
 
 /** Load config.json through the settled read path every other script uses. */
 function loadConfig(): Json {
@@ -169,8 +167,7 @@ function loadConfig(): Json {
   // containers, so a missing or broken `routines` or `env` boots empty rather
   // than resurrecting entries the operator removed.
   const raw = readConfigRaw(path.dirname(CONFIG_PATH));
-  configReadFailed = raw === null;
-  configRaw = raw;
+  configReadFailed = !isDict(raw);
   return settleConfig(raw ?? undefined);
 }
 
@@ -209,16 +206,19 @@ function applyAlwaysOnDoctorSchedule(config: Json): void {
 // `always_on` and the doctor ratchet are the only fields boot owns, so they are
 // patched onto the RAW object and that is what gets written, like hermitd-stop.
 // Writing the settled view would stamp every default as an operator-set value and
-// bake read-path normalization into the file. A config that did not parse as an
-// object is left untouched.
+// bake read-path normalization into the file. The file is re-read here rather than
+// reusing the boot-time read: the session is already running by now, and a write
+// it made in between must survive. A config that does not parse as an object is
+// left untouched.
 function markAlwaysOn(): void {
-  if (!isDict(configRaw)) return;
-  const before = structuredClone(configRaw);
-  configRaw.always_on = true;
-  applyAlwaysOnDoctorSchedule(configRaw);
+  const raw = readConfigRaw(path.dirname(CONFIG_PATH));
+  if (!isDict(raw)) return;
+  const before = structuredClone(raw);
+  raw.always_on = true;
+  applyAlwaysOnDoctorSchedule(raw);
   try {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(configRaw, null, 2) + '\n');
-    auditConfigChange(path.dirname(CONFIG_PATH), before, configRaw, 'hermitd-start');
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2) + '\n');
+    auditConfigChange(path.dirname(CONFIG_PATH), before, raw, 'hermitd-start');
   } catch {}
 }
 

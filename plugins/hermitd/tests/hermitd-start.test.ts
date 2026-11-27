@@ -774,6 +774,15 @@ describe('markAlwaysOn', () => {
     expect(written).toEqual(expected);
   });
 
+  test('a config write made after boot read survives', () => {
+    writeConfig({ agent_name: 'Test' });
+    loadConfig();
+    writeConfig({ agent_name: 'Test', language: 'en' });
+    markAlwaysOn();
+    const written = JSON.parse(fs.readFileSync('.hermit/config.json', 'utf-8'));
+    expect(written).toEqual({ agent_name: 'Test', language: 'en', always_on: true });
+  });
+
   test('an unparseable config is left untouched', () => {
     fs.writeFileSync('.hermit/config.json', '{ not json');
     loadConfig();
@@ -1112,6 +1121,14 @@ describe('writeSettingsEnv', () => {
   // — acting on that would strip every live channel's state dir.
   test('sweep is skipped when config.json failed to parse', () => {
     fs.writeFileSync('.hermit/config.json', '{ "channels": { ');
+    writeSettings({ env: { DISCORD_STATE_DIR: '/tmp/live-discord' } });
+    const config = loadConfig();
+    captureLog(() => writeSettingsEnv(config));
+    expect(readSettings().env.DISCORD_STATE_DIR).toBe('/tmp/live-discord');
+  });
+
+  test('sweep is skipped when config.json is not an object', () => {
+    fs.writeFileSync('.hermit/config.json', '[]');
     writeSettings({ env: { DISCORD_STATE_DIR: '/tmp/live-discord' } });
     const config = loadConfig();
     captureLog(() => writeSettingsEnv(config));
@@ -1990,11 +2007,11 @@ describe('writeSettingsEnv sandbox overlay', () => {
 // ============================================================
 
 describe('negative paths', () => {
-  test('invalid JSON in config.json falls open to the defaults merge', () => {
+  test('invalid JSON in config.json settles to defaults', () => {
     fs.writeFileSync('.hermit/config.json', '{bad json');
-    const merged = loadConfig();
-    expect(merged.escalation).toBe('balanced');
-    expect(merged.model).toBe('sonnet');
+    const config = loadConfig();
+    expect(config.escalation).toBe('balanced');
+    expect(config.model).toBe('sonnet');
   });
 
   test('non-dict channels does not crash iterChannelConfigs', () => {

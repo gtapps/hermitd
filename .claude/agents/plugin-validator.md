@@ -89,7 +89,7 @@ Report the full output. Any FAIL from the native validator is a FAIL in your rep
 
 Only when `<slug> == "hermitd"`. Skip silently for other slugs.
 
-- Compare keys in `plugins/<slug>/state-templates/config.json.template` with the `DEFAULT_CONFIG` in `plugins/<slug>/scripts/hermitd-start.ts`
+- Compare top-level keys in `plugins/<slug>/state-templates/config.json.template` with `TABLE` in `plugins/<slug>/scripts/lib/config-read.ts`
 - Flag any keys present in one but not the other
 
 ## Release mode (only when the second argument is `release`)
