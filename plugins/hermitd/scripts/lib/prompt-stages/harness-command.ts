@@ -23,7 +23,7 @@ export function run(ctx: StageContext): StageResult | void {
   const config = ctx.config();
 
   const role = senderRole(config, env.source, env.userId, env.chatId);
-  if (role === 'none') return; // not admitted: silent no-op
+  if (role === 'none' || !config) return; // not admitted, or no readable config: silent no-op
   if (!atLeast(role, 'controller')) return { context: controlRefusal(parsed.command) };
 
   if (ctx.harnessMode) {

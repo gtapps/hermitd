@@ -39,8 +39,8 @@ export function run(ctx: StageContext): StageResult | void {
   // Read before the match, not after: the bot's own identity is needed to resolve
   // both address forms. config() is memoized per prompt (user-prompt-pipeline.ts),
   // and channel-reply-reminder has already loaded it, so this costs nothing. A null
-  // config resolves to an empty identity AND fails the role check below, so an
-  // unreadable config still means no control command works at all — unchanged.
+  // config resolves to an empty identity and is a silent no-op below, so an
+  // unreadable config still means no control command works at all.
   const config = ctx.config();
   const identity = channelBotIdentity(config, sourceRaw);
 
@@ -67,7 +67,7 @@ export function run(ctx: StageContext): StageResult | void {
 
   // Stricter gate than a plain reply: pausing is state-mutating.
   const role = senderRole(config, sourceRaw, userId, env.chatId);
-  if (role === 'none') return;
+  if (role === 'none' || !config) return;
   if (!atLeast(role, 'controller')) return { context: controlRefusal(addressed.command) };
 
   const by = safeForLLM(clip(senderLabel(env), MAX_BY_LEN));

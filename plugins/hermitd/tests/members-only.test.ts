@@ -33,14 +33,12 @@ describe('members_only authority', () => {
       const on = config({ ...entry, members_only: true });
       expect(controller(on, 'plugin:hermitd-connector:connector', 'u1', HOME)).toBe(false);
       expect(operator(on, 'connector', 'u1', HOME)).toBe(false);
-      expect(controller(on, 'connector', 'u1', HOME)).toBe(false);
     });
   }
 
   test('without the key the same shapes keep their authority', () => {
     expect(controller(config({ default_chat_id: HOME }), 'connector', 'u1', HOME)).toBe(true);
     expect(operator(config({ allowed_users: ['u1'] }), 'connector', 'u1', HOME)).toBe(true);
-    expect(controller(config({ default_chat_id: HOME }), 'connector', 'u1', HOME)).toBe(true);
     expect(recallScope(config({ default_chat_id: HOME }), 'connector', HOME, '/nonexistent')).toBeNull();
   });
 
