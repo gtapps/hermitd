@@ -279,6 +279,7 @@ test('a signed-in viewport override is marked until close, and the takeover rese
   const reset = await run(['set', 'viewport', '500', '935'], {}, { takeoverReset: true });
   expect(reset.code).toBe(0);
   expect(reset.data.argv).toEqual(['set', 'viewport', '500', '935']);
+  expect(fs.existsSync(marker)).toBe(false);
 });
 
 test('only the holding task drives the persistent browser', async () => {
