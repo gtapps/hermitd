@@ -14,6 +14,7 @@ import { failJson, flagValue, printJson, readHidden, readJson, readStdin, writeA
 import { readProxyInfo } from './lib/credproxy-env';
 import { privateEnvPath, upsertEnvVar } from './lib/env-file';
 import { readSettledConfig } from './lib/config-read';
+import { isUsableTimeZone } from './lib/time';
 
 const REAL_BINARY = `/usr/lib/node_modules/agent-browser/bin/agent-browser-linux-${process.arch}`;
 // browser.chrome_args flags that would take over the wrapper's profile, debugging port, user agent
@@ -330,7 +331,7 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
   }
   realBinary ??= host ? install!.binary : REAL_BINARY;
   const env = { ...process.env };
-  if (config.timezone) env.TZ = config.timezone;
+  if (config.timezone && isUsableTimeZone(config.timezone)) env.TZ = config.timezone;
   const browserData = options.browserData ?? path.dirname(browserProfile(dir, deployment));
   env.AGENT_BROWSER_ENCRYPTION_KEY = vaultKey(browserData);
   const vaultLinked = !host && linkContainerVault(browserData);
