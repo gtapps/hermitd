@@ -12,21 +12,12 @@ const { freshDir: freshDockerHome, cleanup: cleanupDockerHomes } = freshDirFacto
 afterAll(cleanupDockerHomes);
 
 describe('static file checks', () => {
-  test('hermitd-docker update refreshes marketplaces (core first), then moves the pin', () => {
+  test('hermitd-docker update hands off to the shared update sequence', () => {
     const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'hermitd-docker.sh'), 'utf8');
-    // Durable `plugin update` per plugin with explicit scope...
-    expect(src).toContain('claude plugin update');
-    expect(src).toContain('--scope');
-    expect(src).toContain('hermit-evolve unattended');
-    // ...preceded by a marketplace refresh — `plugin update` only moves the pin against
-    // whatever is already in the local cache, it does not git-pull the catalog itself.
-    const marketplaceIdx = src.indexOf('claude plugin marketplace update');
-    const updateLoopIdx = src.indexOf('claude plugin update "$pid"');
-    expect(marketplaceIdx).toBeGreaterThan(-1);
-    expect(updateLoopIdx).toBeGreaterThan(-1);
-    expect(marketplaceIdx).toBeLessThan(updateLoopIdx);
-    // Core-first ordering so `^core`-dependent siblings re-resolve against the new core.
-    expect(src).toContain('.sort((a, b) =>');
+    const update = src.slice(src.indexOf('\n  update)'), src.indexOf('\n  update-step)'));
+    // The running check and the boot-owner verdict come before anything moves.
+    expect(update.indexOf('_require_running')).toBeLessThan(update.indexOf('_refuse_if_host_tmux_owner'));
+    expect(update.indexOf('_refuse_if_host_tmux_owner')).toBeLessThan(update.indexOf('exec bun "$HOST_SCRIPTS/lib/update-sequence.ts" docker'));
   });
 
   test('hermitd-docker warns when the container runs a stale baked entrypoint', () => {
@@ -607,18 +598,26 @@ describe('hermitd-docker up host tmux guard', () => {
     expect(r.booted).toBe(false);
   });
 
+  // Each up() has its own workdir, stubs and Docker home, so the cases run side by side;
+  // one after another they spent most of the timeout on a loaded CI runner.
   test('boots when the session is gone, the record is docker, or HERMIT_FORCE_BOOT=1', async () => {
-    expect((await up({ runtime_mode: 'tmux', tmux_session: 'hermit-dem' })).booted).toBe(true);
-    expect((await up({ runtime_mode: 'docker', tmux_session: 'hermit-demo' })).booted).toBe(true);
-    expect((await up({ runtime_mode: 'tmux', tmux_session: 'hermit-demo' }, { HERMIT_FORCE_BOOT: '1' })).booted).toBe(true);
+    const runs = await Promise.all([
+      up({ runtime_mode: 'tmux', tmux_session: 'hermit-dem' }),
+      up({ runtime_mode: 'docker', tmux_session: 'hermit-demo' }),
+      up({ runtime_mode: 'tmux', tmux_session: 'hermit-demo' }, { HERMIT_FORCE_BOOT: '1' }),
+    ]);
+    expect(runs.map(r => r.booted)).toEqual([true, true, true]);
   }, 20000);
 
   test('restart resumes by default, --fresh starts clean, up stays fresh', async () => {
     const docker = { runtime_mode: 'docker', tmux_session: 'hermit-demo' };
-    expect((await up(docker, {}, 'restart')).resume).toBe('1');
-    expect((await up(docker, {}, 'restart --resume')).resume).toBe('1');
-    expect((await up(docker, {}, 'restart --fresh')).resume).toBe('0');
-    expect((await up(docker)).resume).toBe('unset');
+    const runs = await Promise.all([
+      up(docker, {}, 'restart'),
+      up(docker, {}, 'restart --resume'),
+      up(docker, {}, 'restart --fresh'),
+      up(docker),
+    ]);
+    expect(runs.map(r => r.resume)).toEqual(['1', '1', '0', 'unset']);
   }, 20000);
 });
 
