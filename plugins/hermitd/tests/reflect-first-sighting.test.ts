@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PLUGIN_ROOT, SCRIPTS_DIR, runScript, runPinnedScript } from './helpers/run';
 import { freshDirFactory } from './helpers/workdir';
+import { settleConfig } from '../scripts/lib/config-read';
 
 const { freshDir, cleanup } = freshDirFactory('hermit-fst-');
 const { freshDir: freshSpike, cleanup: cleanupSpike } = freshDirFactory('hermit-spike-');
@@ -418,11 +419,8 @@ describe('graduation_min_sessions: config wiring', () => {
     expect(template.reflection.graduation_min_sessions).toBe(1);
   });
 
-  test('DEFAULT_CONFIG in hermitd-start.ts has reflection.graduation_min_sessions: 1', async () => {
-    // Read the actual module — use Bun dynamic import to avoid full startup
-    const content = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'hermitd-start.ts'), 'utf-8');
-    expect(content).toContain('graduation_min_sessions: 1');
-    expect(content).toContain('reflection:');
+  test('settled config defaults reflection.graduation_min_sessions to 1', () => {
+    expect(settleConfig(undefined).reflection.graduation_min_sessions).toBe(1);
   });
 
   test('docs/config-reference.md documents graduation_min_sessions', () => {

@@ -618,8 +618,6 @@ describe('routine precheck validation', () => {
     expect(template.routines.find((routine: { id: string }) => routine.id === id)).toEqual({
       id, schedule: '0 10 15 * *', skill: id, enabled: true,
     });
-    const start = read(path.join(SCRIPTS, 'hermitd-start.ts'));
-    expect(start).toContain(`{ id: '${id}', schedule: '0 10 15 * *', skill: '${id}', enabled: true }`);
     expect(runValidate({ routines: template.routines }).errors).toEqual([]);
   });
 });
