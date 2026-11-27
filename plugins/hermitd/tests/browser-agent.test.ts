@@ -256,6 +256,19 @@ test('persistent commands require a live claim, renew it and preserve argv and e
   expect(browserLease('status', undefined, dir).expires_at!).toBeGreaterThan(before);
 });
 
+test('the browser gets a usable configured time zone, else the inherited one', async () => {
+  const { dir, root, run } = fixture();
+  writeConfig(root, { timezone: 'Europe/Lisbon' });
+  expect((await run(['--session', 'public', 'snapshot'], { TZ: 'Asia/Tokyo' })).data.env.TZ).toBe('Europe/Lisbon');
+  browserLease('claim', 'task', dir);
+  expect((await run(['--task', 'task', 'snapshot'], { TZ: 'Asia/Tokyo' })).data.env.TZ).toBe('Europe/Lisbon');
+  const unset = fixture();
+  writeConfig(unset.root, { timezone: null });
+  expect((await unset.run(['--session', 'public', 'snapshot'], { TZ: 'Asia/Tokyo' })).data.env.TZ).toBe('Asia/Tokyo');
+  writeConfig(unset.root, { timezone: 'Not/A_Zone' });
+  expect((await unset.run(['--session', 'public', 'snapshot'], { TZ: 'Asia/Tokyo' })).data.env.TZ).toBe('Asia/Tokyo');
+});
+
 test('output survives when stdout and stderr share a file and stderr is empty', async () => {
   const { runToFile } = fixture();
   const output = await runToFile(['--session', 'public', 'get', 'url']);
