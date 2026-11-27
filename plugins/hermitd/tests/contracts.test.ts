@@ -3533,7 +3533,7 @@ describe('hermit-evolve permission delegation contract', () => {
   test('Step 8 reads permissions-plan and never runs permissions-sync', () => {
     const runner = fs.readFileSync(path.join(PLUGIN_ROOT, 'agents/evolve-runner.md'), 'utf8');
     expect(step8).toContain('`permissions-plan` (Commands)');
-    for (const script of ['hermitd-update.sh', 'hermitd-docker.sh']) {
+    for (const script of ['lib/update-sequence.ts', 'hermitd-docker.sh']) {
       expect(fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', script), 'utf8')).toContain('scripts/update-permissions.ts');
     }
     expect(runner).toContain('apply-settings.ts <resolved-settings-file> permissions-plan');

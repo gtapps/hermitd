@@ -7,15 +7,12 @@ import { doctorPassStub, listDuplicateScopes, runInterruptedBash } from './helpe
 
 describe('static file checks', () => {
   test('hermitd-update refreshes marketplaces (core first), then moves the pin', () => {
-    const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'hermitd-update.sh'), 'utf8');
-    expect(src).toContain('claude plugin update');
-    expect(src).toContain('--scope');
-    const marketplaceIdx = src.indexOf('claude plugin marketplace update');
-    const updateLoopIdx = src.indexOf('claude plugin update "$pid"');
+    const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'update-sequence.ts'), 'utf8');
+    const marketplaceIdx = src.indexOf("'plugin', 'marketplace', 'update'");
+    const updateLoopIdx = src.indexOf("'plugin', 'update', id, '--scope', scope");
     expect(marketplaceIdx).toBeGreaterThan(-1);
     expect(updateLoopIdx).toBeGreaterThan(-1);
     expect(marketplaceIdx).toBeLessThan(updateLoopIdx);
-    expect(src).toContain('.sort((a, b) =>');
   });
 });
 
