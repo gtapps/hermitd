@@ -7,6 +7,9 @@
 # than aborting the rest — a stale graph must never block a release.
 set -uo pipefail
 
+# Skip graphify's dated graph backups; they piled up to over 1 GB.
+export GRAPHIFY_NO_BACKUP=1
+
 if ! command -v graphify >/dev/null; then
   echo "graphify-refresh: graphify not installed, skipping" >&2
   exit 0
