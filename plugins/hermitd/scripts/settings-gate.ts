@@ -24,7 +24,7 @@ import { byArg } from './lib/settings/registry';
 import { askPathRegex } from './lib/settings/protected-paths';
 import { runHook } from './lib/hook-input';
 import { isSecretPath } from './lib/config-audit';
-import { isAllowedSender, isPrimaryOperator, canCompleteAuthentication } from './lib/channel-auth';
+import { senderRole, atLeast } from './lib/channel-auth';
 import { conversationKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { hermitDir, readTurn, transcriptPath } from './lib/cc-compat';
@@ -185,7 +185,7 @@ function currentTurn(tPath: string): ReturnType<typeof readTurn> {
 }
 
 type RoutineOrigin = { kind: 'terminal'; proven: boolean } | { kind: 'unknown' }
-  | { kind: 'channel'; key: string; primary: boolean; canCompleteAuthentication: boolean; proven: boolean; requester?: string };
+  | { kind: 'channel'; key: string; primary: boolean; controller: boolean; proven: boolean; requester?: string };
 
 /**
  * A terminal requires a readable turn boundary without a channel envelope, which a wake also has; all unproven origins ask.
@@ -200,10 +200,11 @@ export function turnConversation(payload: Json): RoutineOrigin {
     const config = readConfigRaw(hermitDir());
     const env = parseChannelEnvelope(prompt.text, config);
     if (!env) return { kind: 'terminal', proven: prompt.typed && !prompt.joined };
-    if (!isAllowedSender(config, env.source, env.userId)) return { kind: 'unknown' };
+    const role = senderRole(config, env.source, env.userId, env.chatId);
+    if (role === 'none') return { kind: 'unknown' };
     return { kind: 'channel', key: conversationKey(env.sourceKey, env.chatId, env.thread),
-      primary: isPrimaryOperator(config, env.source, env.userId, env.chatId),
-      canCompleteAuthentication: canCompleteAuthentication(config, env.source, env.userId, env.chatId),
+      primary: role === 'operator',
+      controller: atLeast(role, 'controller'),
       // A display name is sender-chosen, so the ID that sent it rides along.
       requester: env.userName ? clip(safeForLLM(env.userName).trim(), 100) : undefined,
       proven: !prompt.joined };

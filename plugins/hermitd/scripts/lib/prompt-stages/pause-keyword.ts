@@ -6,16 +6,15 @@
 // Mid-turn channel arrivals are queued and run UserPromptSubmit individually
 // (CC 2.1.263), so these keywords are handled when each queued prompt is delivered.
 //
-// Gated by the same allowed_users allowlist as channel-reply-reminder.ts
-// (lib/channel-auth.ts's isAllowedSender, shared by both; also see
-// channel-responder/SKILL.md 1c) — an unauthorized sender's message is a
-// silent no-op: no state change, no stdout, so the mechanism can't be probed
-// by an unauthorized prompt.
+// Gated on the controller role (lib/channel-auth.ts senderRole). A sender who is
+// not admitted is a silent no-op: no state change, no stdout, so the mechanism
+// can't be probed by an unauthorized prompt. An admitted member gets a refusal
+// line for the model to relay.
 
 import { clip, safeForLLM } from '../sanitize';
 import { senderLabel } from '../channel-envelope';
 import { setPause, clearPause, parseSnoozeDuration } from '../pause';
-import { isTrustedController, channelBotIdentity } from '../channel-auth';
+import { senderRole, atLeast, controlRefusal, channelBotIdentity } from '../channel-auth';
 import { resolveSlashCommand } from '../channel-slash-address';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -40,7 +39,7 @@ export function run(ctx: StageContext): StageResult | void {
   // Read before the match, not after: the bot's own identity is needed to resolve
   // both address forms. config() is memoized per prompt (user-prompt-pipeline.ts),
   // and channel-reply-reminder has already loaded it, so this costs nothing. A null
-  // config resolves to an empty identity AND fails isTrustedController below, so an
+  // config resolves to an empty identity AND fails the role check below, so an
   // unreadable config still means no control command works at all — unchanged.
   const config = ctx.config();
   const identity = channelBotIdentity(config, sourceRaw);
@@ -66,9 +65,10 @@ export function run(ctx: StageContext): StageResult | void {
   else if (addressed.command === '/snooze' && snoozeMatch) { action = 'snooze'; durationRaw = snoozeMatch[1]; }
   if (!action) return;
 
-  // Stricter gate than a plain reply: pausing is state-mutating, so an unconfigured
-  // channel trusts only the operator's pinned home chat (chat_id === default_chat_id).
-  if (!isTrustedController(config, sourceRaw, userId, env.chatId)) return; // unauthorized — silent no-op
+  // Stricter gate than a plain reply: pausing is state-mutating.
+  const role = senderRole(config, sourceRaw, userId, env.chatId);
+  if (role === 'none') return;
+  if (!atLeast(role, 'controller')) return { context: controlRefusal(addressed.command) };
 
   const by = safeForLLM(clip(senderLabel(env), MAX_BY_LEN));
 

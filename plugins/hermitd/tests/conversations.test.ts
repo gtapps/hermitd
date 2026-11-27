@@ -19,7 +19,7 @@ test('the channel library wrappers answer history and is-trusted', async () => {
   fs.mkdirSync(tokenDir, { recursive: true });
   fs.writeFileSync(path.join(tokenDir, '.env'), 'DISCORD_BOT_TOKEN=test-token\n');
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({
-    channels: { discord: { state_dir: tokenDir, allowed_users: ['u1'] } },
+    channels: { discord: { state_dir: tokenDir, allowed_users: ['u1', 'u2'] } },
   }));
   for (const [i, text] of ['first', 'second', 'third'].entries()) {
     logMessage(dir, { source: 'discord', chat_id: '123', direction: i % 2 ? 'out' : 'in', sender: 'u1', sender_id: 'u1', text, ts: `2026-01-01T00:00:0${i}Z` });

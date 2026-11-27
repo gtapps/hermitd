@@ -501,7 +501,7 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
       }
       // The pinned proactive home must not be the maintainer chat: a collision sends
       // every briefing to the maintainer chat until the operator rebinds from
-      // the terminal. It also collapses control authority (isTrustedController)
+      // the terminal. It also collapses control authority (senderRole)
       // onto the outbound-routing chat. Warn so
       // doctor reports it.
       if (ch.default_chat_id != null && ch.maintainer_channel_id != null &&

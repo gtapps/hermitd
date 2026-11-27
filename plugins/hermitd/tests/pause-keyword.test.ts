@@ -117,6 +117,17 @@ describe('pause-keyword', () => {
     expect(isPaused(hermit(dir)).paused).toBe(true);
   }));
 
+  test('a second listed sender is refused with a line for the model; the first still acts', withDir(async (dir) => {
+    write(hermit(dir, 'config.json'), '{"channels":{"discord":{"allowed_users":["FIRST","SECOND"]}}}');
+    const refused = await run('<channel source="discord" chat_id="1" user="SECOND">!pause</channel>', dir);
+    expect(refused.stdout).toContain('[control] !pause refused');
+    expect(isPaused(hermit(dir)).paused).toBe(false);
+    const model = await run('<channel source="discord" chat_id="1" user="SECOND">!model opus</channel>', dir);
+    expect(model.stdout).toContain('[control] !model refused');
+    await run('<channel source="discord" chat_id="1" user="FIRST">!pause</channel>', dir);
+    expect(isPaused(hermit(dir)).paused).toBe(true);
+  }));
+
   test('allowed_users=[] lockdown — silent no-op even with a user id', withDir(async (dir) => {
     write(hermit(dir, 'config.json'), '{"channels":{"discord":{"allowed_users":[]}}}');
     const r = await run('<channel source="discord" chat_id="1" user="ANYONE">!pause</channel>', dir);

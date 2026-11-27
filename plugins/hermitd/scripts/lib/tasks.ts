@@ -15,7 +15,7 @@ import { readContextSurface } from './context-surface';
 import { allocateTaskShares, BY_TASK_RETENTION_DAYS, computeIndex, readCostIndex, costIndexPath } from './cost-log';
 import { todayYMD } from './time';
 import { collectToolUseIds, costLogPath, transcriptDirFor } from './cc-compat';
-import { isPrimaryOperator, isAllowedSender } from './channel-auth';
+import { senderRole, isAllowedSender } from './channel-auth';
 import { appendEvent, respondedEvent } from './proposals/event';
 import { REVIEW_CALLS } from './learned-skills';
 import { readDeliveryBudget } from './decisions';
@@ -349,8 +349,8 @@ function canDecide(dir: string, record: Task, flags: TaskFlags, decision: Decisi
   try { checkKey(chat); } catch { return false; }
   const [source, destination] = chat.split(':');
   const config = readSettledConfig(dir);
-  if (isPrimaryOperator(config, source, user, destination.split('~')[0])) return true;
-  if (senderParent !== null && isPrimaryOperator(config, source, user, senderParent)) return true;
+  if (senderRole(config, source, user, destination.split('~')[0]) === 'operator') return true;
+  if (senderParent !== null && senderRole(config, source, user, senderParent) === 'operator') return true;
   if (decision.authority === 'requester') return record.requester === user || record.requester === `${source}:${user}`;
   return decision.authority === 'chat' && record.conversation === chat && isAllowedSender(config, source, user);
 }

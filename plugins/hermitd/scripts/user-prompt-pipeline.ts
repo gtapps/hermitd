@@ -38,7 +38,7 @@ import { resolveCommand } from './lib/prompt-stages/harness-command';
 import { markUnfinished } from './lib/channel-recovery';
 import { conversationKey } from './lib/conversation-key';
 import { isLoggingEnabled } from './lib/channel-log';
-import { isAllowedSender, isTrustedController } from './lib/channel-auth';
+import { isAllowedSender, senderRole, atLeast } from './lib/channel-auth';
 import type { HarnessDecision } from './lib/harness-mod';
 import { observeExecution } from './lib/tasks';
 import { classifySource } from './lib/trigger-source';
@@ -153,7 +153,7 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
       const env = ctx.envelope;
       const parsed = resolveCommand(ctx);
       if (!env || !parsed || !['/model', '/effort', '/compact', '/clear', '/advisor', '/doctor'].includes(parsed.command)
-        || !isTrustedController(ctx.config(), env.source, env.userId, env.chatId)) return;
+        || !atLeast(senderRole(ctx.config(), env.source, env.userId, env.chatId), 'controller')) return;
     }
     const guest = isGuest(path.join(dir, 'state'), sessionId);
     residentAdmitted = !guest;

@@ -2,7 +2,7 @@ import { historyFor, stillUnfinished } from './lib/channel-recovery';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { printJson, exitError } from './lib/cli';
 import { readSettledConfig } from './lib/config-read';
-import { chatInstructions, isPrimaryOperator } from './lib/channel-auth';
+import { chatInstructions, senderRole } from './lib/channel-auth';
 import { clip, safeForLLM, safeForLLMMultiline } from './lib/sanitize';
 import { agentQuestion, threadRecords } from './lib/tasks';
 import { openTasksLine, taskThreadLine } from './lib/prompt-stages/conversation';
@@ -23,7 +23,7 @@ async function main(): Promise<void> {
       direction: row.direction, ts: row.ts, sender: row.sender === null ? null : clip(safeForLLM(row.sender), 160),
       sender_id: row.sender_id ?? null, message_id: row.message_id ?? null,
       text: clip(safeForLLMMultiline(row.text), 2000),
-      ...(row.direction === 'in' ? { role: isPrimaryOperator(config, history.source, row.sender_id ?? null, history.chatId) ? 'admin' : 'member' } : {}),
+      ...(row.direction === 'in' ? { role: senderRole(config, history.source, row.sender_id ?? null, history.chatId) === 'operator' ? 'admin' : 'member' } : {}),
       ...(row.thread_unknown ? { thread_unknown: true } : {}),
     };
     const size = Buffer.byteLength(JSON.stringify(item)) + (rows.length ? 1 : 0);

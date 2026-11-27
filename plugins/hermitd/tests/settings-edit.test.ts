@@ -976,7 +976,7 @@ describe('migrate channel-home', () => {
 
   test('retired home does not grant runtime routing, trust, or unscoped recall', async () => {
     const { resolve } = await import('../scripts/resolve-outbound-channel');
-    const { isTrustedController, recallScope } = await import('../scripts/lib/channel-auth');
+    const { senderRole, recallScope } = await import('../scripts/lib/channel-auth');
     const { contextPolicyHash } = await import('../scripts/lib/context-policy');
     const { validate } = await import('../scripts/validate-config');
     const dir = freshDir();
@@ -984,7 +984,7 @@ describe('migrate channel-home', () => {
     const file = seedConfig(dir, config);
     const hermit = path.dirname(file);
     expect(resolve(config.channels)).toBeNull();
-    expect(isTrustedController(config, 'discord', 'U1', 'LEGACY')).toBe(false);
+    expect(senderRole(config, 'discord', 'U1', 'LEGACY')).toBe('member');
     expect(recallScope(config, 'discord', 'LEGACY', hermit)).not.toBeNull();
     const before = contextPolicyHash(hermit);
     config.channels.discord.dm_channel_id = 'OTHER';

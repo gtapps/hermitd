@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Chat control commands and full `!status` follow `operators`, or the first `allowed_users` entry, instead of every allowed user. Other admitted senders get a short refusal.
+
+### Upgrade Instructions
+
+1. For each channel in `.hermit/config.json` that has `allowed_users` with more than one entry and no `operators`, or has `operators` and no `allowed_users`, tell the operator in one message per channel: which IDs keep chat control commands (`!pause`, `!model` and the rest) and full `!status` (the `operators` IDs, else the first `allowed_users` entry), that other people there now get a refusal, and that `/hermitd:hermit-settings` can add someone to `operators`. Write no config.
+
 ## [1.4.43] - 2026-11-24
 
 ### Fixed

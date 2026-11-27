@@ -256,7 +256,7 @@ async function main(): Promise<void> {
     if (allowFrom.length !== previous.length) writeAccess(dir, channel, file, access, { ...access, allowFrom });
     const warnings = [];
     if (previous.length && !allowFrom.length) warnings.push('last_approver');
-    // Mirrors isPrimaryOperator: `operators`, when present, replaces the first `allowed_users` entry.
+    // Mirrors senderRole's operator tier: `operators`, when present, replaces the first `allowed_users` entry.
     if (channelConfig.operators !== undefined
       ? configuredIds(channelConfig.operators).includes(value)
       : configuredIds(channelConfig.allowed_users)[0] === value) {

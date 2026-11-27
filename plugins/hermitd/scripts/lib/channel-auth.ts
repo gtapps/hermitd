@@ -80,55 +80,44 @@ export function isAllowedSender(config: Json, source: string, userId: string | n
 }
 
 /**
- * A `members_only: true` channel grants no control, operator or unscoped-recall
- * authority to anyone on it; admission still follows `allowed_users`.
+ * A sender's authority on a channel, lowest first:
+ * - `none`: not admitted (isAllowedSender).
+ * - `member`: admitted. Every sender on a `members_only: true` channel stops here.
+ * - `controller`: chat control commands, full status and tool sign-in.
+ * - `operator`: standing roles, approval rules, decisions and proposal consent.
  *
- * Stricter gate for state-mutating (pause/resume/snooze) and disclosure (status)
- * paths. An explicit allowed_users list still wins — but when none is configured
- * this does NOT fall back to accept-all (as isAllowedSender does). Instead it
- * trusts only the operator's pinned home chat (chat_id === default_chat_id). On
- * a no-allowlist channel a stranger in a group can't freeze the hermit or read its status,
- * while the operator's own chat keeps working with zero config.
+ * Operator precedence mirrors channel-responder §1c: `operators` when present
+ * (an empty list names nobody), else the first `allowed_users` entry, else the
+ * maintainer chat or, outside a non-technical profile, the pinned home chat.
+ * Controllers are the operators plus, on a channel with neither list, the pinned
+ * home chat, so a non-technical client's home keeps control with zero config.
  *
- * The anchor is the *pinned* home rather than the last-learned DM so control
- * authority can't be acquired by messaging from a new chat: default_chat_id is
- * seeded once by channel-hook and moved only from the terminal. Same home field
- * as resolve-outbound-channel's proactiveChatId (duplicated rather than imported — an auth gate shouldn't depend on the delivery module).
- *
- * Caveat: if the operator's home IS a group/server channel, its chat_id equals
- * the group's and every member matches — those installs must set allowed_users.
- * Pinning closes the acquisition path, not this standing exposure.
- * (Documented in docs/security.md + the CHANGELOG.)
+ * The anchor is the *pinned* home (default_chat_id, seeded once and moved only
+ * from the terminal), so control can't be acquired by messaging from a new chat.
+ * Caveat: if the home IS a group, every member of it matches; those installs
+ * should set `operators`. (Documented in docs/access-model.md.)
  */
-export function isTrustedController(
-  config: Json, source: string, userId: string | null, chatId: string | null,
-): boolean {
+export type SenderRole = 'none' | 'member' | 'controller' | 'operator';
+const RANK: Record<SenderRole, number> = { none: 0, member: 1, controller: 2, operator: 3 };
+export const atLeast = (role: SenderRole, min: SenderRole): boolean => RANK[role] >= RANK[min];
+
+/** Context for an admitted member's control command (`/pause` -> `!pause`); a non-admitted sender stays a silent no-op. */
+export const controlRefusal = (command: string): string =>
+  `[control] !${command.replace(/^\//, '')} refused: only an operator controls the agent. Tell the sender in one line.\n`;
+
+export function senderRole(config: Json, source: string, userId: string | null, chatId: string | null): SenderRole {
   const ch = channelEntry(config, source);
-  if (ch?.members_only === true) return false;
-  if (Array.isArray(ch?.allowed_users)) {
-    return isAllowedSender(config, source, userId); // explicit list (incl. [] lockdown) wins
+  const allowed = Array.isArray(ch?.allowed_users) ? ch.allowed_users : null;
+  if (allowed !== null && (userId === null || !allowed.includes(userId))) return 'none';
+  if (ch?.members_only === true) return 'member';
+  if (ch?.operators !== undefined) {
+    return Array.isArray(ch.operators) && userId !== null && ch.operators.includes(userId) ? 'operator' : 'member';
   }
-  const home = ch?.default_chat_id; // no list -> pinned-home binding
-  return !!home && !!chatId && String(home) === String(chatId);
-}
-
-/** Primary-operator precedence mirrors channel-responder §1c; empty lists name nobody. */
-export function isPrimaryOperator(config: Json, source: string, userId: string | null, chatId: string | null): boolean {
-  const ch = channelEntry(config, source);
-  if (ch?.members_only === true) return false;
-  if (ch?.operators !== undefined) return Array.isArray(ch.operators) && userId !== null && ch.operators.includes(userId);
-  const allowed = allowedUserIds(config, source);
-  if (allowed !== null) return userId !== null && allowed[0] === userId;
-  return !!chatId && (chatId === ch?.maintainer_channel_id
-    || (chatId === ch?.default_chat_id && config?.operator_profile !== 'non-technical'));
-}
-
-/** Tool accounts serve the whole resident, so only an administrator may bind them. */
-export function canCompleteAuthentication(config: Json, source: string, userId: string | null, chatId: string | null): boolean {
-  if (isPrimaryOperator(config, source, userId, chatId)) return true;
-  const ch = channelEntry(config, source);
-  return ch?.operators === undefined && ch?.allowed_users === undefined
-    && isTrustedController(config, source, userId, chatId);
+  if (allowed !== null) return allowed[0] === userId ? 'operator' : 'member';
+  if (!chatId) return 'member';
+  if (chatId === ch?.maintainer_channel_id
+    || (chatId === ch?.default_chat_id && config?.operator_profile !== 'non-technical')) return 'operator';
+  return !!ch?.default_chat_id && String(ch.default_chat_id) === String(chatId) ? 'controller' : 'member';
 }
 
 // Home/maintainer rule has its prose twin in channel-responder §1c. A

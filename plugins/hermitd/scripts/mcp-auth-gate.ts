@@ -9,7 +9,7 @@ export function main(payload: any): void {
   // A wake has no sender and no person at the keyboard, so it proves nothing about authority, and neither does a turn it joined.
   const origin = turn.kind !== 'unknown' && !turn.proven ? { kind: 'unknown' as const } : turn;
   if (payload.hook_event_name === 'PreToolUse') {
-    if (origin.kind === 'terminal' || (origin.kind === 'channel' && origin.canCompleteAuthentication)) return;
+    if (origin.kind === 'terminal' || (origin.kind === 'channel' && origin.controller)) return;
     process.stdout.write(JSON.stringify({ hookSpecificOutput: {
       hookEventName: 'PreToolUse',
       permissionDecision: origin.kind === 'channel' ? 'deny' : 'ask',
