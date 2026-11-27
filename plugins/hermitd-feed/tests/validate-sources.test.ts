@@ -1,6 +1,6 @@
-import { test, expect } from "bun:test";
+import { afterAll, test, expect } from "bun:test";
 import { join } from "node:path";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { validateSourcesTable } from "../scripts/validate-sources";
 
@@ -11,9 +11,13 @@ const BAD_TABLE = `| Name | Type | URL |
 | Bad | bogus | https://x.com |
 `;
 
+const tempDirs: string[] = [];
+afterAll(() => { for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true }); });
+
 /** Writes feed-sources.md into a fresh dir and returns its absolute path. */
 function sourcesFileIn(markdown: string): { dir: string; file: string } {
   const dir = mkdtempSync(join(tmpdir(), "validate-sources-"));
+  tempDirs.push(dir);
   const file = join(dir, "feed-sources.md");
   writeFileSync(file, markdown);
   return { dir, file };

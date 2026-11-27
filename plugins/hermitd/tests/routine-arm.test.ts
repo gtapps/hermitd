@@ -471,7 +471,7 @@ test('a routine fallback still commits the heartbeat leg', async () => {
 
   const result = await arm(f.hermit, ['commit', 'native', '--heartbeat', 'native']);
   expect(out(result)).toEqual({ status: 'fallback', reason: 'liveness_absent', heartbeat: { status: 'registered', interval: 1800 } });
-  // The absent routine liveness file costs waitForFirstTick its full ~10s poll.
+  // The absent routine liveness file costs waitForFirstTick its full poll (HERMIT_FIRST_TICK_WAIT_MS).
 }, 30_000);
 
 test('commit without --heartbeat leaves the heartbeat runtime untouched', async () => {

@@ -168,7 +168,7 @@ function isTrusted(key: string): boolean {
   return guardState(() => !markWorkspaceTrusted(readClaudeState(), key));
 }
 
-export async function trustWorkspace(key: string, { settleMs = 3000 } = {}): Promise<number> {
+export async function trustWorkspace(key: string, { settleMs = Number(process.env.HERMIT_TRUST_SETTLE_MS) || 3000 } = {}): Promise<number> {
   let writes = 0;
   for (let round = 0; round < 2; round++) {
     if (guardState(() => updateClaudeState((state) => markWorkspaceTrusted(state, key)))) writes++;

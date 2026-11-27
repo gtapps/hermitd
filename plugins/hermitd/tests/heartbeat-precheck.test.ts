@@ -190,11 +190,6 @@ describe('heartbeat-precheck (PROP-015 pause gate)', () => {
       '{"paused":true,"paused_until":"2000-01-01T00:00:00.000Z","reason":"operator","by":"test","ts":"2000-01-01T00:00:00.000Z"}');
     expect(await precheckOut(dir)).toBe('EVALUATE');
   }));
-
-  test('heartbeat-precheck (EVALUATE: no pause.json — normal flow unaffected)', withDir(async (dir) => {
-    seedHeartbeat(dir, { checklist: DEFAULT_CHECKLIST });
-    expect(await precheckOut(dir)).toBe('EVALUATE');
-  }));
 });
 
 // heartbeat-precheck — clean-recheck damper

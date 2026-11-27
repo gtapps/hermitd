@@ -71,14 +71,14 @@ export function monitorFreshness(
 }
 
 /**
- * Wait up to 10s for a just-registered monitor to write its first liveness tick.
+ * Wait up to 10s (HERMIT_FIRST_TICK_WAIT_MS overrides) for a just-registered monitor to write its first liveness tick.
  * Both arming legs (`routines.ts arm commit`, `heartbeat.ts start-commit`) ask the
  * same question — did the subprocess actually spawn? — and both delete the previous
  * record first, so any file that appears here belongs to the registration under test.
  * A healthy monitor writes liveness on its first loop iteration, before any sleep.
  */
 export async function waitForFirstTick(livenessFile: string): Promise<boolean> {
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + (Number(process.env.HERMIT_FIRST_TICK_WAIT_MS) || 10_000);
   while (Date.now() <= deadline) {
     if (typeof readJson(livenessFile)?.last_peek_at === 'string') return true;
     await Bun.sleep(100);

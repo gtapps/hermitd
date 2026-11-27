@@ -72,7 +72,7 @@ while true; do
     [[ "$remaining" =~ ^[0-9]+$ ]] || remaining=1800
   fi
   while [[ "$remaining" != '0' ]]; do
-    read -r slice remaining < <(awk -v n="$remaining" 'BEGIN { s = n > 30 ? 30 : n; print s, n - s }')
+    read -r slice remaining < <(awk -v n="$remaining" -v m="${HEARTBEAT_MONITOR_SLICE_SECONDS:-30}" 'BEGIN { s = n > m ? m : n; print s, n - s }')
     sleep "$slice"
     next_control="$(control_state)"
     [[ "$next_control" == 'stopped' ]] && exit 0

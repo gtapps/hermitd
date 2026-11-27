@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { generateKeyPairSync } from "node:crypto";
 import path from "node:path";
@@ -58,7 +58,11 @@ function assertFails(env: Json, args: string[], pattern: RegExp) {
   assertMatch(JSON.parse(r.stdout).error, pattern, "error");
 }
 
+const tempDirs: string[] = [];
+process.on("exit", () => { for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true }); });
+
 const fixtures = mkdtempSync(path.join(tmpdir(), "hermit-scribe-test-"));
+tempDirs.push(fixtures);
 const keyFile = path.join(fixtures, "key.pem");
 const titleFile = path.join(fixtures, "title");
 const wsTitleFile = path.join(fixtures, "ws");
@@ -341,6 +345,7 @@ test("classify with no args prints usage and exits 1", () => {
 
 test("classify emits JSON derived from config _hermit_versions", () => {
   const cfgDir = mkdtempSync(path.join(tmpdir(), "hermit-scribe-cfg-"));
+  tempDirs.push(cfgDir);
   const stateDir = path.join(cfgDir, ".hermit");
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(

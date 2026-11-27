@@ -248,8 +248,12 @@ console.log('\ngetAccessToken (MCP config vs .env fallback):');
 // ===========================================================================
 const SCRIPT = path.join(import.meta.dir, 'fitness-lab.ts');
 
+const tmpProjects: string[] = [];
+process.on('exit', () => { for (const d of tmpProjects) fs.rmSync(d, { recursive: true, force: true }); });
+
 function tmpProject(): string {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'fitness-lab-'));
+  tmpProjects.push(d);
   fs.writeFileSync(path.join(d, '.env'), 'STRAVA_ACCESS_TOKEN=test-token\n');
   return d;
 }

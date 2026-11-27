@@ -289,7 +289,10 @@ for (const scenario of ['sent', 'partial', 'failed', 'timeout', 'disabled', 'rel
     } });
     const state = path.join(f.dir, 'channel'); fs.mkdirSync(state);
     fs.writeFileSync(path.join(state, '.env'), `${platform.toUpperCase()}_BOT_TOKEN=test\n`);
-    const env = { [platform === 'discord' ? 'HERMIT_DISCORD_API_URL' : 'HERMIT_TELEGRAM_API_URL']: server.url.toString().replace(/\/$/, '') };
+    const env = {
+      [platform === 'discord' ? 'HERMIT_DISCORD_API_URL' : 'HERMIT_TELEGRAM_API_URL']: server.url.toString().replace(/\/$/, ''),
+      ...(scenario === 'timeout' ? { HERMIT_CHANNEL_SEND_TIMEOUT_MS: '1000' } : {}),
+    };
     try {
       const key = scenario === 'relay' ? 'custom' : platform;
       f.put('config.json', { channels: { [key]: { enabled: scenario !== 'disabled', state_dir: state, default_chat_id: 'CHAT' } } });
