@@ -3,14 +3,14 @@ import fs from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { browserSocketDir, browserDeployment, browserProfile, browserDataDir, browserHostPlatform, browserUserAgent, installedBrowser, type BrowserDeployment } from './lib/browser-runtime';
+import { browserSocketDir, browserDeployment, browserProfile, browserDataDir, browserHostPlatform, browserUserAgent, installedBrowser, viewportOverrideMarker, type BrowserDeployment } from './lib/browser-runtime';
 export { browserSocketDir } from './lib/browser-runtime';
 import { ensureDisplay, type DisplayResult } from './browser-display';
 import { hermitDir } from './lib/cc-compat';
-import { browserLease, persistentChromeAlive, type PendingStore } from './lib/browser-lease';
+import { browserLease, persistentChromeAlive, IDLE_CLOSE_HOLDER, type PendingStore } from './lib/browser-lease';
 import { acquireLockWithWait, releaseLock, pidAlive as alive } from './lib/lockfile';
 import { writeFileAtomic } from './lib/md-write';
-import { failJson, flagValue, printJson, readHidden, readJson, readStdin } from './lib/cli';
+import { failJson, flagValue, printJson, readHidden, readJson, readStdin, writeAll } from './lib/cli';
 import { readProxyInfo } from './lib/credproxy-env';
 import { privateEnvPath, upsertEnvVar } from './lib/env-file';
 import { readSettledConfig } from './lib/config-read';
@@ -286,7 +286,8 @@ async function changeLogin(
   }
 }
 
-interface AgentOptions { deployment?: BrowserDeployment; data?: string; browserData?: string; platform?: NodeJS.Platform; waitMs?: number; marker?: string; ensureDisplay?: (dir: string) => Promise<DisplayResult> }
+// takeoverReset: the viewer restoring phone width before a person takes over; it holds no claim.
+interface AgentOptions { takeoverReset?: boolean; deployment?: BrowserDeployment; data?: string; browserData?: string; platform?: NodeJS.Platform; waitMs?: number; marker?: string; ensureDisplay?: (dir: string) => Promise<DisplayResult> }
 export async function runBrowserAgent(argv: string[], realBinary?: string, chromeAlive = persistentChromeAlive, options: AgentOptions = {}): Promise<number> {
   const dir = hermitDir();
   const projectRoot = path.dirname(dir);
@@ -452,11 +453,15 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     epoch = before.epoch;
     pending = before.pending_store;
     if (before.human) { printJson({ error: 'human_has_control' }); return 1; }
-    const renewed = browserLease('renew', task, dir, Date.now(), leaseOptions);
-    if (renewed.status === 'human') { printJson({ error: 'human_has_control' }); return 1; }
-    if (renewed.status !== 'claimed') {
-      printJson({ error: 'browser_not_claimed', ...(renewed.holder ? { holder: renewed.holder } : {}) });
-      return 1;
+    // The idle close is ending Chrome; a reset now could start it again.
+    if (options.takeoverReset && before.holder === IDLE_CLOSE_HOLDER) { printJson({ error: 'browser_closing' }); return 1; }
+    if (!options.takeoverReset) {
+      const renewed = browserLease('renew', task, dir, Date.now(), leaseOptions);
+      if (renewed.status === 'human') { printJson({ error: 'human_has_control' }); return 1; }
+      if (renewed.status !== 'claimed') {
+        printJson({ error: 'browser_not_claimed', ...(renewed.holder ? { holder: renewed.holder } : {}) });
+        return 1;
+      }
     }
     if (pending && pending.task === task && !storeRequest && !closing) return refuseBrowserCommand('store_pending');
     if (argv.at(-1) !== 'close') {
@@ -474,7 +479,8 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     env.AGENT_BROWSER_PROFILE = browserProfile(dir, deployment);
     env.AGENT_BROWSER_ARGS = [...baseArgs, '--window-size=500,1082', '--window-position=0,0'].join('\n');
   }
-  if (!session && (storeRequest || pending)) {
+  // The takeover reset only resizes the page; a pending store belongs to the task that holds it.
+  if (!session && !options.takeoverReset && (storeRequest || pending)) {
     const lock = path.join(socketDir, 'store.lock');
     if (!acquireLockWithWait(lock, 2000)) {
       printJson({ error: 'store_failed:lock' });
@@ -519,14 +525,21 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     const [stdout, stderr, code] = await Promise.all([
       new Response(child.stdout).arrayBuffer(), new Response(child.stderr).arrayBuffer(), child.exited,
     ]);
+    // A restart drops the override; a wider layout would be clipped in the phone-width takeover.
+    if (!session && !options.takeoverReset && code === 0) {
+      if (closing) fs.rmSync(viewportOverrideMarker(dir), { force: true });
+      else if (verb === 'set' && ['viewport', 'device'].includes(args[1])) fs.writeFileSync(viewportOverrideMarker(dir), '');
+    }
     if (host && new TextDecoder().decode(stderr).includes('No usable sandbox')) {
       printJson({ error: 'browser_sandbox_blocked', detail: 'Run hermitd run browser-host. For Claude Code /sandbox set sandbox.excludedCommands to include: bun */scripts/browser-agent.ts *' }); return 1;
     }
     const after = session ? null : inspect();
     if (after && (after.epoch !== epoch || after.human)) { printJson({ error: 'human_has_control' }); return 1; }
     if (after?.pending_store) return refuseBrowserCommand('store_pending');
-    await Bun.write(Bun.stdout, stdout);
-    await Bun.write(Bun.stderr, stderr);
+    // Not Bun.write: on a file it writes from offset 0, so an empty write erases output already
+    // there and a large one pads with NUL bytes. Claude Code's Bash tool collects output in a file.
+    writeAll(1, new Uint8Array(stdout));
+    writeAll(2, new Uint8Array(stderr));
     return code;
   } finally {
     // A reservation left behind ends with this pid; it must not replace the child's exit code.

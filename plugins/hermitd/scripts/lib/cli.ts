@@ -19,14 +19,17 @@ type Json = any;
 // write for a pipe when process.exit runs, and exit drops it. EAGAIN means an earlier
 // process.stdout use left the pipe non-blocking, so wait for the reader. Any other
 // error (a closed reader) ends the write and leaves the exit code to the caller.
-function writeStdout(text: string): void {
-  const buf = Buffer.from(text);
-  for (let offset = 0; offset < buf.length;) {
-    try { offset += fs.writeSync(1, buf, offset); } catch (e: any) {
+export function writeAll(fd: number, bytes: Uint8Array): void {
+  for (let offset = 0; offset < bytes.length;) {
+    try { offset += fs.writeSync(fd, bytes, offset); } catch (e: any) {
       if (e?.code !== 'EAGAIN') return;
       Bun.sleepSync(1);
     }
   }
+}
+
+function writeStdout(text: string): void {
+  writeAll(1, Buffer.from(text));
 }
 
 function emit(verdict: string): never {
