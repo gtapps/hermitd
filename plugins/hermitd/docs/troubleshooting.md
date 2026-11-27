@@ -238,7 +238,7 @@ For a third-party plugin, run `/hermitd:channel-setup` and select its entry or *
 
 ## Browser phone sign-in
 
-- **No Take over link:** takeover is inactive until setup. Ask for `/hermitd:browser` setup in the same conversation. The agent collects Tailscale logins and each channel's admin mentions, asks for one host command, verifies it, and registers the durable `browser-handback` monitor through the native settings prompt. Existing hermits receive the browser through upgrade; run `hermitd update` for a Docker image without its marker, or `hermitd run browser-host` for missing host prerequisites.
+- **No Take over link:** takeover is inactive until setup. Ask for `/hermitd:browser` setup in the same conversation. The agent collects Tailscale logins and each channel's admin mentions, asks for one host command, which also registers the durable `browser-handback` monitor, and verifies it. Existing hermits receive the browser through upgrade; run `hermitd update` for a Docker image without its marker, or `hermitd run browser-host` for missing host prerequisites.
 - **Saved login no longer accepted.** Save the updated password for the same login with `hermitd run browser-agent save-login` or use Take over to sign in.
 - **`terminal_only` on Docker.** Run the command at the host terminal with output going to the terminal. Piping or redirecting stdout disables terminal detection.
 - **`vault_not_linked`.** Docker already has an entry at `~/.agent-browser/auth` outside the persistent vault. Recreate the container or remove the old auth folder after preserving any entries you need. The next browser command creates the link.

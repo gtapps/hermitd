@@ -6,6 +6,7 @@ import { browserAppArmorProfile } from '../scripts/lib/browser-runtime';
 import { render } from '../scripts/render-docker-templates';
 import { freshDirFactory } from './helpers/workdir';
 const { freshDir, cleanup } = freshDirFactory('browser-host-');
+const HANDBACK = { id: 'browser-handback', description: 'Browser control handed back', class: 'stream', enabled: true, command: '.hermit/bin/hermitd-run browser events' };
 afterAll(cleanup);
 
 function fixture(lan = false) {
@@ -105,6 +106,8 @@ for (const lan of [false, true]) test.serial(`host setup recreates without build
     expect(calls).toContain('up\n--force-recreate\n--no-build');
     expect(calls).toContain(`"serve","--bg","--https","${result.port}"`);
     expect(f.messages[0]).toContain('Recreating');
+    expect(config.monitors).toEqual([HANDBACK]);
+    expect(f.messages.at(-1)).toContain('(handback monitor registered)');
     const before = fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8');
     await setupBrowserHost(f.project, f.opts);
     expect(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8')).toBe(before);
@@ -119,10 +122,22 @@ test.serial('Serve denial prints sudo, and an unreachable host-mode viewer is un
     expect(f.messages.join('\n')).toContain('sudo');
     fs.unlinkSync(f.deniedFile);
     const config = JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8'));
+    expect(config.monitors).toBeUndefined();
     config.docker.network_mode = 'host';
     fs.writeFileSync(path.join(f.dir, 'config.json'), JSON.stringify(config));
     fs.writeFileSync(path.join(f.project, 'docker-compose.hermit.yml'), render({ networkMode: 'host', gitIdentityMount: false }).compose);
     await expect(setupBrowserHost(f.project, { ...f.opts, fetch: (async () => { throw new Error('unreachable'); }) })).rejects.toThrow('unverified');
+  } finally { f.stop(); }
+});
+
+test.serial('the handback monitor is enforced and other monitors are preserved', async () => {
+  const f = fixture(); try {
+    const other = { id: 'mail', description: 'Mail', command: 'mail-watch', enabled: true };
+    const config = JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8'));
+    config.monitors = [{ ...HANDBACK, enabled: false, chat: 'discord:123' }, other];
+    fs.writeFileSync(path.join(f.dir, 'config.json'), JSON.stringify(config));
+    await setupBrowserHost(f.project, f.opts);
+    expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8')).monitors).toEqual([{ ...HANDBACK, chat: 'discord:123' }, other]);
   } finally { f.stop(); }
 });
 
@@ -207,8 +222,10 @@ function hostFixture() {
   return { project, data, folder, calls, profileFile, options };
 }
 test('host prerequisites need no Tailscale or admins and matching AppArmor is idempotent', async () => {
-  const f = hostFixture();
-  expect(await setupBrowserHost(f.project, f.options)).toEqual({ status: 'ready' });
+  const f = hostFixture(), messages: string[] = [];
+  expect(await setupBrowserHost(f.project, { ...f.options, log: line => messages.push(line) })).toEqual({ status: 'ready' });
+  expect(messages).toEqual([expect.stringContaining('Phone takeover is off: browser.admins is empty')]);
+  expect(JSON.parse(fs.readFileSync(path.join(f.project, '.hermit/config.json'), 'utf8')).monitors).toBeUndefined();
   expect(fs.readFileSync(f.profileFile, 'utf8')).toBe(browserAppArmorProfile(f.data));
   expect(f.calls).toContainEqual(['sudo', 'systemctl', 'reload', 'apparmor']);
   f.calls.length = 0;
@@ -258,6 +275,8 @@ test.serial('Docker without admins needs no Tailscale', async () => {
     fs.unlinkSync(path.join(f.bin, 'tailscale'));
     process.env.PATH = f.bin;
     expect(await setupBrowserHost(f.project, f.opts)).toEqual({ status: 'ready' });
+    expect(f.messages.at(-1)).toContain('Phone takeover is off: browser.admins is empty');
+    expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8')).monitors).toBeUndefined();
   } finally { process.env.PATH = oldPath; f.stop(); }
 });
 test.serial('Docker missing marker asks for a rebuild before publishing', async () => {
