@@ -1,0 +1,41 @@
+schema_version: "1.1"
+name: browser-fetch-200-refusal-fallback-off
+description: 'With browser.use_when_fetch_fails false, a block page is reported and the browser offered, not opened.'
+tags: [browser, heldout]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash, WebSearch]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. Shell commands fail in this session's sandbox: each line below is what the hermit returns right now. Use it as the result; every other step of the skill runs as written.
+    - config.json: browser.enabled=true, browser.use_when_fetch_fails=false, chrome=false (Claude in Chrome is not configured).
+    </system-reminder>
+    What is the return window on https://store.example.co.uk/help/returns ?
+    
+    Earlier in this turn you called WebFetch on that URL. It returned:
+    ```
+    The page does not contain any returns policy. Its only content is an error message: "Access Denied. You don't have permission to access this page on this server. Reference #18.6f2c1702.1764261600.2a4e9b1"
+    ```
+    WebFetch is not available for the rest of this turn.
+graders:
+  - name: no-browser-open
+    type: tool_used
+    tool: Bash
+    input_match: 'browser-agent\.ts'
+    min: 0
+    max: 0
+    weight: 2
+  - name: no-search
+    type: tool_used
+    tool: WebSearch
+    min: 0
+    max: 0
+    weight: 1
+  - name: offers-browser
+    type: llm
+    criteria: 'PASS if the reply says the page could not be read, offers to open it in the agent''s browser, and gives no return window as the answer. FAIL if it states a return window, answers from other sites, or says it opened or is opening the browser without being asked.'
+    weight: 3

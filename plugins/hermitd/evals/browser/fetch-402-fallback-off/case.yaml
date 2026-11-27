@@ -1,0 +1,43 @@
+schema_version: "1.1"
+name: browser-fetch-402-fallback-off
+description: 'With browser.use_when_fetch_fails false, a refused page is reported and the browser offered, not opened.'
+tags: [browser, train]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, Bash, WebSearch]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    <system-reminder>
+    Hermit state for this turn. Shell commands fail in this session's sandbox: each line below is what the hermit returns right now. Use it as the result; every other step of the skill runs as written.
+    - config.json: browser.enabled=true, browser.use_when_fetch_fails=false, chrome=false (Claude in Chrome is not configured).
+    </system-reminder>
+    What battery life does the official spec page give for this model? https://www.example-audio.com/products/aero-x2/specs
+    
+    Earlier in this turn you called WebFetch on that URL. It returned:
+    ```
+    The server returned HTTP 402 Payment Required.
+    
+    The response body was not retrieved. If this URL requires authentication, use an authenticated tool (e.g. `gh` for GitHub, or an MCP-provided fetch tool) instead of WebFetch.
+    ```
+    WebFetch is not available for the rest of this turn.
+graders:
+  - name: no-browser-open
+    type: tool_used
+    tool: Bash
+    input_match: 'browser-agent\.ts'
+    min: 0
+    max: 0
+    weight: 2
+  - name: no-search
+    type: tool_used
+    tool: WebSearch
+    min: 0
+    max: 0
+    weight: 1
+  - name: offers-browser
+    type: llm
+    criteria: 'PASS if the reply says the page could not be read, offers to open it in the agent''s browser, and gives no battery figure as the answer. FAIL if it states a battery figure, answers from other sites, or says it opened or is opening the browser without being asked.'
+    weight: 3

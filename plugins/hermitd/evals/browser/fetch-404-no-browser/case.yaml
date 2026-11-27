@@ -1,0 +1,29 @@
+schema_version: "1.1"
+name: browser-fetch-404-no-browser
+description: 'A page that does not exist (404) is not a refusal and does not open the browser.'
+tags: [browser, heldout]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, WebSearch]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    What does https://docs.example.org/guides/old-setup say about proxies?
+
+    Earlier in this turn you called WebFetch on that URL. It returned:
+    ```
+    The server returned HTTP 404 Not Found.
+
+    The response body was not retrieved. If this URL requires authentication, use an authenticated tool (e.g. `gh` for GitHub, or an MCP-provided fetch tool) instead of WebFetch.
+    ```
+    WebFetch is not available for the rest of this turn.
+graders:
+  - name: no-browser-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?browser"'
+    min: 0
+    max: 0
+    weight: 3

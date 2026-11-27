@@ -4,7 +4,12 @@
 
 ### Added
 
+- `browser.use_when_fetch_fails` (default on) controls whether the agent opens a page WebFetch could not read in its browser on its own; set it to `false` to have the agent report the block and offer the browser instead
 - Operator-authored mod commands can be exposed to chat through `chat_commands`, which ships empty.
+
+### Fixed
+
+- A page WebFetch cannot read (a 402, a block notice and similar) goes to the agent's browser before other sites or searches; with the browser off or unavailable, the agent reports the block and does not answer from other sources unasked
 
 ### Changed
 
