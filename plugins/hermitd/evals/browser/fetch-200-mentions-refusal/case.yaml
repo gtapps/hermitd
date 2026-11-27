@@ -1,0 +1,27 @@
+schema_version: "1.1"
+name: browser-fetch-200-mentions-refusal
+description: 'A page that discusses access errors but holds the answer is not a block page and does not open the browser.'
+tags: [browser, heldout]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  max_turns: 6
+  timeout_seconds: 240
+  allowed_tools: [Skill, Read, Glob, Grep, WebSearch]
+  env: {EVAL_HERMIT_RESIDENT: "1"}
+  prompt: |
+    How many requests per minute does the API allow before it starts refusing? The docs are at https://docs.example.org/api/rate-limits
+
+    Earlier in this turn you called WebFetch on that URL. It returned:
+    ```
+    The page explains the API's rate limits. Each key may make 600 requests per minute. Above that, the API answers "429 Too Many Requests" and access is temporarily limited for 60 seconds; repeated abuse gets "403 Access denied" until the key is reviewed.
+    ```
+    WebFetch is not available for the rest of this turn.
+graders:
+  - name: no-browser-skill
+    type: tool_used
+    tool: Skill
+    input_match: '"skill"\s*:\s*"(?:hermitd:)?browser"'
+    min: 0
+    max: 0
+    weight: 3

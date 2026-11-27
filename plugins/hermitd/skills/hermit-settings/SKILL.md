@@ -111,6 +111,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `chrome` | `chrome` | boolean | yes / no; use the operator's signed-in browser | next hermitd-start |
 | `browser` | `browser.enabled` | boolean | yes / no; enable the hermit’s own browser | next hermitd restart (Docker: next hermitd update) |
 | `browser-default` | `browser.default` | enum | agent-browser / chrome; agent-browser or chrome (requires chrome enabled) | immediately |
+| `browser-use-when-fetch-fails` | `browser.use_when_fetch_fails` | boolean | yes / no; open a page the agent could not fetch in its browser; off reports the block and offers the browser instead | immediately |
 | `browser-inactivity-timeout` | `browser.inactivity_timeout` | integer | any; seconds before an unused signed-in browser closes; 0 turns it off | within a minute |
 | `browser-saved-logins` | `browser.saved_logins` | boolean | yes / no; off stops the agent from saving or using saved logins; existing saved logins stay on disk until deleted | next start of the agent's browser |
 | `browser-software-webgl` | `browser.software_webgl` | boolean | yes / no; render WebGL in software when no GPU is usable; off leaves WebGL sites broken on GPU-less machines | next start of the agent's browser |

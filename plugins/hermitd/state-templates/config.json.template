@@ -27,6 +27,7 @@
   "browser": {
     "enabled": true,
     "default": "agent-browser",
+    "use_when_fetch_fails": true,
     "admins": [],
     "port": null,
     "host": null,
