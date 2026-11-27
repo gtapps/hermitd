@@ -10,6 +10,18 @@
 ### Changed
 
 - The takeover viewer shows a one-line gesture hint after Take over: two fingers scroll, pinch zooms the page.
+### Changed
+
+- `hermitd run browser-host` registers the `browser-handback` monitor once the viewer is verified, so phone sign-in setup no longer asks for a separate monitor approval in chat.
+
+### Fixed
+
+- `hermitd run browser-host` says phone takeover is off when no browser admins are set, instead of exiting silently.
+- A worker's result or question returns its task to the agent, so a finished worker no longer blocks context compaction.
+
+### Upgrade Instructions
+
+1. Run `.hermit/bin/hermitd-run task list .hermit --open --owner 'worker:*' --json`. For each row whose `report_kind` is `result` or `needs-input` and whose `waiting_on` is not null, read `.hermit/tasks/<id>.md`. When no `## Progress` line is timestamped after its `waiting_since`, run `.hermit/bin/hermitd-run task note .hermit <id> --owner resident </dev/null`. Leave every other row alone: its worker may have been steered and still be running.
 
 ## [1.4.43] - 2026-11-24
 

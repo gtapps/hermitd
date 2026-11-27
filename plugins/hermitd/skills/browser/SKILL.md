@@ -40,7 +40,7 @@ bun ${CLAUDE_PLUGIN_ROOT}/scripts/task.ts note .hermit <event-task> --clear-wait
 
 On a `stale_wait` or `not_open` refusal, take no action, including no page read or reply; replay and an event for an older wait are harmless. On a successful clear, claim the profile for that task again if its claim expired. Respect `busy` by queuing; never touch another holder's page. For `hand_back`, verify the expected page and account with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <event-task> snapshot` before resuming the task once. Hand back leaves Chrome and its page running; do not restart it. For `released`, `expired` or `browser_lost`, clear with the same conditional command, never report login success, and re-check the page with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <event-task> snapshot` before asking for sign-in again. Browser loss may leave a blank page; reopen the task URL with `bun ${CLAUDE_PLUGIN_ROOT}/scripts/browser-agent.ts --task <event-task> open <url>` and verify it.
 
-For opt-in phone sign-in setup, follow [setup.md](setup.md): collect admins in chat, use `settings-edit` behind its native prompt, print one host command once, verify it, and declare the `browser-handback` stream monitor.
+For opt-in phone sign-in setup, follow [setup.md](setup.md): collect admins in chat, use `settings-edit` behind its native prompt, print one host command once, which also registers the `browser-handback` monitor, and verify it.
 
 Before signed-in work, claim the shared profile with:
 

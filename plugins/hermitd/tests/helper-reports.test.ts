@@ -232,6 +232,19 @@ test('stale helper, wrong worker class and closed task are refused before storag
   } finally { f.cleanup(); }
 });
 
+test('a worker result or question returns the record to the resident; a note keeps the worker', async () => {
+  const f = taskFixture(); try {
+    const task = (id: string) => decodeTask(f.text(id));
+    for (const kind of ['result', 'needs-input']) {
+      const { id } = await f.open(['--owner', 'worker:a123456789']);
+      await f.ok('report', [id, '--as', 'worker', '--kind', 'note'], 'Progress');
+      expect(task(id)).toMatchObject({ owner: 'worker:a123456789', last_worker: null });
+      expect(await f.ok('report', [id, '--as', 'worker', '--kind', kind], 'Final')).toMatchObject({ recorded: true });
+      expect(task(id)).toMatchObject({ owner: 'resident', last_worker: 'a123456789' });
+    }
+  } finally { f.cleanup(); }
+});
+
 test('consent-protected results reuse block protection with no stored report', async () => {
   const f = taskFixture(); try {
     const opened = mutateTask(f.dir, 'open', undefined, { title: 'Proposal', done: 'Verified', requester: 'agent', kind: 'proposal', owner: author, decision: JSON.stringify({ purpose: 'consent', authority: 'admin', generation: 1 }), 'waiting-on': 'admin' }, '') as { id: string };
