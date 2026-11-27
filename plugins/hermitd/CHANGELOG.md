@@ -2,11 +2,6 @@
 
 ## [Unreleased]
 
-### Changed
-
-- `hermitd run browser-host` registers the `browser-handback` monitor once the viewer is verified, so phone sign-in setup no longer asks for a separate monitor approval in chat.
-- Chat control commands and full `!status` follow `operators`, or the first `allowed_users` entry, instead of every allowed user. Other admitted senders get a short refusal. On a channel with neither list, the maintainer chat also controls.
-
 ### Fixed
 
 - Managed browser commands no longer lose or corrupt their output when stdout and stderr go to one file, as in Claude Code's Bash tool; `eval`, `get` and other quiet commands returned nothing to the agent.
@@ -19,6 +14,7 @@
 
 - The takeover viewer shows a one-line gesture hint after Take over: two fingers scroll, pinch zooms the page.
 - `hermitd run browser-host` registers the `browser-handback` monitor once the viewer is verified, so phone sign-in setup no longer asks for a separate monitor approval in chat.
+- Chat control commands and full `!status` follow `operators`, or the first `allowed_users` entry, instead of every allowed user. Other admitted senders get a short refusal. On a channel with neither list, the maintainer chat also controls.
 
 ### Upgrade Instructions
 
