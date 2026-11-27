@@ -30,6 +30,7 @@ import { finalize, QUEUE_PROTOCOL } from '../scripts/lib/harness-mod';
 import { EN_MESSAGES } from '../scripts/lib/messages';
 import { operatorAutoModeFingerprint } from '../scripts/lib/settings/operator-auto-mode';
 import { PT } from './helpers/pt-messages';
+import { noRestartEffects } from './helpers/watchdog-world';
 
 // The one line to flip when hermitd-watchdog is ported to TypeScript.
 // (Absolute bun path via process.execPath: Bun.spawn resolves the executable
@@ -274,41 +275,6 @@ test('interactive mode → exit 0, no events', withHermit(async (h) => {
 }));
 
 // -------------------------------------------------------
-// 5. Dead session → restart
-// -------------------------------------------------------
-
-describe('dead session', () => {
-  let h: Hermit;
-  let exitCode: number;
-
-  beforeAll(async () => {
-    h = setupHermit();
-    writeConfig(h);
-    // tmux has-session returns 1 (dead)
-    writeFakeTmux(h, 1);
-    writeFakePgrep(h, 1);
-    ({ exitCode } = await watchdog(h, 'run'));
-  });
-
-  afterAll(() => h.cleanup());
-
-  test('dead session → restart event written', () => {
-    expect(exitCode).toBe(0);
-    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('restart');
-  });
-
-  test('dead session → restart reason dead-process', () => {
-    expect(fs.readFileSync(eventsFile(h), 'utf-8')).toContain('dead-process');
-  });
-
-  test('dead session → runtime.json last_error set', () => {
-    const d = readJson(state(h, 'runtime.json'));
-    expect(d.last_error).toBe('unclean_shutdown');
-    expect(d.watchdog_restart_reason).toBe('dead-process');
-  });
-});
-
-// -------------------------------------------------------
 // 5d. Dead session + FRESH shared liveness → orphan, abort restart
 // -------------------------------------------------------
 
@@ -445,8 +411,9 @@ describe('staged credential commit', () => {
     expect(events).not.toContain('credential-committed');
   }));
 
-  // The commit sits after the survivors check for a reason: an aborted restart means
-  // the old session is still running and still refreshing the file we would overwrite.
+  // An aborted restart means the old session may still be running and refreshing the
+  // file we would overwrite. This case aborts at the orphan guard, before the restart
+  // action runs; the survivor abort inside it is pinned in watchdog-restart.test.ts.
   test('an aborted restart commits nothing', withHermit(async (h) => {
     writeConfig(h);
     writeFakeTmux(h, 1);
@@ -5210,6 +5177,7 @@ function setupCascade(): Cascade {
     registry: { resident: () => null },
     notify: { operator: () => {}, maintainer: () => {} },
     actions: { restart: async () => {}, nudge: async () => {}, reauth: () => 'idle' },
+    restart: noRestartEffects,
     proc: { heartbeatMonitorDead: () => true },
     clock: { nowMs: () => nowMs },
     tmux: {
@@ -5617,55 +5585,8 @@ describe('maybeContextCompact (in-process) — outcome per gate', () => {
   }));
 });
 
-describe('restart resume', () => {
-  // Watchdog-detected restarts (a dead session on a `run` tick) and restarts someone
-  // asked for through the `restart` subcommand both resume; only detected ones obey
-  // the loop guard.
-  const scenarios: Record<string, { expected: string; via: 'run' | 'restart' }> = {
-    'default': { expected: 'resume', via: 'run' },
-    'no-session-id': { expected: 'fresh: no-session-id', via: 'run' },
-    'no-user-turn': { expected: 'fresh: no-user-turn', via: 'run' },
-    'prompt-changed': { expected: 'fresh: prompt-changed', via: 'run' },
-    'recent-restart': { expected: 'fresh: recent-restart', via: 'run' },
-    'compact-off-large-context': { expected: 'resume', via: 'run' },
-    'requested': { expected: 'resume', via: 'restart' },
-  };
-  for (const [scenario, { expected, via }] of Object.entries(scenarios)) {
-    test(scenario, withHermit(async (h) => {
-      writeConfig(h);
-      if (scenario === 'compact-off-large-context') {
-        const configPath = path.join(h.dir, '.hermit', 'config.json');
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        config.context_hygiene = { compact: { min_context_tokens: 100000, enabled: false } };
-        fs.writeFileSync(configPath, JSON.stringify(config));
-        writeCostLog(h, [{ session_id: SESSION_ID, input_tokens: 400000, cache_write_tokens: 0, cache_read_tokens: 0 }]);
-      }
-      const transcriptEnv = seedTranscript(h, CC_SESSION_ID, scenario === 'no-user-turn' ? [] : ['{"type":"user"}']);
-      const { buildResidentPrompt } = await import('../scripts/lib/resident-prompt');
-      fs.writeFileSync(state(h, 'resident-system-prompt.md'), scenario === 'prompt-changed' ? 'old prompt' : buildResidentPrompt(h.dir));
-      patchRuntime(h, { cc_session_id: scenario === 'no-session-id' ? null : CC_SESSION_ID });
-      const priorRestart = isoAgo(5 / 60);
-      fs.writeFileSync(state(h, 'watchdog-state.json'), JSON.stringify({
-        consecutive_stale: 2, last_pane_hash: 'abc',
-        ...(scenario === 'recent-restart' ? { last_restart_at: priorRestart } : {}),
-      }) + '\n');
-      writeFakeTmux(h, via === 'run' ? 1 : 0);
-      writeFakePgrep(h, 1);
-      expect((await watchdog(h, via, { env: transcriptEnv })).exitCode).toBe(0);
-      expect(await waitForStartMarker(h)).toBe(true);
-      const resumes = expected === 'resume';
-      expect(fs.readFileSync(path.join(h.dir, 'hermit-start-args'), 'utf8').trim())
-        .toBe(resumes ? `--resume ${CC_SESSION_ID}` : '');
-      expect(fs.readFileSync(eventsFile(h), 'utf8')).toContain(resumes ? `resume ${CC_SESSION_ID}` : expected);
-      // Every restart stamps its time without clobbering what the caller wrote.
-      const ws = readJson(state(h, 'watchdog-state.json'));
-      expect(Date.parse(ws.last_restart_at)).toBeGreaterThan(Date.parse(priorRestart));
-      expect(ws.consecutive_stale).toBe(2);
-      expect(ws.last_pane_hash).toBe('abc');
-    }), 45000);
-  }
-});
-
+// The end-to-end dead-session restart through a spawned watchdog and the start stub;
+// restart ordering and resume choices are covered in process in watchdog-restart.test.ts.
 test('legacy resident-missing stamp does not prevent restart without RESIDENT.md', withHermit(async (h) => {
   writeConfig(h);
   patchRuntime(h, { last_start_error: 'resident-missing' });
@@ -5675,6 +5596,9 @@ test('legacy resident-missing stamp does not prevent restart without RESIDENT.md
   expect(await waitForStartMarker(h)).toBe(true);
   expect(fs.readFileSync(eventsFile(h), 'utf8')).toContain('tree-verified');
   expect(fs.readFileSync(eventsFile(h), 'utf8')).not.toContain('operator notified; restart skipped');
+  const runtime = readJson(state(h, 'runtime.json'));
+  expect(runtime.last_error).toBe('unclean_shutdown');
+  expect(runtime.watchdog_restart_reason).toBe('dead-process');
 }));
 
 

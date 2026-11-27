@@ -27,7 +27,7 @@ import { readChannelToken, channelStateDir } from './channel-token';
 import { recordChannelHealth } from './channel-health';
 import { appendJsonlLine } from './append-jsonl';
 import { readJson } from './cli';
-import { isKey } from './conversation-key';
+import { isKey, parseKey } from './conversation-key';
 import { getEnabledChannels, isDict } from './channel-config';
 import { logRoutineEvent } from './routines/event';
 import { cachedChat, lookupChat, isGuildChannelType } from './channel-chats';
@@ -285,11 +285,13 @@ async function fallbackToParent(
 
 /** Deliver unattended output to its owning chat, preserving a safe public parent fallback. */
 export async function sendToOwnedChat(
-  hermitDir: string, chatKey: string, text: string, opts: Omit<SendOptions, 'target'> & { thread?: string | null } = {},
+  hermitDir: string, chatKey: string, text: string, opts: Omit<SendOptions, 'target'> = {},
 ): Promise<OwnedSendResult> {
   if (!isKey(chatKey)) return { ok: false, error: 'invalid_chat', route: 'chat' };
-  const at = chatKey.indexOf(':');
-  const target = { id: chatKey.slice(0, at), chat_id: chatKey.slice(at + 1), thread: opts.thread };
+  const { source, chat, thread } = parseKey(chatKey);
+  // A Discord thread is its own chat id; a `~thread` there would post to the parent.
+  if (source === 'discord' && thread !== undefined) return { ok: false, error: 'invalid_chat', route: 'chat' };
+  const target = { id: source, chat_id: chat, thread };
   const config = opts.config ?? readSettledConfig(hermitDir);
   if (!getEnabledChannels(config).includes(target.id)) return { ok: false, error: 'channel_disabled', route: 'chat' };
   if (target.id === 'discord') await lookupChat(hermitDir, config, target.chat_id);

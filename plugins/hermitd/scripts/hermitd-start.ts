@@ -27,7 +27,7 @@ import { localISOStamp } from './lib/time';
 import { tmuxSessionAlive, getSessionName } from './lib/tmux';
 import { AuthMode, defaultConfigDir, readTokenValue, resolveAuthMode, TOKEN_ENV_VAR } from './lib/setup-token';
 import { markWorkspaceTrusted, updateClaudeState } from './lib/claude-state';
-import { residentLiveness, otherRuntimeLive, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
+import { residentLiveness, bootOwner, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { isContainer, MANAGED_SECURITY_SETTINGS } from './lib/container';
 import { chromeAuthNote } from './lib/credential-probe';
 import { pyTruthy, isDict, iterChannelConfigs, getEnabledChannels, channelStateDirKey } from './lib/channel-config';
@@ -1268,10 +1268,10 @@ export function shouldRefuseBoot(bootMode: BootMode): string[] | null {
   }
   const rt = readRuntimeJson();
   const verdict = residentLiveness(rt, rt?.tmux_session ?? '', REAL_LIVENESS_DEPS());
-  const age = otherRuntimeLive(verdict, bootMode);
-  if (age !== null) {
+  const owner = bootOwner(verdict, bootMode);
+  if (owner) {
     return [
-      `A ${rt!.runtime_mode} instance appears to be alive for this project (state activity ${Math.round(age)}s ago).`,
+      `A ${owner.mode} instance appears to be alive for this project (state activity ${owner.age_secs}s ago).`,
       'Stop it first (hermitd stop), or override with HERMIT_FORCE_BOOT=1.',
     ];
   }

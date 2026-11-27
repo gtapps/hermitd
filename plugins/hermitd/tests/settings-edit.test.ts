@@ -2,7 +2,7 @@ import { describe, test, expect, afterAll } from 'bun:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runScript, PLUGIN_ROOT } from './helpers/run';
-import { getPath, setPath, unsetPath, togglePath, showData, applyKnown } from '../scripts/settings-edit';
+import { getPath, setPath, unsetPath, togglePath, showData, applyKnown, applyEdit } from '../scripts/settings-edit';
 import { SETTINGS, tableSettings } from '../scripts/lib/settings/registry';
 import { freshDirFactory } from './helpers/workdir';
 
@@ -22,6 +22,41 @@ function readConfig(file: string): any {
 }
 
 // --- Pure helper unit tests ---
+
+describe('applyEdit', () => {
+  const hermitDir = '/nonexistent/.hermit';
+  const run = (config: any, op: string, ...args: string[]) => ({ outcome: applyEdit(config, op, args, hermitDir), config });
+
+  test('write verbs change the config in place and ask to persist', () => {
+    expect(run({}, 'set', 'a.b', '3')).toEqual({ outcome: { write: true }, config: { a: { b: 3 } } });
+    expect(run({ a: 1 }, 'set', 'a', 'none').config).toEqual({ a: null });
+    expect(run({ l: [1] }, 'append', 'l', '2').config).toEqual({ l: [1, 2] });
+    expect(run({ a: 1, b: 2 }, 'unset', 'a').config).toEqual({ b: 2 });
+    expect(run({ f: true }, 'toggle', 'f').config).toEqual({ f: false });
+  });
+
+  test('outcomes that write nothing stop with their reply', () => {
+    expect(run({}, 'unset', 'a').outcome).toEqual({ stop: { status: 'none', reason: 'not_set' } });
+    expect(run({}, 'apply-known', 'no-such-setting', 'x').outcome).toMatchObject({ stop: { status: 'refused', reason: 'unknown_setting' } });
+    const registered = { channels: { c: { plugin: 'p', enabled: true, default_chat_id: null, state_dir: '.claude.local/channels/c' } } };
+    expect(run(registered, 'channel-register', 'c', '{"plugin":"p"}').outcome).toEqual({ stop: { status: 'unchanged' } });
+  });
+
+  test('refusals throw the CLI error token', () => {
+    expect(() => run({}, 'set', 'a')).toThrow('usage');
+    expect(() => run({ l: 1 }, 'append', 'l', '2')).toThrow('not_an_array:l');
+    expect(() => run({ f: 1 }, 'toggle', 'f')).toThrow('not_boolean:f');
+    expect(() => run({}, 'migrate', 'no-such-migration')).toThrow('unsupported_migration');
+    expect(() => run({}, 'channel-register', 'primary', '{}')).toThrow('invalid_channel_key');
+  });
+
+  test('a migration reports whether it changed the config and its actor', () => {
+    const changed = run({ boot_skill: '/x:y' }, 'migrate', 'clear-sibling-boot-skill', '--skill', '/x:y');
+    expect(changed.config.boot_skill).toBeNull();
+    expect(changed.outcome).toMatchObject({ write: true, reply: { cleared: '/x:y' }, actor: 'settings-migrate:clear-sibling-boot-skill' });
+    expect(run({ boot_skill: '/a:b' }, 'migrate', 'clear-sibling-boot-skill', '--skill', '/x:y').outcome).toMatchObject({ write: false });
+  });
+});
 
 describe('getPath / setPath / togglePath', () => {
   test('getPath returns whole object when path omitted', () => {

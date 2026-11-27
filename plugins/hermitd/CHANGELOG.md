@@ -6,19 +6,26 @@
 
 - Operator-authored mod commands can be exposed to chat through `chat_commands`, which ships empty.
 
+### Changed
+
+- A `settings-edit migrate` that would change a protected setting raises the native permission prompt, judged by its effect on the current config
+
 ### Upgrade Instructions
 
 1. If `.hermit/config.json` has no `chat_commands` key, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set chat_commands '[]'`. Leave an existing value untouched.
 - `/hermitd:cost-reflect` may name a change worth considering for its biggest spend drivers, with what it trades away, when you ask about spend.
 - `/hermitd:hermit-settings heartbeat` can change `clean_recheck_cooldown`.
 2. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json get channels.connector.allowed_users`. If it returns a list, tell the operator that only the IDs in it can reach the agent through the connector, that every other paired person is dropped, and that removing the list lets everyone paired with `hermitd connector pair` in again. Only on their yes, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset channels.connector.allowed_users`. Otherwise write no config.
+3. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure, so the container's boot-conflict check ignores liveness files left before the last reboot or launch. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd-docker update`.
 
 
 ### Fixed
 
+- A Docker agent no longer stays inert with a boot conflict over liveness files left by a session that died before the last reboot or launch. The container, `hermitd start` and `hermitd docker up` now share one boot-ownership check, so `hermitd docker up` also refuses a live host instance whose tmux session is gone.
 - A follow-up for a helper whose session stopped resumes it on this machine instead of reporting the message as queued. For a helper offline on another machine, the agent offers a new helper there, since its queued message is never delivered.
 - Connector access requests in `/hermitd:channel-access` point to `hermitd connector pair` and `revoke` instead of adding an `allowed_users` entry that shut out every other paired person.
 - An always-on start writes only `always_on` and the doctor schedule back to `config.json`, so default `env` keys the operator removed no longer return after a restart and unset keys are no longer stamped with defaults. A config without `routines` or `env` starts with none instead of the built-in defaults.
+- Decision reminders, `later` deliveries, and routine or watch notices bound to a thread reach that thread on channels with a thread attribute, such as Telegram forum topics and channel plugins, instead of failing on a chat id that still carried the thread.
 
 ## [1.4.44] - 2026-11-27
 

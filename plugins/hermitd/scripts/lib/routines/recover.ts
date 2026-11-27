@@ -4,6 +4,8 @@ import { ownedTarget, resolve } from '../../resolve-outbound-channel';
 import { conversationHistory, isLoggingEnabled } from '../channel-log';
 import { clip, safeForLLM } from '../sanitize';
 import { readJson } from '../cli';
+import { parseKey } from '../conversation-key';
+import { readExecutionRaw } from '../turn-state';
 import { readSettledConfig } from '../config-read';
 import { readTailLines } from '../cc-compat';
 import { isPaused } from '../pause';
@@ -24,7 +26,7 @@ function ledger(dir: string): any[] {
 }
 
 export function recoveryTurnLive(dir: string, sessionId: string | undefined, lastTurnCompleteAt?: number | null): boolean {
-  const execution = readJson(path.join(dir, 'state/execution.json'));
+  const execution = readExecutionRaw(dir);
   return execution?.state === 'in_flight' && execution.cc_session_id === sessionId
     && (lastTurnCompleteAt == null || Date.parse(execution.at ?? '') > lastTurnCompleteAt);
 }
@@ -129,7 +131,7 @@ export function retryContext(dir: string, entry: Unfinished) {
   let note = 'No outbound rows were logged for this occurrence.';
   if (!target || !isLoggingEnabled(config, target.id)) note = 'Channel logging is off or no client chat is configured.';
   else {
-    const [chatId, thread] = target.chat_id.split('~');
+    const { chat: chatId, thread } = parseKey(`${target.id}:${target.chat_id}`);
     // Empty sender allowlist filters inbound rows before LIMIT, keeping ten outbound rows.
     alreadySent = conversationHistory(dir, target.id, chatId, { limit: 10, senderIds: [], since, thread: thread ?? null })
       .filter(row => row.direction === 'out').map(row => clip(safeForLLM(row.text.split(/\r?\n/, 1)[0]), 500));

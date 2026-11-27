@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { otherRuntimeLive, residentLiveness } from '../scripts/lib/resident-liveness';
+import { bootOwner, residentLiveness } from '../scripts/lib/resident-liveness';
 
 const verdict = (runtime: Parameters<typeof residentLiveness>[0], alive = false, age: number | null = null) =>
   residentLiveness(runtime, 'resident', { tmuxAlive: () => alive, livenessAgeSecs: () => age });
@@ -17,11 +17,27 @@ describe('resident liveness', () => {
   test('fresh activity without a mode is an orphan', () => expect(verdict({}, false, 5).state).toBe('orphan'));
   test('live tmux precedes a clean stamp', () => expect(verdict({ runtime_mode: 'tmux', shutdown_completed_at: 'stamp' }, true).state).toBe('alive'));
   test('clean stamp precedes fresh activity', () => expect(verdict({ runtime_mode: 'tmux', shutdown_completed_at: 'stamp' }, false, 1).state).toBe('cleanly-stopped'));
-  test('cross-runtime freshness preserves the exact age', () => {
-    expect(otherRuntimeLive(verdict({ runtime_mode: 'docker' }, false, 1.25), 'tmux')).toBe(1.25);
-    expect(otherRuntimeLive(verdict({ runtime_mode: 'tmux' }, false, 1), 'tmux')).toBeNull();
-    expect(otherRuntimeLive(verdict({ runtime_mode: 'docker' }, false, 600), 'tmux')).toBeNull();
-    expect(otherRuntimeLive(verdict({ runtime_mode: 'docker', shutdown_completed_at: 'stamp' }, true, 1), 'tmux')).toBeNull();
+});
+
+describe('boot owner', () => {
+  test('fresh activity of another runtime owns the state', () => {
+    expect(bootOwner(verdict({ runtime_mode: 'docker' }, false, 1.25), 'tmux')).toEqual({ mode: 'docker', age_secs: 1, via: 'liveness' });
+    expect(bootOwner(verdict({ runtime_mode: 'tmux' }, false, 42), 'docker')).toEqual({ mode: 'tmux', age_secs: 42, via: 'liveness' });
+    expect(bootOwner(verdict({ runtime_mode: 'tmux' }, false, 1), 'interactive')?.mode).toBe('tmux');
+  });
+  test('the same runtime, no mode, stale activity or a clean stop own nothing', () => {
+    expect(bootOwner(verdict({ runtime_mode: 'tmux' }, false, 1), 'tmux')).toBeNull();
+    expect(bootOwner(verdict({}, false, 1), 'docker')).toBeNull();
+    expect(bootOwner(verdict({ runtime_mode: 'docker' }, false, 600), 'tmux')).toBeNull();
+    expect(bootOwner(verdict({ runtime_mode: 'docker' }, false, null), 'tmux')).toBeNull();
+    expect(bootOwner(verdict({ runtime_mode: 'tmux', shutdown_completed_at: 'stamp' }, false, 1), 'docker')).toBeNull();
+  });
+  test('a live host tmux session owns the state for a Docker boot, even stale or stamped', () => {
+    expect(bootOwner(verdict({ runtime_mode: 'tmux' }, true, null), 'docker')).toEqual({ mode: 'tmux', age_secs: null, via: 'tmux' });
+    expect(bootOwner(verdict({ runtime_mode: 'tmux', shutdown_completed_at: 'stamp' }, true, 900), 'docker')?.via).toBe('tmux');
+  });
+  test('a host boot leaves its own tmux session to the lifecycle lock', () => {
+    expect(bootOwner(verdict({ runtime_mode: 'interactive' }, true, null), 'tmux')).toBeNull();
   });
 });
 

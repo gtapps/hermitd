@@ -11,6 +11,7 @@ import { clip, safeForLLM } from './sanitize';
 import { loadMessages } from './messages';
 import { postToSession } from './peer-post';
 import { readRuntimeJson } from './runtime';
+import { parseKey } from './conversation-key';
 
 const REFUSALS = new Set(['not_owner', 'closed', 'empty', 'report_too_long', 'report_outside_state', 'consent_required', 'not_found', 'invalid_file']);
 type ReportKind = 'result' | 'needs-input' | 'note';
@@ -274,12 +275,11 @@ export async function submitHelperReport(dir: string, id: string | undefined, fl
       try {
         const config = readSettledConfig(dir);
         const notice = loadMessages(dir, config.language).t('task_report_truncated');
-        const [source, destination] = recorded.conversation.split(':');
-        const [chatId, thread] = destination.split('~');
+        const { source, chat: chatId, thread } = parseKey(recorded.conversation);
         const label = threadRecords(dir).filter(task => task.conversation === recorded.conversation).length >= 2
           && await classifyChat(dir, config, source, chatId, thread) === 'shared'
           ? `${recorded.handle} · ${clip(safeForLLM(recorded.title), 60)}: ` : '';
-        delivery = deliveryOf(await sendToOwnedChat(dir, `${source}:${chatId}`, label + text, { config, thread, discordCapNotice: notice }));
+        delivery = deliveryOf(await sendToOwnedChat(dir, recorded.conversation, label + text, { config, discordCapNotice: notice }));
       } catch { delivery = 'failed'; }
       // An unsettled record keeps `pending`, which the resident reports without resending.
       try { settleReportDelivery(dir, id, report, delivery); } catch {}

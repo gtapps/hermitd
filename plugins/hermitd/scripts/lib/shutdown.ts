@@ -7,7 +7,7 @@ import { readSettledConfig } from './config-read';
 import { enqueue, failedLeg, legReason, parseSkill, readOutcome, type LegStatus } from './harness-mod';
 import { writeFileAtomic } from './md-write';
 import { readRuntimeJson, writeRuntimeJson } from './runtime';
-import { readExecution } from './tasks';
+import { readExecution } from './turn-state';
 import { localISOStamp } from './time';
 
 export type ShutdownResult = {
