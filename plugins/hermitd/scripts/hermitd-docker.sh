@@ -100,23 +100,24 @@ _require_running() {
   fi
 }
 
-# A live host tmux resident owns the state even when its liveness files are
-# stale, and the container's entrypoint cannot see host tmux. `=` is an
-# exact-name match. HERMIT_FORCE_BOOT=1 overrides, as it does in the entrypoint.
-# Every path that (re)boots the container calls this: an inert container left by
-# a boot conflict is still "running", so restart/update reach the entrypoint too.
+# Refuse to (re)boot the container over a live non-docker owner, through the
+# shared boot-owner verdict, which on the host also sees the host tmux session
+# the entrypoint cannot. Every path that (re)boots the container calls this: an
+# inert container left by a boot conflict is still "running", so restart/update
+# reach the entrypoint too.
 _refuse_if_host_tmux_owner() {
-  [ "${HERMIT_FORCE_BOOT:-0}" != "1" ] && [ -f "$RUNTIME_FILE" ] || return 0
-  local host_session
-  host_session=$(bun -e "
-const rt = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
-if (rt.runtime_mode && rt.runtime_mode !== 'docker' && typeof rt.tmux_session === 'string') console.log(rt.tmux_session);
-" "$RUNTIME_FILE" 2>/dev/null || true)
-  if [ -n "$host_session" ] && tmux has-session -t "=$host_session" 2>/dev/null; then
-    echo "[hermit] BOOT CONFLICT: host tmux session '$host_session' is running this project's hermit." >&2
-    echo "[hermit] Stop it first (hermitd stop), or override with HERMIT_FORCE_BOOT=1." >&2
-    exit 1
+  [ -f "$RUNTIME_FILE" ] || return 0
+  local owner status mode via
+  owner=$(cd / && bun "$HOST_SCRIPTS/boot-owner.ts" docker "$PROJECT_DIR/.hermit" 2>/dev/null || true)
+  IFS=$'\t' read -r status mode via <<< "$(bun -e 'try { const r = JSON.parse(process.argv[1]); console.log([r.status, r.mode, r.via].map(v => v ?? "").join("\t")); } catch { console.log(""); }' "$owner")"
+  [ "$status" = owned ] || return 0
+  if [ "$via" = tmux ]; then
+    echo "[hermit] BOOT CONFLICT: host tmux session for this project's '$mode' hermit is running." >&2
+  else
+    echo "[hermit] BOOT CONFLICT: a live '$mode' instance owns this project's state dir." >&2
   fi
+  echo "[hermit] Stop it first (hermitd stop), or override with HERMIT_FORCE_BOOT=1." >&2
+  exit 1
 }
 
 _running_cc_version() {

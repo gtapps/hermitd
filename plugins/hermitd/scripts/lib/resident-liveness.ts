@@ -30,10 +30,22 @@ export function residentLiveness(
   return { state, evidence };
 }
 
-export function otherRuntimeLive(verdict: LivenessVerdict, mode: string): number | null {
-  const evidence = verdict.evidence;
-  return evidence.runtimeMode && evidence.runtimeMode !== mode && !evidence.cleanlyStopped && evidence.fresh
-    ? evidence.livenessAgeSecs : null;
+export type BootOwner = { mode: string; age_secs: number | null; via: 'tmux' | 'liveness' };
+
+/**
+ * The live instance of another runtime that owns this state folder, or null when
+ * `target` may boot here: the one boot-ownership verdict every boot path asks.
+ * A live host tmux session counts only for a Docker boot (a host boot over its
+ * own session is serialized by the lifecycle lock); callers inside a container,
+ * which cannot see host tmux, supply a tmux probe that returns false.
+ */
+export function bootOwner(verdict: LivenessVerdict, target: string): BootOwner | null {
+  const e = verdict.evidence;
+  if (!e.runtimeMode || e.runtimeMode === target) return null;
+  const age = e.livenessAgeSecs === null ? null : Math.round(e.livenessAgeSecs);
+  if (target === 'docker' && e.tmuxAlive) return { mode: e.runtimeMode, age_secs: age, via: 'tmux' };
+  if (!e.cleanlyStopped && e.fresh) return { mode: e.runtimeMode, age_secs: age, via: 'liveness' };
+  return null;
 }
 
 export function REAL_LIVENESS_DEPS(hermitRoot?: string): LivenessDeps {

@@ -31,7 +31,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readRuntimeJson } from './lib/runtime';
-import { residentLiveness, otherRuntimeLive, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
+import { residentLiveness, bootOwner, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 import { transcriptDirFor, transcriptPathKey } from './lib/cc-compat';
 
 function dockerVersion(): string | null {
@@ -43,31 +43,20 @@ function dockerVersion(): string | null {
 }
 
 /**
- * A live non-docker instance owning this project's state, or null.
- *
- * Mirrors the entrypoint's split-brain guard (docker-entrypoint template) and
- * hermitd-start's shouldRefuseBoot: same runtime_mode / cleanly-stopped test,
- * same liveness files, same 600s window, plus the host tmux check below that the
- * entrypoint cannot make. Deliberately NOT a call into shouldRefuseBoot: its
+ * A live non-docker instance owning this project's state, or null: the shared
+ * bootOwner verdict for a Docker boot, including the host tmux check the
+ * container's entrypoint cannot make. Deliberately NOT shouldRefuseBoot: its
  * first branch also refuses when a Docker hermit is running, which is the
  * supported case for re-running /docker-setup over an existing container.
- *
- * Fresh proves alive; stale proves nothing (see lib/liveness). A live host tmux
- * session is the one extra proof: it owns the state even when its liveness files
- * went stale (routines off, long heartbeat), which the container's entrypoint
- * cannot see. `age_secs` is null when that session has written no liveness file.
+ * `age_secs` is null when a live tmux session has written no liveness file.
  */
 function liveOwner(projectRoot: string, hermitDir: string) {
   try {
     const hermitRoot = path.join(projectRoot, hermitDir);
     const rt = readRuntimeJson(path.join(hermitRoot, 'state')) as Record<string, unknown> | null;
-    const mode = rt && typeof rt.runtime_mode === 'string' ? rt.runtime_mode : '';
-    if (!mode || mode === 'docker') return null;
     const sessionName = typeof rt?.tmux_session === 'string' ? rt.tmux_session : '';
-    const verdict = residentLiveness(rt, sessionName, REAL_LIVENESS_DEPS(hermitRoot));
-    if (otherRuntimeLive(verdict, 'docker') === null && verdict.state !== 'alive') return null;
-    const age = verdict.evidence.livenessAgeSecs;
-    return { mode, age_secs: age === null ? null : Math.round(age) };
+    const owner = bootOwner(residentLiveness(rt, sessionName, REAL_LIVENESS_DEPS(hermitRoot)), 'docker');
+    return owner && { mode: owner.mode, age_secs: owner.age_secs };
   } catch {
     return null;
   }

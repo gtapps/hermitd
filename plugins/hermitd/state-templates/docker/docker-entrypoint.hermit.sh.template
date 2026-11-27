@@ -496,37 +496,25 @@ fi
 
 # --- 4b. Singleton guard: refuse to boot over a live non-docker owner ---
 # hermitd-start's own guard self-skips inside a container, so the container-side
-# check lives here. A gone-tmux host instance that survived as an orphan keeps
-# writing the shared (bind-mounted) liveness files; if runtime.json still claims
-# a non-docker mode AND any liveness file is fresh, a live host instance owns
-# this project's state — booting a second claude beside it recreates the
-# split-brain incident. Go inert (no claude, container flips unhealthy via the
-# tmux healthcheck) rather than exit, so `restart: unless-stopped` can't loop us.
-# HERMIT_FORCE_BOOT=1 overrides, for split-state recovery.
-if [ "${HERMIT_FORCE_BOOT:-0}" != "1" ]; then
-  _rt="${AGENT_DIR}/state/runtime.json"
-  _mode="$(jq -r '.runtime_mode // empty' "$_rt" 2>/dev/null || true)"
-  if [ -n "$_mode" ] && [ "$_mode" != "docker" ]; then
-    # A cleanly-stopped owner is definitively dead; its frozen runtime_mode and
-    # not-yet-aged liveness files don't prove life. Mirrors shouldRefuseBoot.
-    _done="$(jq -r '.shutdown_completed_at // empty' "$_rt" 2>/dev/null || true)"
-    _fresh=0
-    if [ -z "$_done" ]; then
-      for _f in state/routine-monitor-liveness.json state/heartbeat-liveness.json state/.heartbeat; do
-        if [ -n "$(find "${AGENT_DIR}/$_f" -mmin -10 2>/dev/null || true)" ]; then _fresh=1; break; fi
-      done
-    fi
-    if [ "$_fresh" = "1" ]; then
-      echo "[docker-entrypoint] BOOT CONFLICT: a live '$_mode' instance owns this project's state dir."
-      echo "[docker-entrypoint] Staying inert (no claude started). Stop the other instance, then: hermitd-docker restart"
-      printf 'live %s owner detected at boot\n' "$_mode" > "${AGENT_DIR}/state/.boot-conflict"
-      # Bash defers a trapped signal until a foreground command returns, and PID 1
-      # has no default signal action. docker stop/compose down do not re-trigger
-      # restart: unless-stopped, so make the sleep interruptible through wait.
-      trap 'echo "[docker-entrypoint] Stop requested while inert — exiting."; exit 0' SIGTERM SIGINT
-      while true; do sleep 300 & wait $! || true; done
-    fi
-  fi
+# check lives here, through the boot-owner verb hermitd-start and hermitd-docker
+# share. Booting a second claude beside a live owner recreates the split-brain
+# incident. Go inert (no claude, container flips unhealthy via the tmux
+# healthcheck) rather than exit, so `restart: unless-stopped` can't loop us.
+# HERMIT_FORCE_BOOT=1 overrides, for split-state recovery. A failed check proves
+# nothing, so boot.
+_owner="$("${AGENT_DIR}/bin/hermitd-run" boot-owner docker "$AGENT_DIR" 2>/dev/null || true)"
+IFS=$'\t' read -r _owner_status _mode <<< "$(printf '%s' "$_owner" | jq -r '[.status // "", .mode // "unknown"] | @tsv' 2>/dev/null || true)"
+if [ "$_owner_status" = "owned" ]; then
+  echo "[docker-entrypoint] BOOT CONFLICT: a live '$_mode' instance owns this project's state dir."
+  echo "[docker-entrypoint] Staying inert (no claude started). Stop the other instance, then: hermitd-docker restart"
+  printf 'live %s owner detected at boot\n' "$_mode" > "${AGENT_DIR}/state/.boot-conflict"
+  # Bash defers a trapped signal until a foreground command returns, and PID 1
+  # has no default signal action. docker stop/compose down do not re-trigger
+  # restart: unless-stopped, so make the sleep interruptible through wait.
+  trap 'echo "[docker-entrypoint] Stop requested while inert — exiting."; exit 0' SIGTERM SIGINT
+  while true; do sleep 300 & wait $! || true; done
+elif [ "$_owner_status" != "clear" ]; then
+  echo "[docker-entrypoint] Warning: boot-owner check failed; booting without it."
 fi
 rm -f "${AGENT_DIR}/state/.boot-conflict" 2>/dev/null || true
 

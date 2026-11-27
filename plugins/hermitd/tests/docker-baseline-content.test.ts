@@ -402,20 +402,34 @@ describe('Entrypoint: §4b boot conflict guard', () => {
 
   function runGuard(
     runtime: object,
-    opts: { liveness?: 'fresh' | 'stale'; forceBoot?: string } = {},
+    opts: { liveness?: 'fresh' | 'stale' | 'before-launch'; forceBoot?: string; verb?: 'real' | 'broken' } = {},
   ) {
     const agentDir = path.join(freshDir(), '.hermit');
     const stateDir = path.join(agentDir, 'state');
     fs.mkdirSync(stateDir, { recursive: true });
+    fs.mkdirSync(path.join(agentDir, 'bin'));
     fs.writeFileSync(path.join(stateDir, 'runtime.json'), JSON.stringify(runtime));
+    // The guard asks the boot-owner verb; the stub hands it to the real script,
+    // or fails the way a missing plugin install would.
+    const run = path.join(agentDir, 'bin', 'hermitd-run');
+    fs.writeFileSync(run, (opts.verb ?? 'real') === 'real'
+      ? `#!/usr/bin/env bash\nv="$1"; shift\nexec bun ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts'))}/"$v".ts "$@"\n`
+      : '#!/usr/bin/env bash\necho "[hermit] Could not find hermitd plugin" >&2\nexit 1\n');
+    fs.chmodSync(run, 0o755);
     if (opts.liveness) {
       const beat = path.join(stateDir, '.heartbeat');
       fs.writeFileSync(beat, '');
-      // The guard's window is `find -mmin -10`; backdate 20min for the "stale
-      // signal reads as unknown, so boot" branch.
+      // Backdate 20min past the freshness window for the "stale signal reads as
+      // unknown, so boot" branch.
       if (opts.liveness === 'stale') {
         const old = new Date(Date.now() - 20 * 60_000);
         fs.utimesSync(beat, old, old);
+      }
+      // A dead session's leftover, written before the agent's last launch.
+      if (opts.liveness === 'before-launch') {
+        const old = new Date(Date.now() - 3 * 60_000);
+        fs.utimesSync(beat, old, old);
+        fs.writeFileSync(path.join(stateDir, '.boot-id'), 'x\n');
       }
     }
 
@@ -435,10 +449,10 @@ describe('Entrypoint: §4b boot conflict guard', () => {
     };
   }
 
-  // The guard reads runtime.json through jq. Without it every `jq` call fails,
-  // `_mode` comes back empty and the guard silently self-skips — which is the
-  // exact shape of the bug under test, so assert the dependency explicitly
-  // rather than let its absence read as a logic regression.
+  // The guard reads the verb's JSON through jq. Without it every `jq` call
+  // fails, the status comes back empty and the guard warns and boots, so assert
+  // the dependency explicitly rather than let its absence read as a logic
+  // regression.
   test('entrypoint §4b: jq is available to run the guard', () => {
     expect(spawnSync('sh', ['-c', 'command -v jq'], { encoding: 'utf8' }).status).toBe(0);
   });
@@ -474,6 +488,22 @@ describe('Entrypoint: §4b boot conflict guard', () => {
     const r = runGuard({ runtime_mode: 'tmux' }, { liveness: 'stale' });
     expect(r.status).toBe(0);
     expect(r.marker).toBe(false);
+  });
+
+  // Liveness written before the agent's last launch is a dead session's
+  // leftover, the same floor hermitd-start applies.
+  test('entrypoint §4b: boots over liveness written before the last launch', () => {
+    const r = runGuard({ runtime_mode: 'tmux' }, { liveness: 'before-launch' });
+    expect(r.status).toBe(0);
+    expect(r.marker).toBe(false);
+  });
+
+  // A failed check proves nothing, so the guard warns and boots.
+  test('entrypoint §4b: warns and boots when the verb fails', () => {
+    const r = runGuard({ runtime_mode: 'tmux' }, { liveness: 'fresh', verb: 'broken' });
+    expect(r.status).toBe(0);
+    expect(r.marker).toBe(false);
+    expect(r.stdout).toContain('boot-owner check failed');
   });
 
   test('entrypoint §4b: HERMIT_FORCE_BOOT=1 overrides a live owner', () => {

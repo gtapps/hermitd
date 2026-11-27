@@ -553,7 +553,7 @@ describe('hermitd-docker up host tmux guard', () => {
   // The fake tmux reports only the exact-match `=hermit-demo` target alive; the
   // fake docker records its argv so a refused boot shows no `up -d`, and reports
   // the service running so restart gets past its running check.
-  async function up(runtime: object, env: Record<string, string> = {}, cmd = 'up') {
+  async function up(runtime: object, env: Record<string, string> = {}, cmd = 'up', freshLiveness = false) {
     const wd = setupWorkdir();
     const proj = wd.dir;
     fs.mkdirSync(hermit(proj, 'bin'), { recursive: true });
@@ -565,6 +565,7 @@ describe('hermitd-docker up host tmux guard', () => {
     write(path.join(proj, 'docker-compose.hermit.yml'), 'services: {}\n');
     write(path.join(proj, 'Dockerfile.hermit'), 'FROM ubuntu:26.04\n');
     write(hermit(proj, 'state', 'runtime.json'), JSON.stringify(runtime));
+    if (freshLiveness) write(hermit(proj, 'state', 'routine-monitor-liveness.json'), '{}');
     const stub = path.join(proj, '.stub');
     const dockerLog = path.join(stub, 'docker.log');
     fs.mkdirSync(stub);
@@ -584,7 +585,7 @@ describe('hermitd-docker up host tmux guard', () => {
   test('refuses while the recorded host tmux session is alive', async () => {
     const r = await up({ runtime_mode: 'tmux', tmux_session: 'hermit-demo' });
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain("host tmux session 'hermit-demo'");
+    expect(r.stderr).toContain("host tmux session for this project's 'tmux' hermit");
     expect(r.booted).toBe(false);
   });
 
@@ -593,7 +594,16 @@ describe('hermitd-docker up host tmux guard', () => {
   test('restart refuses too while the host tmux session is alive', async () => {
     const r = await up({ runtime_mode: 'tmux', tmux_session: 'hermit-demo' }, {}, 'restart');
     expect(r.exitCode).toBe(1);
-    expect(r.stderr).toContain("host tmux session 'hermit-demo'");
+    expect(r.stderr).toContain("host tmux session for this project's 'tmux' hermit");
+    expect(r.booted).toBe(false);
+  });
+
+  // The same verdict the entrypoint gives: a fresh liveness file without the
+  // tmux session is a live orphan, and the container would only go inert over it.
+  test('refuses a live orphan whose tmux session is gone', async () => {
+    const r = await up({ runtime_mode: 'tmux', tmux_session: 'hermit-dem' }, {}, 'up', true);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("a live 'tmux' instance owns this project's state dir");
     expect(r.booted).toBe(false);
   });
 
@@ -601,7 +611,7 @@ describe('hermitd-docker up host tmux guard', () => {
     expect((await up({ runtime_mode: 'tmux', tmux_session: 'hermit-dem' })).booted).toBe(true);
     expect((await up({ runtime_mode: 'docker', tmux_session: 'hermit-demo' })).booted).toBe(true);
     expect((await up({ runtime_mode: 'tmux', tmux_session: 'hermit-demo' }, { HERMIT_FORCE_BOOT: '1' })).booted).toBe(true);
-  });
+  }, 20000);
 
   test('restart resumes by default, --fresh starts clean, up stays fresh', async () => {
     const docker = { runtime_mode: 'docker', tmux_session: 'hermit-demo' };
@@ -609,7 +619,7 @@ describe('hermitd-docker up host tmux guard', () => {
     expect((await up(docker, {}, 'restart --resume')).resume).toBe('1');
     expect((await up(docker, {}, 'restart --fresh')).resume).toBe('0');
     expect((await up(docker)).resume).toBe('unset');
-  });
+  }, 20000);
 });
 
 test('Docker run, pause, skills and watchdog dispatch only into a running container', async () => {
