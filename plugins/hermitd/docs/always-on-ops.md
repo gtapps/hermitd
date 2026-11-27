@@ -203,7 +203,7 @@ Four levers, in rough order of impact:
 
 Use the session model when the routine needs to produce chat or transcript output. See [Routines](#routines) and [Config reference](config-reference.md#routines).
 
-**3. Clean recheck cooldown and active hours.** Quiet polls are free; `heartbeat.every` only sets how quickly time-sensitive gates are noticed. A longer `clean_recheck_cooldown` means fewer full checklist reads but later detection; tighter `active_hours` also limits spend. See the [heartbeat configuration table](config-reference.md#heartbeat).
+**3. Clean recheck cooldown and active hours.** Quiet polls are free; while `clean_recheck_cooldown` is set, `heartbeat.every` only sets how quickly time-sensitive gates are noticed (with it set to `null`, every tick is a full check). A longer `clean_recheck_cooldown` means fewer full checklist reads but later detection; tighter `active_hours` also limits spend. See the [heartbeat configuration table](config-reference.md#heartbeat).
 
 **4. Checklist curation.** A shorter, sharper `HEARTBEAT.md` lets the free OK precheck path fire more often, skipping the full LLM eval. `/hermitd:heartbeat edit` warns when the list exceeds 10 items.
 

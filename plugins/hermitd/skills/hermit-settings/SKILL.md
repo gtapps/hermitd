@@ -39,7 +39,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings delegation-effort — effort for background helpers and task workers
 /hermitd:hermit-settings brief          — configure morning brief
 /hermitd:hermit-settings permissions    — configure unattended mode
-/hermitd:hermit-settings heartbeat      — enable/disable, interval, quiet mode, active hours, check model and effort
+/hermitd:hermit-settings heartbeat      — enable/disable, interval, quiet mode, active hours, check model and effort, clean recheck cooldown
 /hermitd:hermit-settings watchdog       — scheduler_enabled, enable/disable, stale_factor, wedge_floor, escalate_after, operator_grace, context hygiene compaction
 /hermitd:hermit-settings routines        — manage scheduled routines (add/edit/remove/enable/disable)
 /hermitd:hermit-settings env              — view/edit environment variables
