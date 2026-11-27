@@ -27,6 +27,13 @@ export function browserProfile(dir = hermitDir(), deployment = browserDeployment
 export function browserSocketDir(dir: string): string {
   return `/tmp/hermit-browser-${createHash('sha256').update(dir).digest('hex').slice(0, 16)}`;
 }
+// The signed-in window is 500x1082; Chrome's own toolbar leaves this page area. Measured on
+// Chrome for Testing 158 at 100% zoom: recheck when the browser pin changes.
+export const PHONE_VIEWPORT = ['500', '935'];
+// Present while the agent's `set viewport` or `set device` overrides the phone layout.
+export function viewportOverrideMarker(dir: string): string {
+  return path.join(browserSocketDir(dir), 'viewport-override');
+}
 export function browserEnabled(dir = hermitDir()): boolean {
   return readSettledConfig(dir).browser.enabled === true;
 }

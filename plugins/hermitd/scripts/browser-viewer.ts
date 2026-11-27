@@ -5,7 +5,7 @@ import type { ServerWebSocket, Socket } from 'bun';
 import { hermitDir } from './lib/cc-compat';
 import { browserLease, humanGeneration, persistentChromeAlive } from './lib/browser-lease';
 import { isContainer } from './lib/container';
-import { browserSocketDir, browserViewerPaths } from './lib/browser-runtime';
+import { browserSocketDir, browserViewerPaths, PHONE_VIEWPORT, viewportOverrideMarker } from './lib/browser-runtime';
 import { readSettledConfig } from './lib/config-read';
 
 interface ViewerSocket { generation: number; login: string; bridge?: Socket; closed: boolean }
@@ -13,6 +13,14 @@ interface ViewerOptions {
   dir?: string; port?: number; hostname?: string; novncRoot?: string; vncSocket?: string;
   chromeAlive?: () => boolean;
   container?: () => boolean;
+  resetViewport?: (dir: string) => Promise<number>;
+}
+
+// A child process keeps the wrapper's output off the viewer's readiness pipe.
+async function resetViewport(dir: string): Promise<number> {
+  const agent = JSON.stringify(path.join(import.meta.dir, 'browser-agent.ts'));
+  const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${agent}; process.exitCode = await runBrowserAgent(${JSON.stringify(['set', 'viewport', ...PHONE_VIEWPORT])}, undefined, undefined, { takeoverReset: true });`], { env: { ...process.env, AGENT_DIR: dir }, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore' });
+  return child.exited;
 }
 
 export function startBrowserViewer(options: ViewerOptions = {}) {
@@ -64,6 +72,9 @@ export function startBrowserViewer(options: ViewerOptions = {}) {
           closeStale();
           return reply({ status: 'recovery', error: 'browser_lost' }, 409);
         }
+        // The person sees a phone-width window, so a wider layout left by the agent would be cut off.
+        const marker = viewportOverrideMarker(dir);
+        if (fs.existsSync(marker) && await (options.resetViewport ?? resetViewport)(dir) === 0) fs.rmSync(marker, { force: true });
         const result = lease('takeover', task, { login, admins: admins() });
         if (result.status === 'closing') return reply({ status: 'closing', error: 'browser_closing' }, 409);
         // A lost HTTP response must also start the no-viewer expiry clock.

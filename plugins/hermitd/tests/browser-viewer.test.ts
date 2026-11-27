@@ -3,12 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { startBrowserViewer } from '../scripts/browser-viewer';
 import { browserLease } from '../scripts/lib/browser-lease';
+import { viewportOverrideMarker } from '../scripts/lib/browser-runtime';
 import { mutateTask, readTasks } from '../scripts/lib/tasks';
 import { freshDirFactory } from './helpers/workdir';
 const { freshDir, cleanup } = freshDirFactory('browser-viewer-');
 afterAll(cleanup);
 
-function fixture() {
+function fixture(resetViewport?: (dir: string) => Promise<number>) {
   const dir = freshDir();
   fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ browser: { admins: [{ login: 'admin' }, { login: 'other' }] } }));
   const novncRoot = path.join(dir, 'novnc');
@@ -21,7 +22,7 @@ function fixture() {
   const vncSocket = path.join(dir, 'vnc.sock');
   const vnc = Bun.listen({ unix: vncSocket, socket: { data(socket, data) { socket.write(data); } } });
   let alive = true;
-  const viewer = startBrowserViewer({ dir, port: 0, hostname: '127.0.0.1', novncRoot, vncSocket, chromeAlive: () => alive, container: () => true });
+  const viewer = startBrowserViewer({ dir, port: 0, hostname: '127.0.0.1', novncRoot, vncSocket, chromeAlive: () => alive, container: () => true, resetViewport });
   const base = viewer.server.url.origin;
   const config = JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8'));
   config.browser.host = '127.0.0.1'; config.browser.port = viewer.server.port;
@@ -40,7 +41,7 @@ test('HTTP identity, cross-origin POST, no-cache page and contained module files
     expect(page.headers.get('cache-control')).toBe('no-store');
     const html = await page.text();
     expect(html).toContain("import RFB from './core/rfb.js'");
-    for (const phrase of ['Type or paste here', 'aria-pressed', 'keyboard.blur()']) expect(html).toContain(phrase);
+    for (const phrase of ['Type or paste here', 'aria-pressed', 'keyboard.blur()', 'Two fingers scroll, pinch zooms the page.']) expect(html).toContain(phrase);
     expect((await f.request('/core/rfb.js')).status).toBe(200);
     expect((await f.request('/vendor/pako.js')).status).toBe(200);
     for (const route of ['/secret', '/core/escape.js', '/core/%2e%2e%2f%2e%2e%2fsecret', '/vnc.html']) expect((await f.request(route)).status).toBe(404);
@@ -207,4 +208,23 @@ test('Take over is refused while the idle close holds the browser', async () => 
     browserLease('release', 'idle-close', f.dir);
     expect((await f.request('/takeover', { method: 'POST' })).status).toBe(200);
   } finally { f.stop(); }
+});
+
+test('Take over restores phone width first only when the agent widened the page', async () => {
+  const resets: string[] = [];
+  let code = 1;
+  const f = fixture(async dir => { resets.push(dir); return code; });
+  const marker = viewportOverrideMarker(f.dir);
+  try {
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    expect((await f.request('/takeover', { method: 'POST' })).status).toBe(200);
+    expect(resets).toEqual([]);
+    fs.writeFileSync(marker, '');
+    expect((await f.request('/takeover', { method: 'POST' })).status).toBe(200);
+    expect(fs.existsSync(marker)).toBe(true);
+    code = 0;
+    expect((await f.request('/takeover', { method: 'POST' })).status).toBe(200);
+    expect(fs.existsSync(marker)).toBe(false);
+    expect(resets).toEqual([f.dir, f.dir]);
+  } finally { f.stop(); fs.rmSync(path.dirname(marker), { recursive: true, force: true }); }
 });

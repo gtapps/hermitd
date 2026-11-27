@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Managed browser commands no longer lose or corrupt their output when stdout and stderr go to one file, as in Claude Code's Bash tool; `eval`, `get` and other quiet commands returned nothing to the agent.
+- Take over restores the phone-width page when the agent had widened the signed-in browser with `set viewport` or `set device`, so the page is no longer cut off on the right.
+
+### Changed
+
+- The takeover viewer shows a one-line gesture hint after Take over: two fingers scroll, pinch zooms the page.
+
 ## [1.4.43] - 2026-11-24
 
 ### Fixed

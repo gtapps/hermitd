@@ -66,7 +66,8 @@ function fit() {
 viewport.addEventListener('resize', fit);
 viewport.addEventListener('scroll', fit);
 fit();
-view.addEventListener('pointerdown', event => { tapY = event.clientY - view.getBoundingClientRect().top + view.scrollTop; }, true);
+// The first touch also clears the gesture hint.
+view.addEventListener('pointerdown', event => { tapY = event.clientY - view.getBoundingClientRect().top + view.scrollTop; if (holding) say(''); }, true);
 const task = new URL(location.href).searchParams.get('task');
 function say(text) { notice.textContent = text; notice.hidden = !text; }
 function setControl(mine, label = 'Agent has control') {
@@ -90,7 +91,7 @@ async function takeOver() {
   generation = result.human.generation;
   const session = rfb = new RFB(screen, `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/socket?generation=${generation}`, { wsProtocols: ['binary'] });
   session.scaleViewport = true; session.resizeSession = false; session.focusOnClick = false;
-  session.addEventListener('connect', () => { setControl(true); say(''); });
+  session.addEventListener('connect', () => { setControl(true); say('Two fingers scroll, pinch zooms the page.'); });
   session.addEventListener('disconnect', event => {
     if (session !== rfb) return;
     setControl(false, 'Not connected');
