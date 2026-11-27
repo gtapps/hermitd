@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A follow-up for a helper whose session stopped resumes it on this machine instead of reporting the message as queued. For a helper offline on another machine, the agent offers a new helper there, since its queued message is never delivered.
 - Connector access requests in `/hermitd:channel-access` point to `hermitd connector pair` and `revoke` instead of adding an `allowed_users` entry that shut out every other paired person.
 
 ### Upgrade Instructions
