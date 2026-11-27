@@ -19,6 +19,7 @@ const NO_SHELL = 'Hermit state for this turn. This session has no shell: each li
   + 'Every other step of the skill, including any subagent dispatch, runs as written.';
 
 const RESIDENT_PROMPT = residentPrompt();
+const CALL_STATE = `<system-reminder>\nHermit state for this turn: ${BASH_FAILURE} Each line below is what that call returns when you make it; still make every call the skill names.`;
 
 function rubric(criteria: string, focus?: string, name = 'rubric'): Grader {
   return { name, type: 'llm', criteria, weight: 2, ...(focus ? { focus } : {}) };
@@ -500,7 +501,7 @@ for (const decisions of [false, true]) {
   if (closedBy !== (decisions ? null : 'confirmed')) throw new Error('Unexpected terminal helper report transition');
   chainCase(`helper-terminal-${decisions ? 'decisions' : 'close'}-shop`, 'heldout', 'Terminal spawn without a current task or channel.',
     decisions ? 'Open a task and keep it awaiting a numbered decision' : 'Open a task and close it with a decision-free result',
-    `<system-reminder>\nHermit state for this turn: ${BASH_FAILURE} Each line below is what that call returns when you make it; still make every call the skill names.\n`
+    `${CALL_STATE}\n`
       + '- git rev-parse --show-toplevel: the current directory\n- .hermit/config.json: permission_mode auto, remote false, chrome false, no channels, delegation model and effort null\n'
       + '- .hermit/state/helper-system-prompt.md: exists\n- date +%s: 1795000000\n'
       + '- task open prints the new record; when no output arrives, its id is T-20261122-100000 and its report_id is null\n'
@@ -516,13 +517,45 @@ for (const decisions of [false, true]) {
     residentScaffold({ ...RESIDENT_CONFIG, channels: {} }), ['Skill', 'Read', 'Bash', 'SendMessage'], { resident: true, write: true, maxTurns: 30, timeout: 900 });
 }
 chainCase('task-route-idle-helper-shop', 'heldout', 'New work in the same chat and area has an idle helper.', 'Open a fresh task and use the warm helper',
-  `<system-reminder>\nHermit state for this turn: ${BASH_FAILURE} Each line below is what that call returns when you make it; still make every call the skill names.\n- task helper-eligible for discord:${CHAT}, folder /shop: {"eligible":true,"helper":"helper:${HELPER}","bg_id":"12345678"}\n- claude agents --json: {"id":"12345678","name":"${HELPER}","status":"idle"}. Its prior work was the wholesale export. Sends to it succeed.\n- conversation thread-open for the assignment: {"key":"discord:${CHAT}~700000000000000001","chat_id":"700000000000000001"}\n- task open prints the new record; when no output arrives, its id is T-20261122-090000 and its report_id is null\n</system-reminder>\n`
+  `${CALL_STATE}\n- task helper-eligible for discord:${CHAT}, folder /shop: {"eligible":true,"helper":"helper:${HELPER}","bg_id":"12345678"}\n- claude agents --json: {"id":"12345678","name":"${HELPER}","status":"idle"}. Its prior work was the wholesale export. Sends to it succeed.\n- conversation thread-open for the assignment: {"key":"discord:${CHAT}~700000000000000001","chat_id":"700000000000000001"}\n- task open prints the new record; when no output arrives, its id is T-20261122-090000 and its report_id is null\n</system-reminder>\n`
     + 'In the same shop chat, add supplier SKUs to our wholesale export.',
   [{ name: 'binds-idle-helper', type: 'tool_used', tool: 'Bash', input_match: String.raw`"command"\s*:\s*"(?:[^"\\]|\\.)*--owner helper:${HELPER}`, weight: 3 },
     { name: 'sends-to-idle-helper', type: 'tool_used', tool: 'SendMessage', input_match: String.raw`(?=[\s\S]*"to"\s*:\s*"(?:${HELPER}|12345678)")(?=[\s\S]*T-\d{8}-\d{6})(?=[\s\S]*${HELPER})`, weight: 3 },
     { name: 'helper-before-worker', type: 'tool_order', before: { tool: 'SendMessage', input_match: HELPER }, after: { tool: 'Agent', input_match: 'task-worker' } },
     { name: 'no-fresh-helper', type: 'tool_used', tool: 'Bash', input_match: 'claude --bg', min: 0, max: 0, weight: 2 }],
   chainScaffold(), ['Skill', 'Read', 'SendMessage'], { resident: true, write: true });
+
+// A bound helper whose session is gone. SendMessage and ListAgents are withheld and stood in: the eval sandbox
+// cannot produce an offline Remote Control row or the queued send result it returns.
+const STOPPED_TASK = 'T-20261127-090000';
+const STOPPED_SID = 'c0ffee12-3456-4789-8abc-def012345678';
+const QUEUED = `{"success":true,"message":"→ ${HELPER} (a Claude session on another machine, over Remote Control; not confirmed read; it is offline right now — delivery is queued until that machine reconnects)"}`;
+const stoppedState = (extra: string[]) => `${CALL_STATE} `
+  + 'SendMessage and ListAgents are not available in this session; their lines below are what they return.\n'
+  + `- task list --id ${STOPPED_TASK} --json: {"rows":[{"id":"${STOPPED_TASK}","handle":"wholesale-export","owner":"helper:${HELPER}","title":"Wholesale stock export","conversation":"discord:${CHAT}","report_id":null,"listing":["active"]}]}\n`
+  + `- task notes for ${STOPPED_TASK}: "Handed to helper ${HELPER} (${STOPPED_SID})."\n`
+  + extra.join('\n') + `\n- ListAgents: ${HELPER} [ab12cd] · Remote Control · offline\n- SendMessage to ${HELPER}: ${QUEUED}\n- task note: OK\n</system-reminder>\n`;
+const steer = (what: string) => `The operator writes in the terminal: ${what}. Continue the task, and also add the supplier SKUs. Handle it with /hermitd:task.`;
+const STEER_TOOLS = ['Skill', 'Read', 'Bash'];
+const STEER_OPTS = { resident: true, write: true, maxTurns: 24 };
+chainCase('helper-steer-offline-local-shop', 'heldout', 'A follow-up for a local helper whose process is gone; its Remote Control row is offline and a send is reported queued.',
+  'Wake it with a flagless full-sid resume carrying the follow-up',
+  stoppedState([`- claude agents --json: [] (no row named ${HELPER})`])
+    + steer('the wholesale export helper stopped partway because it hit the usage limit'),
+  [{ name: 'resumes-in-place', type: 'tool_used', tool: 'Bash', input_match: String.raw`claude --bg --resume ${STOPPED_SID}\s+'`, weight: 3 },
+    { name: 'no-fresh-launch', type: 'tool_used', tool: 'Bash', input_match: String.raw`claude --bg(?! --resume)`, min: 0, max: 0, weight: 2 },
+    { name: 'no-wait-for-reconnect', type: 'regex', target: 'last_message', pattern: String.raw`(?:until|when|once)\s+(?:it|the (?:helper|machine|session)|that machine)\s+reconnects`, flags: 'i', weight: 1, match: 'not_contains' }],
+  chainScaffold(), STEER_TOOLS, STEER_OPTS);
+chainCase('helper-steer-offline-remote-shop', 'heldout', 'A follow-up for a helper on another machine whose Remote Control row is offline.',
+  'Say the follow-up cannot reach it from here and offer a new helper on that environment',
+  stoppedState([`- cloud-session lookup .hermit --task ${STOPPED_TASK}: {"task":"${STOPPED_TASK}","helper":"${HELPER}","environment":"laptop","session_id":"session_01EvalLaptop"}`,
+    '- config.json: remote true, remote_environments has laptop'])
+    + steer('the wholesale export helper on my laptop stopped partway'),
+  [{ name: 'no-local-resume', type: 'tool_used', tool: 'Bash', input_match: 'claude --bg', min: 0, max: 0, weight: 2 },
+    rubric('PASS if the reply says the follow-up was not sent to the offline helper (or that a message to it would not arrive) and offers to start a new helper on the laptop environment; mentioning that the old one can be resumed on the laptop is fine. FAIL if it says the follow-up was sent or queued and will run when the laptop reconnects, or asks the operator to wait for the laptop.')],
+  residentScaffold({ ...RESIDENT_CONFIG, remote: true, remote_environments: { laptop: 'env_01EvalLaptop' } },
+    { '.hermit/OPERATOR.md': '# Operator\n\nRuns a small online tea shop alone. Prefers short messages.\n' }),
+  STEER_TOOLS, STEER_OPTS);
 
 // --- evolve-runner apply receipt (case 11, script output supplied) ------------
 

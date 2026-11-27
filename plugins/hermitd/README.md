@@ -323,6 +323,8 @@ You can run separate agents for different responsibilities, each with its own wo
 
 **Scheduled backups.** Optional backups preserve the agent’s knowledge, session reports, settings, and Claude Code memory in Git, with an optional private remote copy. Backups run without model tokens.
 
+**Instruction file audit.** Claude Code's `/doctor prompt-audit`, typed in the agent's terminal or the Claude app, checks the agent's CLAUDE.md, rules, skills and subagents for outdated, redundant or conflicting instructions and proposes edits. It can't be started from chat.
+
 ## Upgrading
 
 Run `hermitd update` from the project folder, or `hermitd update <name>` from anywhere. Docker updates refresh the host core first, then the container. The update applies migrations, then restarts the agent once and resumes the conversation. External updates finish with a `hermitd doctor --fix` pass and record its result in update history. Run `hermitd doctor [--fix]` to list health findings and their commands, or apply safe repairs and re-check; queued upgrades remain pending until the agent applies them.

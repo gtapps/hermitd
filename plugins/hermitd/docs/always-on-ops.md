@@ -203,11 +203,11 @@ Four levers, in rough order of impact:
 
 Use the session model when the routine needs to produce chat or transcript output. See [Routines](#routines) and [Config reference](config-reference.md#routines).
 
-**3. Interval and active hours.** Cost is wakes/day × cost/wake. Widen `heartbeat.every` (default `30m`) or tighten `active_hours` in `config.json`. Only `EVALUATE` wakes cost tokens; the `--peek` poll between them is free.
+**3. Clean recheck cooldown and active hours.** Quiet polls are free; while `clean_recheck_cooldown` is set, `heartbeat.every` only sets how quickly time-sensitive gates are noticed (with it set to `null`, every tick is a full check). A longer `clean_recheck_cooldown` means fewer full checklist reads but later detection; tighter `active_hours` also limits spend. See the [heartbeat configuration table](config-reference.md#heartbeat).
 
 **4. Checklist curation.** A shorter, sharper `HEARTBEAT.md` lets the free OK precheck path fire more often, skipping the full LLM eval. `/hermitd:heartbeat edit` warns when the list exceeds 10 items.
 
-**Measure before and after:** run `/hermitd:cost-reflect` to see spend broken down by trigger source (`heartbeat`, `routine:<id>`, `routine:multi`, `channel:<name>`, `peer`, `other`) and by token type. The routine rows are the ones a per-routine model override shrinks; `heartbeat` responds to interval/checklist changes; `channel:<name>` identifies channel-triggered turns; `peer` appears as "other sessions on this machine"; `other` covers interactive and unattributed turns.
+**Measure before and after:** run `/hermitd:cost-reflect` to see spend broken down by trigger source (`heartbeat`, `routine:<id>`, `routine:multi`, `channel:<name>`, `peer`, `other`) and by token type. The routine rows are the ones a per-routine model override shrinks; `heartbeat` responds to cooldown, active hours and checklist changes; `channel:<name>` identifies channel-triggered turns; `peer` appears as "other sessions on this machine"; `other` covers interactive and unattributed turns.
 
 ---
 

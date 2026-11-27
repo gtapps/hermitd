@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- Channel instructions tell the agent that paired people are admitted members it should serve, without asking them to prove who they are
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Confirm the connector update is installed**: no files to migrate.
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`), so the channel loads its new instructions.
+
+No `config.json` changes required.
+
 ## [0.0.3] - 2026-11-21
 
 ### Changed
