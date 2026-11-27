@@ -4,7 +4,7 @@ import { conversationKey, isKey } from './lib/conversation-key';
 import { parseChannelEnvelope } from './lib/channel-envelope';
 import { readSettledConfig } from './lib/config-read';
 import { readTurn, transcriptPath } from './lib/cc-compat';
-import { observeTurnEnd } from './lib/tasks';
+import { turnEnded } from './lib/turn-state';
 // stop-pipeline.ts — unified Stop hook
 // Reads stdin once, runs all stop stages in sequence, touches heartbeat.
 // Stages, in order: cost tracking, harness commands, heartbeat.
@@ -17,7 +17,6 @@ import { isGuest } from './lib/guest-marker';
 import { intakeBlockReason } from './lib/intake-checkpoint';
 import { replyBlockReason } from './lib/reply-checkpoint';
 import { resolveHermitNowMs } from './lib/time';
-import { recordOperatorTurnEnd } from './record-operator-action';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -27,7 +26,6 @@ const HERMIT_DIR = hermitDir();
 const STATE_DIR = path.join(HERMIT_DIR, 'state');
 const HEARTBEAT_FILE = path.join(STATE_DIR, '.heartbeat');
 const SNAPSHOT_FILE = path.join(STATE_DIR, 'cc-stop-snapshot.json');
-const TURN_FILE = path.join(STATE_DIR, 'operator-turn-open.json');
 const STOP_FAILURE_FILE = path.join(STATE_DIR, 'stop-failure.json');
 
 async function main(): Promise<void> {
@@ -73,11 +71,10 @@ async function main(): Promise<void> {
         }
       }
     } catch (e: any) { console.error(`[stop-pipeline] intake-checkpoint: ${e.message}`); }
-    let closedOperatorTurn = false;
     if (!blocked) {
       // A blocked Stop continues the turn; its own later Stop marks it idle.
       const tasks = backgroundTasks(payload);
-      observeTurnEnd(HERMIT_DIR, sessionId(payload), tasks.entries, null);
+      turnEnded(HERMIT_DIR, { cause: 'stop', session: sessionId(payload), backgroundTasks: tasks.entries, at: resolveHermitNowMs() });
       if (tasks.state !== 'unsupported_or_unreachable') {
         const delegated = new Set(['subagent', 'workflow', 'teammate', 'cloud session', 'MCP task']);
         const running = tasks.entries.some(task => task.status === 'running' && delegated.has(task.type));
@@ -118,9 +115,6 @@ async function main(): Promise<void> {
           }
         }
       } catch { /* An unreadable transcript never blocks Stop. */ }
-      try { fs.unlinkSync(TURN_FILE); closedOperatorTurn = true; } catch {}
-      // Quiet time runs from the operator turn's end.
-      if (closedOperatorTurn) recordOperatorTurnEnd(resolveHermitNowMs());
     }
     // A Stop at all means the turn produced an assistant reply, so any stamp
     // stop-failure-stamp.ts left behind describes an episode that is over. Cleared

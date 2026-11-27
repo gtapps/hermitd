@@ -194,16 +194,8 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
     case 'turn-end': {
       // An interrupted turn fires no Stop or StopFailure; the mod reports its end instead.
       const input = JSON.parse(payload) as { at: number; reason: string };
-      const { observeExecution } = await import('./lib/tasks');
       // The open operator-turn marker would otherwise hold monitor-delivered routines for its TTL.
-      // A marker newer than the reported end is the next prompt's, opened while this chain ran.
-      const marker = path.join(dir, 'state', 'operator-turn-open.json');
-      if (observeExecution(dir, 'idle', sessionId, null, input.reason, input.at) && !(Date.parse(readJson(marker)?.at ?? '') > input.at)) {
-        let closed = false;
-        try { fs.unlinkSync(marker); closed = true; } catch {}
-        // As at Stop, quiet time runs from the operator turn's end; a turn with no marker was not the operator's.
-        if (closed) (await import('./record-operator-action')).recordOperatorTurnEnd(input.at);
-      }
+      (await import('./lib/turn-state')).turnEnded(dir, { cause: 'interrupt', session: sessionId, at: input.at, reason: input.reason });
       return { decision: 'ok' };
     }
     default:

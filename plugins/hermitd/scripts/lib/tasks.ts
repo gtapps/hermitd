@@ -22,6 +22,7 @@ import { readDeliveryBudget } from './decisions';
 import { readHelperJob } from './helper-job';
 import { REPORT_ID, reportAttachments, reportSummary, type ReportDelivery } from './helper-reports';
 import { TASK_ID } from './task-decide-args';
+import { readExecution } from './turn-state';
 
 export { TASK_ID } from './task-decide-args';
 // What a correct call can still meet in the record's state (a replay, a race, a busy owner).
@@ -876,21 +877,6 @@ export function listTasks(dir: string, flags: TaskFlags = {}, records = readTask
   return { rows, total: selected.length, omitted: selected.length - rows.length, execution: readExecution(dir, { registryFallback: true }) };
 }
 
-export interface Execution { state: 'in_flight' | 'idle' | 'unknown'; turn_id: string | null; at: string | null; source: string | null; cc_session_id: string | null; reason: string | null; registry?: string | null; waiting_for?: string | null; display?: string }
-export function readExecution(dir: string, options: { registryFallback?: true } = {}): Execution {
-  const raw = readJson(path.join(dir, 'state/execution.json'));
-  const empty: Execution = { state: 'unknown', turn_id: null, at: null, source: null, cc_session_id: null, reason: null };
-  const result: Execution = !raw || !['in_flight', 'idle', 'unknown'].includes(raw.state) || !iso(raw.at ?? '') ? empty
-    : { ...empty, ...raw, state: raw.state === 'in_flight' && Date.now() - Date.parse(raw.at) > HOUR ? 'unknown' : raw.state };
-  if (options.registryFallback && result.state === 'unknown') {
-    const runtime = readJson(path.join(dir, 'state/runtime.json'));
-    const resident = findResident(runtime, runtime?.config_dir) as (ReturnType<typeof findResident> & { waitingFor?: string });
-    result.registry = resident?.status ?? null;
-    result.waiting_for = typeof resident?.waitingFor === 'string' ? resident.waitingFor : null;
-    if (resident) result.display = `execution: unknown (registry: ${resident.status}${result.waiting_for ? ', ' + result.waiting_for : ''}, live process)`;
-  }
-  return result;
-}
 export type BoundaryReason = 'execution-not-idle' | 'stale-identity' | 'idle-too-fresh' | 'worker-running' | 'registry-busy' | 'under-token-floor';
 export function passesExecutionBoundary(dir: string, options: { minTokens?: number } = {}): { ok: true } | { ok: false; reason: BoundaryReason } {
   const execution = readExecution(dir);
@@ -912,34 +898,6 @@ export function passesExecutionBoundary(dir: string, options: { minTokens?: numb
     if (!entry || stale || compactibleTokens(entry, readContextSurface(dir)?.surface_upper_bound_tokens ?? null) < options.minTokens) return { ok: false, reason: 'under-token-floor' };
   }
   return { ok: true };
-}
-export function observeExecution(dir: string, state: Execution['state'], session: string | null, source: string | null, reason: string | null, endedAt?: number): boolean {
-  try {
-    const previous = readExecution(dir);
-    // A turn end reported after the fact (the mod's interrupt) must not idle a later turn's stamp:
-    // the next prompt's hook can run before the mod's write lands.
-    if (endedAt !== undefined && (previous.state === 'idle' || !(Date.parse(previous.at ?? '') <= endedAt))) return false;
-    // A compaction keeps the source only of a turn the prompt hook tracked; an untracked turn's
-    // compaction (a wake that never stamped in_flight) must not inherit the last turn's source.
-    const inherited = reason !== 'precompact' || previous.state === 'in_flight' || previous.reason === 'precompact' ? previous.source : null;
-    // A prompt arriving mid-turn (a queued channel message) runs this hook too; it must not clear a
-    // running hermit-evolve turn's mark, which only Stop, StopFailure or an interrupt ends.
-    writeFileAtomic(path.join(dir, 'state/execution.json'), JSON.stringify({ state, turn_id: state === 'in_flight' ? crypto.randomUUID() : previous.turn_id, at: new Date().toISOString(), source: state === 'in_flight' && evolveTurnRunning(previous) ? 'upgrade' : source ?? inherited, cc_session_id: session, reason }) + '\n');
-    return true;
-  } catch { /* advisory, never gates the hook */ return false; }
-}
-/** A `hermit-evolve` turn is running: the prompt hook marked its source `upgrade`, and an
- *  auto-compaction within the last hour keeps that turn running until Stop marks it idle. */
-export function evolveTurnRunning(execution: Execution): boolean {
-  return execution.source === 'upgrade' && (execution.state === 'in_flight'
-    || (execution.state === 'unknown' && execution.reason === 'precompact' && Date.now() - Date.parse(execution.at ?? '') < HOUR));
-}
-/** Marks the turn idle, except a `hermit-evolve` turn that ends with its background `hermitd:evolve-runner`
- *  still running: its report arrives in a later turn, which inherits the mark and ends it. */
-export function observeTurnEnd(dir: string, session: string | null, backgroundTasks: Array<{ type?: unknown; status?: unknown; agent_type?: unknown }>, reason: string | null): void {
-  if (backgroundTasks.some(task => task.type === 'subagent' && task.status === 'running' && task.agent_type === 'hermitd:evolve-runner')
-    && evolveTurnRunning(readExecution(dir))) return;
-  observeExecution(dir, 'idle', session, null, reason);
 }
 interface Binding { cc_session_id: string; task_ids: string[]; at: string; turn_id: string | null }
 function readBinding(dir: string): Binding | null {

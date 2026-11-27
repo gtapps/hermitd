@@ -5,8 +5,8 @@ process.stdout.on('error', () => {});
 // on genuine operator silence rather than state-file mtime (which routine writes reset).
 // The pipeline opens state/operator-turn-open.json at hook exit for kept, non-blocked prompts;
 // direct invocation and --force open it immediately. `routines.ts due` then defers monitor-mode
-// routines only while a real operator turn is in flight; stop-pipeline.ts clears it at Stop
-// The open-turn marker expires so routines cannot remain starved indefinitely.
+// routines only while a real operator turn is in flight. lib/turn-state.ts owns both files:
+// their writes, the turn end that closes the marker, and the marker's TTL.
 //
 // Invocation modes:
 //   (stdin) UserPromptSubmit — JSON payload with `prompt`. Filter applied, write if kept.
@@ -42,6 +42,7 @@ import { parseChannelEnvelope, type ChannelEnvelope } from './lib/channel-envelo
 import { readConfigRaw } from './lib/config-read';
 import { emit } from './lib/cli';
 import { renderCommand } from './lib/harness-command';
+import { openOperatorTurn, recordOperatorActivity, seedOperatorActivity } from './lib/turn-state';
 
 type Json = any;
 
@@ -56,45 +57,6 @@ export interface ChannelGateInputs {
 }
 
 const AGENT_DIR = hermitDir();
-const STATE_PATH = path.join(AGENT_DIR, 'state', 'last-operator-action.json');
-const TMP_PATH   = path.join(AGENT_DIR, 'state', '.last-operator-action.json.tmp');
-const TURN_PATH  = path.join(AGENT_DIR, 'state', 'operator-turn-open.json');
-const TURN_TMP   = path.join(AGENT_DIR, 'state', '.operator-turn-open.json.tmp');
-
-function writeMarker(tmpPath: string, finalPath: string, atMs = Date.now()) {
-  try {
-    fs.writeFileSync(tmpPath, JSON.stringify({ at: new Date(atMs).toISOString() }) + '\n', 'utf-8');
-    fs.renameSync(tmpPath, finalPath);
-  } catch { /* fail-open */ }
-}
-
-export function seedOperatorActivity(): void {
-  if (!fs.existsSync(STATE_PATH)) write();
-}
-
-function write() {
-  writeMarker(TMP_PATH, STATE_PATH);
-}
-
-// Stop (or an interrupt's `turn-end`) that closed an operator turn: the turn's end is operator activity too, so quiet
-// clocks (context clearing, watchdog operator-recent) run from when the work
-// the operator asked for finished, not from when the prompt arrived.
-export function recordOperatorTurnEnd(nowMs: number): void {
-  // An interrupt's end is reported after the fact: never move back a stamp a later prompt wrote.
-  let recorded = NaN;
-  try { recorded = Date.parse(JSON.parse(fs.readFileSync(STATE_PATH, 'utf-8')).at); } catch {}
-  if (recorded > nowMs) return;
-  writeMarker(TMP_PATH, STATE_PATH, nowMs);
-}
-
-// Marks "an operator turn is in flight" for `routines.ts due`'s defer gate. The pipeline
-// calls this at hook exit for kept, non-blocked prompts; stop-pipeline.ts clears it at Stop
-// (harness-mod.ts `turn-end` on an interrupt),
-// with a 60-min TTL as a backstop so a failed Stop cannot starve routines forever.
-export function openTurnMarker() {
-  writeMarker(TURN_TMP, TURN_PATH);
-}
-
 // Hermit-issued slash prompts arrive at this hook as bare text, byte-identical to
 // operator typing: a command the core mod runs with `$.command.run` reaches
 // UserPromptSubmit as exactly `/<command> <args>` with no origin field. So the
@@ -187,8 +149,8 @@ export function run(prompt: string, channel?: ChannelGateInputs, opts: { openTur
   if (isRoutinePrompt(prompt, channel)) return false;
 
   if (isGuest(path.join(AGENT_DIR, 'state'), opts.sessionId)) return false;
-  write();
-  if (opts.openTurn !== false) openTurnMarker();
+  recordOperatorActivity(AGENT_DIR);
+  if (opts.openTurn !== false) openOperatorTurn(AGENT_DIR);
   return true;
 }
 
@@ -202,7 +164,7 @@ function main(raw: string): void {
   } catch { /* not JSON or empty — SessionStart path */ }
 
   if (prompt === null) {
-    if (!isGuest(path.join(AGENT_DIR, 'state'), id)) seedOperatorActivity();
+    if (!isGuest(path.join(AGENT_DIR, 'state'), id)) seedOperatorActivity(AGENT_DIR);
     return;
   }
 
@@ -215,8 +177,8 @@ function main(raw: string): void {
 // does, for run()) must not consume stdin or act on the caller's argv.
 if (import.meta.main) {
   if (process.argv.includes('--force')) {
-    write();
-    openTurnMarker();
+    recordOperatorActivity(AGENT_DIR);
+    openOperatorTurn(AGENT_DIR);
     emit('OK');
   }
 
