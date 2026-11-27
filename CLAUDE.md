@@ -40,9 +40,10 @@ Always launch Claude Code from this repo's root. A plugin dir's own `.claude-plu
 
 ## graphify
 
+- **Query first for orientation** (callers, impact, where something lives): `graphify explain "<symbol>()"`, `graphify path "<A>" "<B>"` or `graphify query "<question>"` before grepping or reading source. Use grep for exact strings and once you are editing. The graph can miss call edges, so confirm an impact list with grep.
 - **Single-plugin questions (most) pass `--graph plugins/<name>/graphify-out/graph.json`.** The root graph is dominated by core's test harness and never reaches a single-plugin answer. Use the root graph only for `scripts/`, `tests/cross-plugin/`, `marketplace.json`, or cross-plugin questions.
 - **Refresh with `bun run graph`** after a pull or when the graph predates the last commit: a stale graph answers confidently about deleted code.
-- **Worktrees start with no graph on purpose** (a copied graph would predate the branch work); `hook-guard` no-ops and grep is always correct. `graphify update .` inside a long-lived worktree builds one that includes the branch. `bun run graph` refuses to run in a worktree.
+- **In a worktree, query the main checkout's graph** (read-only): `--graph "$(git worktree list --porcelain | head -1 | cut -d' ' -f2)/plugins/<name>/graphify-out/graph.json"`, or the root `graphify-out/graph.json` for cross-plugin questions. The worktree starts from `main`, so that graph fits until your branch changes the code; grep anything you changed. `bun run graph` refuses to run in a worktree.
 
 ## Environment quirks
 
