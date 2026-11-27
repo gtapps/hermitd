@@ -88,5 +88,5 @@ graders:
   - name: answers-from-page
     type: regex
     target: 'last_message'
-    pattern: '\b11\b'
+    pattern: '(?<![\d/-])11(?![\d/-])'
     weight: 2
