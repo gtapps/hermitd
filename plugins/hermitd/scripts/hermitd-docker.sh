@@ -891,8 +891,8 @@ case "$CMD" in
     # to be idle and never answers an open dialog. With a hermit version gap (core or
     # sibling) one batch runs /reload-plugins then hermit-evolve; a reload that does not
     # complete keeps evolve from running.
-    # PLUGIN_ROWS_AFTER is a TSV where $1=name@marketplace and $3=version (different from
-    # hermitd-update's $2/$4 layout). Detects sibling-only bumps as well as core bumps.
+    # PLUGIN_ROWS_AFTER is a TSV where $1=name@marketplace and $3=version.
+    # Detects sibling-only bumps as well as core bumps.
     if [ "$CC_ONLY" = false ] && [ ${#PLUGINS_OK_IDS[@]} -gt 0 ] && [ "$BELOW_FLOOR" = false ]; then
       # A plugin installed from a repository lists a build suffix (1.4.18-467be32f41fc)
       # while evolve stamps the bare version, so the suffix is dropped before comparing.

@@ -7,15 +7,12 @@ import { doctorPassStub, listDuplicateScopes, runInterruptedBash } from './helpe
 
 describe('static file checks', () => {
   test('hermitd-update refreshes marketplaces (core first), then moves the pin', () => {
-    const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'hermitd-update.sh'), 'utf8');
-    expect(src).toContain('claude plugin update');
-    expect(src).toContain('--scope');
-    const marketplaceIdx = src.indexOf('claude plugin marketplace update');
-    const updateLoopIdx = src.indexOf('claude plugin update "$pid"');
+    const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'lib', 'update-sequence.ts'), 'utf8');
+    const marketplaceIdx = src.indexOf("'plugin', 'marketplace', 'update'");
+    const updateLoopIdx = src.indexOf("'plugin', 'update', id, '--scope', scope");
     expect(marketplaceIdx).toBeGreaterThan(-1);
     expect(updateLoopIdx).toBeGreaterThan(-1);
     expect(marketplaceIdx).toBeLessThan(updateLoopIdx);
-    expect(src).toContain('.sort((a, b) =>');
   });
 });
 
@@ -327,6 +324,24 @@ printf 'printf "bootstrapped\\n"\\n' > "$HERMIT_PLUGIN_ROOT/scripts/hermitd-upda
       expect(mpRec).toContain('hermitd');
     } finally { f.wd.cleanup(); }
   });
+
+  // The confirm prompt reads one line: yes proceeds, anything else aborts cleanly, and input
+  // that ends before a newline fails as `read` under `set -e` did.
+  for (const [input, exitCode, updated] of [['y\n', 0, true], ['n\n', 0, false], ['', 1, false]] as const) {
+    test(`confirm prompt with ${JSON.stringify(input)} exits ${exitCode}`, async () => {
+      const f = fixture({ listJson: listThreeScopes });
+      try {
+        const proc = Bun.spawn({
+          cmd: ['bash', hermit(f.proj, 'bin', 'hermitd-update')], cwd: f.proj,
+          env: { ...process.env, ...f.env }, stdin: Buffer.from(input), stdout: 'pipe', stderr: 'pipe',
+        });
+        const [stdout] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+        expect(await proc.exited).toBe(exitCode);
+        expect(fs.existsSync(f.recFile)).toBe(updated);
+        expect(stdout.includes('[hermit] Aborted.')).toBe(input === 'n\n');
+      } finally { f.wd.cleanup(); }
+    });
+  }
 
   test('--dry-run records no update calls', async () => {
     const f = fixture({ listJson: listThreeScopes });
