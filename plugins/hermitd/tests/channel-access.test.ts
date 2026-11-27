@@ -196,6 +196,18 @@ for (const primary of ['operators', 'allowed_users']) {
   });
 }
 
+test('unpair skips the operator warning when the sender holds no operator role', async () => {
+  for (const extra of [{ members_only: true, allowed_users: ['1'] }, { operators: ['1'], allowed_users: ['2'] }]) {
+    const f = peopleFixture();
+    const config = JSON.parse(fs.readFileSync(f.configFile, 'utf8'));
+    Object.assign(config.channels.custom, extra);
+    fs.writeFileSync(f.configFile, JSON.stringify(config));
+    const result = await f.run('unpair', ['1']);
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout).warnings).toEqual(['last_approver']);
+  }
+});
+
 test('Discord resolves all thread types to the parent before reading or changing access', async () => {
   const f = peopleFixture('discord');
   fs.writeFileSync(path.join(f.channelDir, '.env'), 'DISCORD_BOT_TOKEN=fixture');
