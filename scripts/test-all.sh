@@ -10,13 +10,14 @@ trap 'if [ "$overall_rc" -eq 0 ]; then rm -rf "$LOGDIR"; else printf "Full test 
 BUN_TEST_SLUGS=(hermitd hermitd-homeassistant hermitd-feed hermitd-connector)
 RUN_ALL_SLUGS=(hermitd-dev hermitd-fitness hermitd-scribe hermitd-laravel-forge)
 
-# Bun 1.4 isolates files in worker processes. Cap core at two workers to keep
-# local runs responsive: other plugin suites also run here, and each core file
-# can start concurrent subprocess tests.
+# Bun 1.4 isolates files in worker processes. Cap core at four workers, and cap
+# concurrent tests per file at four for core and HA: every file is concurrent
+# (bunfig concurrentTestGlob) and most tests spawn subprocesses, so Bun's default
+# of 20 per worker swamps a shared host. Measured: faster and a lower peak RSS.
 # Clear FORCE_COLOR for the capture: bun colorizes console.log values when it is
 # set (every Claude Code session exports FORCE_COLOR=3), which would smuggle ANSI
 # escapes into CORE_WORKERS and make --parallel reject an apparently valid integer.
-CORE_WORKERS=$(env -u FORCE_COLOR bun -e 'console.log(Math.min(2, require("node:os").availableParallelism()))')
+CORE_WORKERS=$(env -u FORCE_COLOR bun -e 'console.log(Math.min(4, require("node:os").availableParallelism()))')
 declare -A PIDS
 
 now() { date +%s; }
@@ -50,8 +51,8 @@ printf "%-32s %-6s %6s\n" "PLUGIN" "RESULT" "SECS"
 # CI's 5s default.
 for slug in "${BUN_TEST_SLUGS[@]}"; do
   case "$slug" in
-    hermitd) run_suite "$slug" run_bun "$slug" --parallel="$CORE_WORKERS" --timeout=45000 & ;;
-    hermitd-homeassistant) run_suite "$slug" run_bun "$slug" --timeout=45000 & ;;
+    hermitd) run_suite "$slug" run_bun "$slug" --parallel="$CORE_WORKERS" --max-concurrency=4 --timeout=45000 & ;;
+    hermitd-homeassistant) run_suite "$slug" run_bun "$slug" --max-concurrency=4 --timeout=45000 & ;;
     *) run_suite "$slug" run_bun "$slug" & ;;
   esac
   PIDS[$slug]=$!

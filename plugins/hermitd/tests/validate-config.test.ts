@@ -53,18 +53,9 @@ for (const [dotted, invalid] of constrainedLeaves(TABLE)) {
   });
 }
 
-for (const [dotted, invalid] of [
-  ['heartbeat.every', 123],
-  ['heartbeat.stale_threshold', 'bogus'],
-  ['heartbeat.waiting_timeout', -1],
-  ['heartbeat.clean_recheck_cooldown', {}],
-  ['routine_wake_lint.max_windows', 'x'],
-  ['storage_drift.ignore', 'notarray'],
-] as const) {
-  test(`invalid ${dotted} names the key`, () => {
-    expect(validate(configAt(dotted, invalid)).errors.some(error => error.includes(dotted))).toBe(true);
-  });
-}
+test('invalid storage_drift.ignore names the key', () => {
+  expect(validate(configAt('storage_drift.ignore', 'notarray')).errors.some(error => error.includes('storage_drift.ignore'))).toBe(true);
+});
 
 
 test('optional channel plugin, send script and attribute mappings validate', () => {

@@ -75,7 +75,7 @@ test.serial('the channel helper rejects malformed flags', async () => {
   expect((await restart('--session-id', '')).exitCode).toBe(1);
 });
 
-/** Own fixture per test: this file's tests run concurrently. */
+/** Own fixture per test, independent of the shared beforeEach project. */
 function quietAgent(alwaysOn: boolean, runtime: object | null) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-request-quiet-')));
   const dir = path.join(root, '.hermit');
@@ -97,7 +97,7 @@ async function receiptOf(root: string): Promise<string[] | null> {
   return fs.existsSync(receiptPath) ? fs.readFileSync(receiptPath, 'utf8').trim().split('\n') : null;
 }
 
-test('a quiet request passes the boot, the expected versions, and the project root as cwd', async () => {
+test.serial('a quiet request passes the boot, the expected versions, and the project root as cwd', async () => {
   const agent = quietAgent(true, { session_pid: 4242 });
   const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-request-restart-cwd-'));
   try {
@@ -111,7 +111,7 @@ test('a quiet request passes the boot, the expected versions, and the project ro
 });
 
 for (const [alwaysOn, runtime, reason] of [[false, { session_pid: 4242 }, 'interactive'], [true, null, 'not_running']] as const) {
-  test(`a quiet request refuses without spawning: ${reason}`, async () => {
+  test.serial(`a quiet request refuses without spawning: ${reason}`, async () => {
     const agent = quietAgent(alwaysOn, runtime);
     try {
       const out = await runPinnedScript('request-restart.ts', agent.dir, [agent.dir, '--when-quiet'], { cwd: agent.root });

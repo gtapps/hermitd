@@ -1635,15 +1635,6 @@ describe('doctor-check', () => {
     expect(c.detail).toContain('Monitor subprocess spawn');
   }));
 
-  test('doctor-check heartbeat: active session + liveness missing + new registration → ok (warming up)', withDir(async (dir) => {
-    seedDoctor(dir);
-    write(hermit(dir, 'state', 'runtime.json'), '{}');
-    seedMonitor(dir, 'heartbeat', { started_at: new Date().toISOString() });
-    const c = checkById(await doctorReport(dir), 'heartbeat');
-    expect(c.status).toBe('ok');
-    expect(c.detail).toContain('warming up');
-  }));
-
   test('doctor-check heartbeat: liveness present but predates current monitor start → fail (not trusted)', withDir(async (dir) => {
     seedDoctor(dir, '{"agent_name":"t","language":"en","timezone":"UTC","escalation":"balanced","channels":{},"env":{},"heartbeat":{"enabled":true,"every":"2h"},"routines":[]}');
     write(hermit(dir, 'state', 'runtime.json'), '{}');

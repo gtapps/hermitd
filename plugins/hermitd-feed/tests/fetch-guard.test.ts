@@ -1,10 +1,14 @@
-import { test, expect } from "bun:test";
+import { afterAll, test, expect } from "bun:test";
 import { join } from "node:path";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAllowed, parseAllowlist } from "../hooks/fetch-guard";
 
 const SCRIPT = join(import.meta.dir, "..", "hooks", "fetch-guard.ts");
+
+const tempDirs: string[] = [];
+const tempDir = (prefix: string) => { const dir = mkdtempSync(join(tmpdir(), prefix)); tempDirs.push(dir); return dir; };
+afterAll(() => { for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true }); });
 
 const HN_ONLY = "| Name | Type | URL |\n| - | - | - |\n| HN | web | https://news.ycombinator.com |\n";
 
@@ -19,7 +23,7 @@ function guardEnv(overrides: Record<string, string> = {}): Record<string, string
 
 /** A hatched project: sentinel + allowlist at the root, plus a nested dir to drift into. */
 function hatchedProject(sources = HN_ONLY): { root: string; deep: string } {
-  const root = mkdtempSync(join(tmpdir(), "fetch-guard-proj-"));
+  const root = tempDir("fetch-guard-proj-");
   mkdirSync(join(root, ".hermit"), { recursive: true });
   writeFileSync(join(root, ".hermit", "config.json"), "{}");
   writeFileSync(join(root, "feed-sources.md"), sources);
@@ -59,7 +63,7 @@ test("parseAllowlist extracts hostnames from a feed-sources.md table", () => {
 });
 
 test("hook blocks (exit 2) an off-allowlist URL", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "fetch-guard-"));
+  const dir = tempDir("fetch-guard-");
   writeFileSync(join(dir, "feed-sources.md"), HN_ONLY);
   expect(await runGuard(dir, "https://evil.example.org")).toBe(2);
 });
@@ -77,7 +81,7 @@ test("hook allows the hardcoded infra list on top of feed-sources.md", async () 
 
 test("CLAUDE_PROJECT_DIR names the project even when cwd has its own allowlist", async () => {
   const { root } = hatchedProject(); // allows news.ycombinator.com only
-  const decoy = mkdtempSync(join(tmpdir(), "fetch-guard-decoy-"));
+  const decoy = tempDir("fetch-guard-decoy-");
   writeFileSync(join(decoy, "feed-sources.md"), "| Name | Type | URL |\n| - | - | - |\n| Evil | web | https://evil.example.org |\n");
   expect(await runGuard(decoy, "https://evil.example.org", guardEnv({ CLAUDE_PROJECT_DIR: root }))).toBe(2);
 });
@@ -89,6 +93,6 @@ test("stale CLAUDE_PROJECT_DIR falls through to the walk-up", async () => {
 });
 
 test("never-hatched project keeps the documented fail-open", async () => {
-  const bare = mkdtempSync(join(tmpdir(), "fetch-guard-bare-"));
+  const bare = tempDir("fetch-guard-bare-");
   expect(await runGuard(bare, "https://evil.example.org")).toBe(0);
 });

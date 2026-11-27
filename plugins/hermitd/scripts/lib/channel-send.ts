@@ -78,7 +78,7 @@ export interface SendOptions {
   discordCapNotice?: string;
 }
 
-const REQUEST_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = Number(process.env.HERMIT_CHANNEL_SEND_TIMEOUT_MS) || 10_000;
 const TELEGRAM_MAX_LEN = 4096;
 const DISCORD_MAX_LEN = 2000;
 
