@@ -8,7 +8,7 @@ import { walkFiles } from '../../plugins/hermitd/tests/helpers/run';
 // instead of downloading: the hook exits non-zero and a fail-closed gate fails open.
 // Shipped code imports only Bun and Node built-ins and its own relative files.
 const PLUGINS = path.resolve(import.meta.dir, '../../plugins');
-const SKIP_DIRS = new Set(['tests', 'evals', 'node_modules', 'graphify-out', 'types']);
+const SKIP_DIRS = new Set(['tests', 'evals', 'node_modules', 'graphify-out', '.claude-plugin']);
 const SPECIFIER = /(?:^|[\s;])(?:import(?!\s+type\b)[^'"`;]*?\bfrom\s*|import\s*\(\s*|import\s+|export[^'"`;]*?\bfrom\s*|require\s*\(\s*)(['"])([^'"]+)\1/gm;
 
 const isShippedSource = (name: string) => /\.(?:[cm]?[jt]s|tsx)$/.test(name) && !/\.test\.[jt]s$/.test(name);

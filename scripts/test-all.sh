@@ -13,7 +13,7 @@ RUN_ALL_SLUGS=(hermitd-dev hermitd-fitness hermitd-scribe hermitd-laravel-forge)
 # Bun 1.4 isolates files in worker processes. Cap core at four workers, and cap
 # concurrent tests per file at four for core and HA: every file is concurrent
 # (bunfig concurrentTestGlob) and most tests spawn subprocesses, so Bun's default
-# of 20 per worker swamps a shared host. Measured: faster and half the peak RSS.
+# of 20 per worker swamps a shared host. Measured: faster and a lower peak RSS.
 # Clear FORCE_COLOR for the capture: bun colorizes console.log values when it is
 # set (every Claude Code session exports FORCE_COLOR=3), which would smuggle ANSI
 # escapes into CORE_WORKERS and make --parallel reject an apparently valid integer.

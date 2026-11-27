@@ -75,7 +75,7 @@ test.serial('the channel helper rejects malformed flags', async () => {
   expect((await restart('--session-id', '')).exitCode).toBe(1);
 });
 
-/** Own fixture per test: this file's tests run concurrently. */
+/** Own fixture per test, independent of the shared beforeEach project. */
 function quietAgent(alwaysOn: boolean, runtime: object | null) {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'hermit-request-quiet-')));
   const dir = path.join(root, '.hermit');

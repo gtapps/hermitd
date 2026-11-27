@@ -11,8 +11,8 @@ delete process.env.TELEGRAM_STATE_DIR;
 // server: the 2s production lookup bound aborts under parallel test load.
 process.env.HERMIT_DISCORD_LOOKUP_TIMEOUT_MS ??= '30000';
 
-// Production waits that negative-path tests sit out in full. No test spawns a real
-// monitor or Claude Code worker, so short bounds change only how long they wait.
+// Production waits that negative-path tests sit out in full. No test registers a
+// Claude Code Monitor or worker, so short bounds change only how long they wait.
 process.env.HEARTBEAT_MONITOR_SLICE_SECONDS ??= '1';
 process.env.HERMIT_FIRST_TICK_WAIT_MS ??= '1000';
 process.env.HERMIT_TRUST_SETTLE_MS ??= '100';
