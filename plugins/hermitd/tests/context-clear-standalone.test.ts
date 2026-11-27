@@ -7,6 +7,7 @@ import { contextPolicyHash } from '../scripts/lib/context-policy';
 import { costLogPath } from '../scripts/lib/cc-compat';
 import { procStartOf, localPidDomain } from './helpers/registry-fixture';
 import { runScript } from './helpers/run';
+import { noRestartEffects } from './helpers/watchdog-world';
 import type { QueueOutcome } from '../scripts/lib/harness-mod';
 
 function fixture() {
@@ -27,6 +28,7 @@ function fixture() {
     registry: { resident: () => null },
     notify: { operator: () => {}, maintainer: () => {} },
     actions: { restart: async () => {}, nudge: async () => {}, reauth: () => 'idle' },
+    restart: noRestartEffects,
     proc: { heartbeatMonitorDead: () => true },
     clock: { nowMs: () => now },
     tmux: { alive: () => true, capture: () => 'pane' },

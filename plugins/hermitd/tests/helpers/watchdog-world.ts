@@ -3,15 +3,33 @@ import os from 'node:os';
 import path from 'node:path';
 import type { World } from '../../scripts/hermitd-watchdog';
 
-/** A disk-backed world with explicit process and notification effects. */
+/** Restart effects for a world whose `actions.restart` is stubbed and never runs them. */
+export const noRestartEffects: World['restart'] = {
+  captureTree: () => ({ pids: [], capped: false }),
+  kill: () => {},
+  verifyExited: async () => ({ orphaned: false, reportedPids: [] }),
+  commitCredential: () => {},
+  writeRuntime: () => {},
+  start: () => false,
+};
+
+/** A disk-backed world with explicit process and notification effects. The project
+ *  root holds `.hermit/`, as in production, so the restart action can resolve its
+ *  resume target. `steps` records the restart effects and notices in order, each
+ *  tagged `(locked)` when the lifecycle lock was held at that moment. */
 export function watchdogWorld() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'watchdog-tick-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'watchdog-tick-'));
+  const root = path.join(dir, '.hermit');
   const stateDir = path.join(root, 'state');
-  fs.mkdirSync(stateDir);
+  fs.mkdirSync(stateDir, { recursive: true });
   const signals = { alive: true, age: null as number | null, pane: 'stable pane', checks: [] as boolean[] };
   const notices: string[] = [];
   const restarts: string[] = [];
   const keys: string[] = [];
+  const steps: string[] = [];
+  const effects = { survivors: [] as number[], startPresent: true, startArgs: [] as string[][] };
+  const lockHeld = () => fs.existsSync(path.join(stateDir, '.lifecycle.lock'));
+  const step = (name: string) => { steps.push(lockHeld() ? `${name} (locked)` : name); };
   const now = Date.now();
   const world: World = {
     clock: { nowMs: () => now },
@@ -28,11 +46,25 @@ export function watchdogWorld() {
     },
     liveness: { ageSecs: () => signals.age },
     registry: { resident: () => null },
-    notify: { operator: text => { notices.push(text); }, maintainer: text => { notices.push(text); } },
+    notify: {
+      operator: text => { step('notify'); notices.push(text); },
+      maintainer: text => { notices.push(text); },
+    },
     actions: {
       restart: async (_, reason) => { restarts.push(reason); signals.alive = false; },
       nudge: async () => { keys.push('nudge'); },
       reauth: () => 'idle',
+    },
+    restart: {
+      captureTree: () => { step('capture'); return { pids: effects.survivors, capped: false }; },
+      kill: () => { step('kill'); },
+      verifyExited: async () => {
+        step('verify');
+        return { orphaned: effects.survivors.length > 0, reportedPids: effects.survivors };
+      },
+      commitCredential: () => { step('commit'); },
+      writeRuntime: runtime => { step('runtime'); world.files.writeJson(path.join(stateDir, 'runtime.json'), runtime); },
+      start: args => { step('start'); effects.startArgs.push(args); return effects.startPresent; },
     },
     proc: { heartbeatMonitorDead: () => true },
     files: {
@@ -53,7 +85,7 @@ export function watchdogWorld() {
   });
   put('state/runtime.json', { runtime_mode: 'tmux', tmux_session: 'resident', cc_session_id: 'resident', env_auth: false });
   put('state/execution.json', { state: 'idle', cc_session_id: 'resident', at: new Date(now - 120000).toISOString() });
-  return { world, signals, notices, restarts, keys, put, now,
-    cleanup: () => fs.rmSync(root, { recursive: true, force: true }),
+  return { world, signals, notices, restarts, keys, steps, effects, put, now, dir,
+    cleanup: () => fs.rmSync(dir, { recursive: true, force: true }),
   };
 }
