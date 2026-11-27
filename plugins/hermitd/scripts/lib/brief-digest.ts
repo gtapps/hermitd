@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { briefVisibility } from './channel-auth';
-import { conversationKey, isKey } from './conversation-key';
+import { baseChat, conversationKey, isKey } from './conversation-key';
 import { ownedTarget, resolve as resolveHomeTarget } from '../resolve-outbound-channel';
 import { readTasks, taskListing } from './tasks';
 import { taskReport, selectTodayReports, type TaskReport } from './task-report';
@@ -32,7 +32,7 @@ export function briefDestination(config: any, selector: BriefSelector): string |
 
 /** Agent-wide steps (queue aging, upgrade check, dashboard, proposals, duties) belong to the whole agent and its home chat. */
 function agentSteps(config: any, scope: unknown, destination: string | null): boolean {
-  return scope === null || (destination !== null && destination.split('~')[0] === homeChatKey(config.channels));
+  return scope === null || (destination !== null && baseChat(destination) === homeChatKey(config.channels));
 }
 
 export async function briefContext(dir: string, selector: BriefSelector) {

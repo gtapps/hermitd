@@ -16,3 +16,21 @@ export function checkKey(key: string): void {
 export function conversationKey(sourceKey: string, chatId: string, thread?: string | null): string {
   return `${sourceKey}:${chatId}${thread == null ? '' : `~${thread}`}`;
 }
+
+/** Take a key apart: the first `:` ends the source, the first `~` after it starts the thread. Does not validate. */
+export function parseKey(key: string): { source: string; chat: string; thread?: string } {
+  const colon = key.indexOf(':');
+  const rest = key.slice(colon + 1);
+  const tilde = rest.indexOf('~');
+  return {
+    source: key.slice(0, colon),
+    chat: tilde < 0 ? rest : rest.slice(0, tilde),
+    thread: tilde < 0 ? undefined : rest.slice(tilde + 1),
+  };
+}
+
+/** The key without its thread: the whole chat a thread belongs to. */
+export function baseChat(key: string): string {
+  const tilde = key.indexOf('~');
+  return tilde < 0 ? key : key.slice(0, tilde);
+}

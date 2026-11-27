@@ -8,7 +8,7 @@ import path from 'node:path';
 import { parseFrontmatter, globDirRecursive } from './frontmatter';
 import { serializeValue, writeFileAtomic } from './md-write';
 import { acquireLockWithWait, releaseLock } from './lockfile';
-import { checkKey } from './conversation-key';
+import { baseChat, checkKey, parseKey } from './conversation-key';
 import { findResident } from './session-registry';
 import { compactibleTokens, isOwnTurn } from './context-signal';
 import { readContextSurface } from './context-surface';
@@ -347,9 +347,9 @@ function canDecide(dir: string, record: Task, flags: TaskFlags, decision: Decisi
   const user = flag(flags, 'user');
   if (!chat || !user) return false;
   try { checkKey(chat); } catch { return false; }
-  const [source, destination] = chat.split(':');
+  const { source, chat: chatId } = parseKey(chat);
   const config = readSettledConfig(dir);
-  if (senderRole(config, source, user, destination.split('~')[0]) === 'operator') return true;
+  if (senderRole(config, source, user, chatId) === 'operator') return true;
   if (senderParent !== null && senderRole(config, source, user, senderParent) === 'operator') return true;
   if (decision.authority === 'requester') return record.requester === user || record.requester === `${source}:${user}`;
   return decision.authority === 'chat' && record.conversation === chat && isAllowedSender(config, source, user);
@@ -835,14 +835,14 @@ function checkFlag(flags: TaskFlags): string | null {
 
 export function eligibleHelper(dir: string, conversation: string | null, folder: string) {
   try { if (conversation !== null) checkKey(conversation); } catch { throw new Error('invalid_conversation'); }
-  const baseChat = (key: string | null) => key === null ? null : key.split('~', 1)[0];
-  const chat = baseChat(conversation);
+  const chatOf = (key: string | null) => key === null ? null : baseChat(key);
+  const chat = chatOf(conversation);
   const records = readTasks(dir);
   const newestFirst = (a: Task, b: Task) =>
     Date.parse(b.closed_at ?? b.opened_at) - Date.parse(a.closed_at ?? a.opened_at) || b.id.localeCompare(a.id);
   let candidate: Task | undefined;
   for (const record of records) {
-    if (!HELPER_OWNER.test(record.owner) || baseChat(record.conversation) !== chat) continue;
+    if (!HELPER_OWNER.test(record.owner) || chatOf(record.conversation) !== chat) continue;
     if (!candidate || newestFirst(record, candidate) < 0) candidate = record;
   }
   const refused = (reason: string) => ({ status: 'not_eligible', reason });

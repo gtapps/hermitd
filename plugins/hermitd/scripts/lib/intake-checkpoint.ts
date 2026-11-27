@@ -7,6 +7,7 @@ import { readJson } from './cli';
 import { classifyChat } from './channel-chats';
 import { readConfigRaw } from './config-read';
 import { readTasks } from './tasks';
+import { parseKey } from './conversation-key';
 
 export async function intakeBlockReason(dir: string, sessionId: string | null): Promise<string | null> {
   try {
@@ -50,14 +51,13 @@ export async function intakeBlockReason(dir: string, sessionId: string | null): 
     const config = readConfigRaw(dir);
     const missing: string[] = [];
     for (const [key, { chatId, count }] of chats) {
-      const [sourceKey, destination] = key.split(':');
-      const thread = destination?.split('~')[1];
+      const { source: sourceKey, thread } = parseKey(key);
       const chatClass = await classifyChat(dir, config, sourceKey, chatId, thread);
       if (chatClass === 'shared') {
         if (tasks.filter(task => task.conversation === key && openedThisTurn(task)).length < count) missing.push(key);
       } else {
         // A thread-attribute thread's card sits in its parent chat, so only a whole-chat key can match by card.
-        if (!tasks.some(task => (task.conversation === key || (!key.includes('~') && task.card_chat_id === chatId))
+        if (!tasks.some(task => (task.conversation === key || (thread === undefined && task.card_chat_id === chatId))
           && (task.status === 'open' || openedThisTurn(task)))) missing.push(key);
       }
     }
