@@ -6,6 +6,10 @@
 
 - Connector access requests in `/hermitd:channel-access` point to `hermitd connector pair` and `revoke` instead of adding an `allowed_users` entry that shut out every other paired person.
 
+### Upgrade Instructions
+
+1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json get channels.connector.allowed_users`. If it returns a list, tell the operator that only the IDs in it can reach the agent through the connector, that every other paired person is dropped, and that removing the list lets everyone paired with `hermitd connector pair` in again. Only on their yes, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset channels.connector.allowed_users`. Otherwise write no config.
+
 ## [1.4.44] - 2026-11-27
 
 ### Fixed

@@ -89,6 +89,7 @@ describe('channel server', () => {
       expect(init.result.capabilities.experimental['claude/channel/permission']).toBeUndefined();
       expect(init.result.instructions).toContain('reply tool');
       expect(init.result.instructions).toContain('admitted members');
+      expect(init.result.instructions).toContain('not operator authority');
       expect((await c.request('server/discover')).error.code).toBe(-32601);
       const tools = await c.request('tools/list');
       expect(tools.result.tools.map((t: any) => t.name)).toEqual(['reply']);
