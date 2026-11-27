@@ -151,3 +151,11 @@ describe('session-check config validation', () => {
     }
   });
 });
+
+test('chat commands validate names, entries, duplicates, and sessions', () => {
+  const errors = (chat_commands: unknown) => validate({ chat_commands }).errors.filter(e => e.startsWith('chat_commands'));
+  expect(errors(['issues', { name: 'other', session: 'helper' }, { name: 'local', session: 'resident' }])).toEqual([]);
+  for (const value of ['wrong', [42], [{}], ['UPPER'], ['x'.repeat(65)], ['a', { name: 'a' }], ['pause'], [{ name: 'x', session: 'worker' }], [{ name: 'x', extra: true }]]) {
+    expect(errors(value).length).toBeGreaterThan(0);
+  }
+});

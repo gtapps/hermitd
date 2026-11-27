@@ -1,3 +1,5 @@
+import { STATUS_COMMANDS } from './command-names';
+export { STATUS_COMMANDS } from './command-names';
 // UserPromptSubmit stage: deterministic status and scheduled-work replies.
 //
 // Exact, optionally bot-addressed /status and /scheduled commands from admitted
@@ -263,7 +265,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   // Slash-only exact match, same rule as the pause and harness commands — a bare
   // "status" now falls through to the model, as every near-miss already did.
   const addressed = resolveSlashCommand(envelope.body, channelBotIdentity(config, envelope.source));
-  if (!addressed || !['/status', '/scheduled'].includes(addressed.command) || addressed.rest.length > 0) return;
+  if (!addressed || !STATUS_COMMANDS.includes(addressed.command) || addressed.rest.length > 0) return;
 
   const role = senderRole(config, envelope.source, envelope.userId, envelope.chatId);
   if (role === 'none') return;

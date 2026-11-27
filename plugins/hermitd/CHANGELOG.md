@@ -4,17 +4,20 @@
 
 ### Added
 
+- Operator-authored mod commands can be exposed to chat through `chat_commands`, which ships empty.
+
+### Upgrade Instructions
+
+1. If `.hermit/config.json` has no `chat_commands` key, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set chat_commands '[]'`. Leave an existing value untouched.
 - `/hermitd:cost-reflect` may name a change worth considering for its biggest spend drivers, with what it trades away, when you ask about spend.
 - `/hermitd:hermit-settings heartbeat` can change `clean_recheck_cooldown`.
+2. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json get channels.connector.allowed_users`. If it returns a list, tell the operator that only the IDs in it can reach the agent through the connector, that every other paired person is dropped, and that removing the list lets everyone paired with `hermitd connector pair` in again. Only on their yes, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset channels.connector.allowed_users`. Otherwise write no config.
+
 
 ### Fixed
 
 - A follow-up for a helper whose session stopped resumes it on this machine instead of reporting the message as queued. For a helper offline on another machine, the agent offers a new helper there, since its queued message is never delivered.
 - Connector access requests in `/hermitd:channel-access` point to `hermitd connector pair` and `revoke` instead of adding an `allowed_users` entry that shut out every other paired person.
-
-### Upgrade Instructions
-
-1. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json get channels.connector.allowed_users`. If it returns a list, tell the operator that only the IDs in it can reach the agent through the connector, that every other paired person is dropped, and that removing the list lets everyone paired with `hermitd connector pair` in again. Only on their yes, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset channels.connector.allowed_users`. Otherwise write no config.
 
 ## [1.4.44] - 2026-11-27
 

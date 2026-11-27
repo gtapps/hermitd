@@ -3,7 +3,7 @@
 import { clip, safeForLLM } from '../sanitize';
 import { senderLabel } from '../channel-envelope';
 import { senderRole, atLeast, controlRefusal, channelBotIdentity } from '../channel-auth';
-import { parseHarnessCommand, writePendingCommand, renderCommand, permissionModeRefusal } from '../harness-command';
+import { parseHarnessCommand, resolveChatCommand, writePendingCommand, renderCommand, permissionModeRefusal } from '../harness-command';
 import { resolveSlashCommand } from '../channel-slash-address';
 import type { ReplyTarget } from '../harness-mod';
 import type { StageContext, StageResult } from './types';
@@ -12,7 +12,8 @@ export function resolveCommand(ctx: StageContext) {
   const env = ctx.envelope;
   if (!env?.body) return null;
   const addressed = resolveSlashCommand(env.body, channelBotIdentity(ctx.config(), env.source));
-  return addressed ? parseHarnessCommand(`${addressed.command}${addressed.rest}`) : null;
+  return (addressed ? parseHarnessCommand(`${addressed.command}${addressed.rest}`) : null)
+    ?? resolveChatCommand(env.body, ctx.config(), channelBotIdentity(ctx.config(), env.source));
 }
 
 export function run(ctx: StageContext): StageResult | void {
@@ -34,7 +35,8 @@ export function run(ctx: StageContext): StageResult | void {
       return { harness: { decision: 'refuse', reason: 'A restart or context reset is in progress. Resend the command once it finishes.', reply_to } };
     }
     return { harness: {
-      decision: 'run', commands: [parsed], dir, reply_to,
+      decision: 'run', commands: [{ command: parsed.command, arg: parsed.arg }], dir, reply_to,
+      ...('session' in parsed ? { chat: { session: parsed.session === 'helper' ? 'helper' as const : 'resident' as const, owner: ctx.conversation?.owner ?? 'resident', task: ctx.conversation?.task_id } } : {}),
       by: safeForLLM(clip(senderLabel(env), 64)),
     } };
   }

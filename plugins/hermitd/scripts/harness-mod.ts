@@ -9,10 +9,14 @@ import { requestRestart } from './lib/request-restart';
 import { hermitDir, transcriptDirFor } from './lib/cc-compat';
 import { readJson } from './lib/cli';
 import { readRuntimeJson } from './lib/runtime';
+import { residentPeerName } from './lib/session-registry';
+import { readCloudBindings } from './lib/cloud-bindings';
+import { readTasks, HELPER_OWNER } from './lib/tasks';
+import { clip } from './lib/sanitize';
 import { clearSkillRelay, renderCommand, writeSkillRelay, writeSwitchVerify } from './lib/harness-command';
 import { sendToChannel } from './lib/channel-send';
 import {
-  approvalReason, APPROVAL_CHECK_FAILED, APPROVAL_PROMPT_REFUSED, claim, enqueue, finalize, MOD_LOADED_FILE, pendingPurpose, QUEUE_PROTOCOL, readInflight, recordLegs, recover, writeModState,
+  approvalReason, APPROVAL_CHECK_FAILED, APPROVAL_PROMPT_REFUSED, claim, enqueue, finalize, freeText, modLoadedForResident, MOD_LOADED_FILE, pendingPurpose, QUEUE_PROTOCOL, readInflight, recordLegs, recover, writeModState,
   type Leg, type QueueEntry, type ReplyTarget, type Unanswered,
 } from './lib/harness-mod';
 
@@ -68,6 +72,13 @@ async function answerUnanswered(dir: string, unanswered: Unanswered[]): Promise<
 
 export async function run(verb: string, sessionId: string, payload = ''): Promise<unknown> {
   const dir = hermitDir();
+  // A peer's name is only its claim, so a helper runs only the commands the operator exposed to helpers.
+  if (verb === 'peer-name') {
+    if (!fs.existsSync(dir)) return { error: 'no_hermit_dir' };
+    const listed = readConfigRaw(dir)?.chat_commands;
+    const commands = Array.isArray(listed) ? listed.filter(item => item?.session === 'helper' && typeof item.name === 'string').map(item => item.name) : [];
+    return { name: residentPeerName(dir), commands };
+  }
   if (verb === 'park') {
     try {
       const runtime = readRuntimeJson(path.join(dir, 'state'));
@@ -102,6 +113,22 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
       const { runPromptPipeline } = await import('./user-prompt-pipeline');
       const decision = await runPromptPipeline(JSON.stringify({ prompt: payload, session_id: sessionId }), true);
       if (decision.decision !== 'run') return decision;
+      if (decision.chat) {
+        const refuse = (reason: string) => ({ decision: 'refuse', reason, reply_to: decision.reply_to });
+        if (!modLoadedForResident(dir)) return refuse(REFUSALS.mod_not_loaded);
+        if (runtime?.shutdown_requested_at) return refuse(REFUSALS.shutdown);
+        const { command, arg } = decision.commands[0];
+        if (arg !== null && !freeText(arg)) return refuse('Arguments must be one line, at most 512 characters, with no control characters.');
+        const base = { command, args: arg, reply_to: decision.reply_to };
+        if (decision.chat.session !== 'helper' || !HELPER_OWNER.test(decision.chat.owner)) return { decision: 'chat', ...base };
+        const helper = decision.chat.owner.slice('helper:'.length);
+        const task = readTasks(dir).find(record => record.id === decision.chat!.task);
+        const binding = readCloudBindings(dir).find(item => item.task === decision.chat!.task);
+        const progress = task?.body.match(/^## Progress\n([\s\S]*?)(?=^## |(?![\s\S]))/m)?.[1] ?? '';
+        const handoff = [...progress.matchAll(/\bHanded to helper ([A-Za-z0-9._-]+) \(([A-Za-z0-9-]{8,})\)/g)].at(-1);
+        const to = binding?.helper ?? (handoff && handoff[1] === helper && handoff[2].length > 8 ? { sessionId: handoff[2] } : helper);
+        return { decision: 'forward', to, helper, ...base };
+      }
       const queued = enqueue(dir, { source: 'chat', by: decision.by, commands: decision.commands, reply_to: decision.reply_to });
       return queued.status === 'queued'
         ? { decision: 'queued', id: queued.id }
@@ -147,7 +174,7 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
     }
     case 'finalize': {
       const input = JSON.parse(payload) as { id?: string; legs?: Leg[]; reason?: string; reply_to?: ReplyTarget };
-      if (!input.id) return input.reply_to && input.reason ? reply(dir, input.reason, input.reply_to) : { decision: 'ok' };
+      if (!input.id) return input.reply_to && input.reason ? reply(dir, clip(input.reason, 4000), input.reply_to) : { decision: 'ok' };
       const entry = readInflight(dir, input.id);
       const outcome = finalize(dir, input.id, { legs: input.legs ?? [] });
       if (!entry || !outcome) return { decision: 'ok' };

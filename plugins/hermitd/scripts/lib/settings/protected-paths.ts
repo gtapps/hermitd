@@ -5,6 +5,7 @@ export const PROTECTED_PATHS: readonly string[] = [
   'operator_profile',
   'env',
   'monitors',
+  'chat_commands',
   'boot_skill',
   'shutdown_skill',
   'backup',

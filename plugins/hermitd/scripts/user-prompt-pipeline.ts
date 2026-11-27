@@ -152,7 +152,7 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
       if (!fs.existsSync(dir) || !sessionId || ctx.runtime()?.cc_session_id !== sessionId) return;
       const env = ctx.envelope;
       const parsed = resolveCommand(ctx);
-      if (!env || !parsed || !['/model', '/effort', '/compact', '/clear', '/advisor', '/doctor'].includes(parsed.command)
+      if (!env || !parsed || !('session' in parsed) && !['/model', '/effort', '/compact', '/clear', '/advisor', '/doctor'].includes(parsed.command)
         || !atLeast(senderRole(ctx.config(), env.source, env.userId, env.chatId), 'controller')) return;
     }
     const guest = isGuest(path.join(dir, 'state'), sessionId);
@@ -198,6 +198,11 @@ export async function runPromptPipeline(raw: string, harnessMode = false): Promi
     const shutdownPending = !!rt && !!rt.shutdown_requested_at && !rt.shutdown_completed_at;
 
     if (shutdownPending) {
+      const command = harnessMode ? resolveCommand(ctx) : null;
+      if (command && 'session' in command) {
+        await stage('harness-command', harnessCommand, ctx);
+        return;
+      }
       // Terminal: answer the shutdown and stop. Nothing below runs — not pause,
       // not a harness command, not status.
       await stage('shutdown-gate', shutdownGate, ctx);

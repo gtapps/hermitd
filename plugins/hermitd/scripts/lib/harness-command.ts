@@ -9,6 +9,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { PERMISSION_MODE } from './settings/enums';
+import { resolveSlashCommand } from './channel-slash-address';
+import type { ChannelBotIdentity } from './channel-auth';
+import { PAUSE_COMMANDS, STATUS_COMMANDS, CONVERSATION_COMMANDS, THREAD_HARNESS_COMMANDS } from './prompt-stages/command-names';
 
 type PermissionMode = (typeof PERMISSION_MODE)[number];
 
@@ -29,6 +32,19 @@ export const BARE_COMMANDS = new Set(['/compact', '/clear', '/doctor', '/checkup
 // that picker from ever being deliverable; do not add a bare `/advisor` acceptance path.
 /** Commands requiring exactly one argument. */
 export const ARG_COMMANDS = new Set(['/model', '/effort', '/permission-mode', '/advisor']);
+
+export const RESERVED_BANG_NAMES = new Set([
+  ...PAUSE_COMMANDS, ...STATUS_COMMANDS, ...BARE_COMMANDS, ...ARG_COMMANDS,
+  ...CONVERSATION_COMMANDS, ...THREAD_HARNESS_COMMANDS, 'checkup', 'reload-plugins',
+].map(name => name.replace(/^\//, '')));
+
+export function resolveChatCommand(body: string, config: any, identity: ChannelBotIdentity = { username: null, userId: null }): (ParsedCommand & { session: 'resident' | 'helper' }) | null {
+  const addressed = resolveSlashCommand(body, identity);
+  if (!addressed || RESERVED_BANG_NAMES.has(addressed.command.slice(1)) || !Array.isArray(config?.chat_commands)) return null;
+  const entry = config.chat_commands.find((item: any) => (typeof item === 'string' ? item : item?.name) === addressed.command.slice(1));
+  if (!entry) return null;
+  return { command: addressed.command, arg: addressed.rest.trim() || null, session: typeof entry === 'object' && entry.session === 'helper' ? 'helper' : 'resident' };
+}
 
 export type ParsedCommand = { command: string; arg: string | null };
 

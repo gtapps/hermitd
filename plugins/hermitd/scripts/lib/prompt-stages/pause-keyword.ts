@@ -1,3 +1,5 @@
+import { PAUSE_COMMANDS } from './command-names';
+export { PAUSE_COMMANDS } from './command-names';
 // UserPromptSubmit stage — deterministic pause/resume/snooze keyword writer
 // (PROP-015). Writes state/pause.json directly from an inbound <channel>
 // envelope, before any model involvement, so pause/resume never depends on
@@ -59,10 +61,10 @@ export function run(ctx: StageContext): StageResult | void {
   let action: 'pause' | 'resume' | 'snooze' | 'release' | null = null;
   let durationRaw: string | null = null;
   const bare = addressed.rest.length === 0;
-  if (bare && (addressed.command === '/pause' || addressed.command === '/stop')) action = 'pause';
-  else if (bare && addressed.command === '/resume') action = 'resume';
-  else if (bare && addressed.command === '/release') action = 'release';
-  else if (addressed.command === '/snooze' && snoozeMatch) { action = 'snooze'; durationRaw = snoozeMatch[1]; }
+  if (bare && (addressed.command === PAUSE_COMMANDS[0] || addressed.command === PAUSE_COMMANDS[1])) action = 'pause';
+  else if (bare && addressed.command === PAUSE_COMMANDS[2]) action = 'resume';
+  else if (bare && addressed.command === PAUSE_COMMANDS[3]) action = 'release';
+  else if (addressed.command === PAUSE_COMMANDS[4] && snoozeMatch) { action = 'snooze'; durationRaw = snoozeMatch[1]; }
   if (!action) return;
 
   // Stricter gate than a plain reply: pausing is state-mutating.

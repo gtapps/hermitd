@@ -226,7 +226,7 @@ For routines — if Yes: use the config defaults (`active_hours.start = 08:00`, 
 
 ### 5. Write config.json
 
-**Source of truth: `${CLAUDE_SKILL_DIR}/../../state-templates/config.json.template`.** `hatch-config.ts` reads it as the base — it encodes every default field shipped by the current plugin version (including `model`, `always_on`, `monitors`, `compact`, `knowledge`, etc.). Do NOT maintain a parallel inline default object here — anything written inline in this skill drifts the moment a field is added to the template.
+**Source of truth: `${CLAUDE_SKILL_DIR}/../../state-templates/config.json.template`.** `hatch-config.ts` reads it as the base — it encodes every default field shipped by the current plugin version (including `model`, `always_on`, `monitors`, `chat_commands`, `compact`, `knowledge`, etc.). Do NOT maintain a parallel inline default object here — anything written inline in this skill drifts the moment a field is added to the template.
 
 Build an **answers payload** from the wizard's collected answers, then run:
 

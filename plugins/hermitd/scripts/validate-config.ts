@@ -11,6 +11,7 @@ import { ENV_VAR_RE, DIRECT_SEND_CHANNELS, isDict } from './lib/channel-config';
 import { isKey } from './lib/conversation-key';
 import { toPushUrl } from './lib/backup';
 import { ENV_ID, ENV_NAME } from './lib/cloud-bindings';
+import { RESERVED_BANG_NAMES } from './lib/harness-command';
 
 type Json = any;
 
@@ -784,6 +785,29 @@ function validate(config: Json): { errors: string[]; warnings: string[] } {
         }
       }
     }
+  }
+
+  if (config.chat_commands !== undefined && !Array.isArray(config.chat_commands)) {
+    errors.push('chat_commands: must be an array');
+  } else if (Array.isArray(config.chat_commands)) {
+    const names = new Set<string>();
+    config.chat_commands.forEach((entry: Json, i: number) => {
+      const object = isDict(entry);
+      const name = typeof entry === 'string' ? entry : object ? entry.name : null;
+      if ((!object && typeof entry !== 'string') || (object && Object.keys(entry).some(key => key !== 'name' && key !== 'session'))) {
+        errors.push(`chat_commands[${i}]: must be a name or an object with name and session`);
+      }
+      if (typeof name !== 'string' || !/^[a-z0-9_-]{1,64}$/.test(name)) {
+        errors.push(`chat_commands[${i}]: invalid name`);
+      } else {
+        if (names.has(name)) errors.push(`chat_commands[${i}]: duplicate name`);
+        if (RESERVED_BANG_NAMES.has(name)) errors.push(`chat_commands[${i}]: reserved name`);
+        names.add(name);
+      }
+      if (object && entry.session !== undefined && !['resident', 'helper'].includes(entry.session)) {
+        errors.push(`chat_commands[${i}]: invalid session`);
+      }
+    });
   }
 
   if (config.monitors !== undefined && !Array.isArray(config.monitors)) {

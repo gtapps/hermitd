@@ -80,6 +80,7 @@ export const TABLE: Record<string, Spec> = {
   routine_max_lateness_minutes: num(60),
   routines: arr,
   monitors: arr,
+  chat_commands: arr,
   env: map,
   boot_skill: str(null),
   shutdown_skill: str(null),
