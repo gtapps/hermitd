@@ -26,7 +26,6 @@ type Decision = Partial<Entry> & {
 };
 const pendingReplies = new Map<string, { reply_to: NonNullable<Decision['reply_to']>; helper: string; command: string; at: number }>();
 const pendingChats: Decision[] = [];
-let peerName: string | undefined;
 const TICK_MS = 2000;
 // The deadline only records an uncertain outcome; the run keeps its slot until it settles.
 const deadlineFor = (command: Command) => command.command === '/compact' ? 300_000 : 120_000;
@@ -34,7 +33,7 @@ const SKILL_RE = /^\/[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*$/i;
 const EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 
 // Only a cheap shape filter here. The bridge owns envelope parsing, addressing,
-// authorization and residency; ordinary prompts never start a process.
+// authorization and residency; prompts that do not start with `!<word>` never start a process.
 export function isCommandPrompt(text: string): boolean {
   const body = /^\s*<channel\b[^>]*>([\s\S]*)<\/channel>\s*$/.exec(text)?.[1] ?? '';
   return /^(?:(?:<@!?\d+>|@\S+)\s*)?![a-z0-9_-]+(?:@[^\s]+)?(?:\s|$)/i.test(body.trim());
@@ -250,7 +249,7 @@ async function runPause($: EngineInterface, entry: Decision) {
 
 function schedule($: EngineInterface) {
   $.clock.after(0, () => {
-    if (!busy() && pendingChats.length) return runChat($, pendingChats.shift()!);
+    if (!busy() && !mainTurn && pendingChats.length) return runChat($, pendingChats.shift()!);
     return dispatch($);
   });
 }
@@ -512,10 +511,10 @@ export const register: Register = on => {
     let payload: any;
     try { payload = JSON.parse(requestMatch[1]!); } catch { return next(e); }
     if (payload.v !== 1 || typeof payload.id !== 'string' || typeof payload.command !== 'string' || typeof payload.args !== 'string') return next(e);
-    if (peerName === undefined) {
-      try { peerName = (await bridge($, 'peer-name')).name; } catch { return next(e); }
-    }
-    if (!peerName || fromName !== peerName || !(await $.command.list()).some(command => command.name === payload.command)) return next(e);
+    let peer: { name?: string; commands?: unknown };
+    try { peer = await bridge($, 'peer-name'); } catch { return next(e); }
+    if (!peer.name || fromName !== peer.name || !Array.isArray(peer.commands) || !peer.commands.includes(payload.command)
+      || !(await $.command.list()).some(command => command.name === payload.command)) return next(e);
     $.clock.after(0, async () => {
       const text = (await commandText($, payload.command, payload.args)).slice(0, 4000);
       await $.session.send({ to: from, text: `Result of \`!${payload.command}\`:\n${text}\n[hermitd chat-command-result ${JSON.stringify({ v: 1, id: payload.id })}]` });
@@ -622,6 +621,7 @@ export const register: Register = on => {
       idleSince = lastTurnCompleteAt;
       // A request queued mid-turn is claimed now, before the next turn can start.
       $.clock.after(0, () => tick($));
+      if (pendingChats.length) schedule($);
     }
     return result;
   });

@@ -237,9 +237,9 @@ The maintainer chat is the admin console: chat refusals produce one pending ques
 
 Delete a step's entry from `permissions.ask` to stop it asking for everyone; an approver can ask for the edit in the maintainer chat. Classifier review still judges the call. The offered-entry record preserves deletions across hatch, Docker setup and upgrades; upgrades from before 1.4.24 re-add removed entries once before stamping it. See [`approvals`](config-reference.md#approvals).
 
----
-
 Configured chat commands are restricted to controllers; other admitted senders receive a refusal.
+
+---
 
 ## Auto-mode Classifier
 

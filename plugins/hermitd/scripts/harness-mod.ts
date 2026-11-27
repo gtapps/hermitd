@@ -72,7 +72,13 @@ async function answerUnanswered(dir: string, unanswered: Unanswered[]): Promise<
 
 export async function run(verb: string, sessionId: string, payload = ''): Promise<unknown> {
   const dir = hermitDir();
-  if (verb === 'peer-name') return fs.existsSync(dir) ? { name: residentPeerName(dir) } : { error: 'no .hermit directory' };
+  // A peer's name is only its claim, so a helper runs only the commands the operator exposed to helpers.
+  if (verb === 'peer-name') {
+    if (!fs.existsSync(dir)) return { error: 'no_hermit_dir' };
+    const listed = readConfigRaw(dir)?.chat_commands;
+    const commands = Array.isArray(listed) ? listed.filter(item => item?.session === 'helper' && typeof item.name === 'string').map(item => item.name) : [];
+    return { name: residentPeerName(dir), commands };
+  }
   if (verb === 'park') {
     try {
       const runtime = readRuntimeJson(path.join(dir, 'state'));

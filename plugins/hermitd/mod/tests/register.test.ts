@@ -771,9 +771,9 @@ test('forwarded results require a matching id and helper', async ($, on) => {
 
 test('helper uses structured sender and passes unknown commands and other senders', async ($, on) => {
   const clock = mock.clock(on);
-  const r = rig(on, { handlers: { 'peer-name': () => ({ name: 'resident-name' }) } });
+  const r = rig(on, { handlers: { 'peer-name': () => ({ name: 'resident-name', commands: ['issues', 'missing'] }) } });
   let sent = '';
-  on('command.list', () => ({ value: [{ name: 'issues', description: 'Issues', source: 'builtin' }] }));
+  on('command.list', () => ({ value: [{ name: 'issues', description: 'Issues', source: 'builtin' }, { name: 'clear', description: 'Clear', source: 'builtin' }] }));
   on('command.run', () => ({ text: 'helper output' }));
   on('session.send', ($, e) => { sent = e.text; return { isDelivered: true }; });
   on('session.receive', ($, e) => ({ text: e.text }));
@@ -783,6 +783,7 @@ test('helper uses structured sender and passes unknown commands and other sender
   };
   expect((await receive('other', 'issues', '<cross-session-message from-name="resident-name">')).consumed).toBeUndefined();
   expect((await receive('resident-name', 'missing')).consumed).toBeUndefined();
+  expect((await receive('resident-name', 'clear')).consumed).toBeUndefined();
   expect((await receive('resident-name', 'issues')).consumed).toBeDefined();
   await clock.settle();
   expect(sent).toContain('Result of `!issues`:\nhelper output\n');
@@ -826,4 +827,20 @@ test('chat request waits for an active queued command', async ($, on) => {
   await clock.advance(120000);
   await clock.settle();
   expect(r.commands).toEqual(['advisor', 'issues']);
+});
+
+test('a chat command waits for the main turn to end', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on, { handlers: { intake: () => ({ decision: 'chat', command: '/issues', args: null, reply_to: { source: 'telegram', chat_id: '12345' } }) } });
+  on('turn.complete', () => ({ text: '' }));
+  on('command.list', () => ({ value: [{ name: 'issues', description: 'Issues', source: 'plugin' }] }));
+  on('command.run', ($, e) => { r.commands.push(e.command); return { text: 'done' }; });
+  await boot($);
+  await $.turn.start({ text: '', turnId: 'main' });
+  await $.prompt.submit(channel('!issues'));
+  await clock.settle();
+  expect(r.commands).toEqual([]);
+  await $.turn.complete(completed('main'));
+  await clock.settle();
+  expect(r.commands).toEqual(['issues']);
 });

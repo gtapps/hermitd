@@ -793,7 +793,7 @@ test('helper chat forwarding uses its own task handoff, cloud binding, or name',
 
 test('peer-name works for a guest and no-id finalize clips its reply', async () => {
   const { wd, dir } = fixture({ peer_name: 'resident-name' });
-  expect(await call(wd, 'peer-name', '', 'guest')).toEqual({ name: 'resident-name' });
+  expect(await call(wd, 'peer-name', '', 'guest')).toEqual({ name: 'resident-name', commands: [] });
   const result = await call(wd, 'finalize', JSON.stringify({ reason: 'x'.repeat(5000), reply_to: { source: 'telegram', chat_id: '12345' } }));
   expect(result.decision).toBe('send_failed');
   expect(result.text.length).toBeLessThanOrEqual(4000);

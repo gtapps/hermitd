@@ -11,7 +11,6 @@ import { capture } from './channel-reply-reminder';
 import { EFFORT, HELPER_MODEL } from '../settings/enums';
 import type { StageContext, StageResult } from './types';
 
-
 export function openTasksLine(key: string, work: Task[]): string {
   return `[task thread ${safeForLLM(key)}: open tasks ${work.map(task => task.handle).join(' ')}; ask which one]`;
 }
@@ -28,7 +27,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   const addressed = resolveSlashCommand(env.body, channelBotIdentity(ctx.config(), env.source));
   const name = addressed?.command.slice(1);
   const chatCommand = resolveChatCommand(env.body, ctx.config(), channelBotIdentity(ctx.config(), env.source));
-  const chatNames = Array.isArray(ctx.config()?.chat_commands) ? ctx.config().chat_commands.map((entry: any) => typeof entry === 'string' ? entry : entry.name).join(', ') : '';
+  const chatNames = Array.isArray(ctx.config()?.chat_commands) ? ctx.config().chat_commands.map((entry: any) => typeof entry === 'string' ? entry : entry?.name).filter((name: unknown) => typeof name === 'string').join(', ') : '';
   const chatHelp = chatNames ? `\n[chat commands: ${chatNames}]` : '';
   const args = addressed?.rest.trim() ?? '';
   const conversationCommand = !!name && CONVERSATION_COMMANDS.includes(name) && !args;

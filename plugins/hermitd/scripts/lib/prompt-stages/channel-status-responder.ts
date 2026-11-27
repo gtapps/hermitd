@@ -30,7 +30,6 @@ import { decodeDecision } from '../tasks';
 import { clip } from '../sanitize';
 import type { StageContext, StageResult } from './types';
 
-
 type Json = any;
 
 function readJson(p: string): Json | null {

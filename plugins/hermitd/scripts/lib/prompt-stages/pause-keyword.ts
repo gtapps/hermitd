@@ -23,7 +23,6 @@ import path from 'node:path';
 import { browserLease } from '../browser-lease';
 import type { StageContext, StageResult } from './types';
 
-
 const MAX_BY_LEN = 64;
 const MAX_DURATION_LEN = 32;
 
