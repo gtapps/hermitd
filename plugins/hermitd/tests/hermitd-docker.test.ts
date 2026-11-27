@@ -598,18 +598,26 @@ describe('hermitd-docker up host tmux guard', () => {
     expect(r.booted).toBe(false);
   });
 
+  // Each up() has its own workdir, stubs and Docker home, so the cases run side by side;
+  // one after another they spent most of the timeout on a loaded CI runner.
   test('boots when the session is gone, the record is docker, or HERMIT_FORCE_BOOT=1', async () => {
-    expect((await up({ runtime_mode: 'tmux', tmux_session: 'hermit-dem' })).booted).toBe(true);
-    expect((await up({ runtime_mode: 'docker', tmux_session: 'hermit-demo' })).booted).toBe(true);
-    expect((await up({ runtime_mode: 'tmux', tmux_session: 'hermit-demo' }, { HERMIT_FORCE_BOOT: '1' })).booted).toBe(true);
+    const runs = await Promise.all([
+      up({ runtime_mode: 'tmux', tmux_session: 'hermit-dem' }),
+      up({ runtime_mode: 'docker', tmux_session: 'hermit-demo' }),
+      up({ runtime_mode: 'tmux', tmux_session: 'hermit-demo' }, { HERMIT_FORCE_BOOT: '1' }),
+    ]);
+    expect(runs.map(r => r.booted)).toEqual([true, true, true]);
   }, 20000);
 
   test('restart resumes by default, --fresh starts clean, up stays fresh', async () => {
     const docker = { runtime_mode: 'docker', tmux_session: 'hermit-demo' };
-    expect((await up(docker, {}, 'restart')).resume).toBe('1');
-    expect((await up(docker, {}, 'restart --resume')).resume).toBe('1');
-    expect((await up(docker, {}, 'restart --fresh')).resume).toBe('0');
-    expect((await up(docker)).resume).toBe('unset');
+    const runs = await Promise.all([
+      up(docker, {}, 'restart'),
+      up(docker, {}, 'restart --resume'),
+      up(docker, {}, 'restart --fresh'),
+      up(docker),
+    ]);
+    expect(runs.map(r => r.resume)).toEqual(['1', '1', '0', 'unset']);
   }, 20000);
 });
 
