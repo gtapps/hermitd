@@ -2,7 +2,7 @@
 <p align="center">
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude%20Code-plugin-orange.svg" alt="Claude Code Plugin" /></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.4.44-green.svg" alt="Version 1.4.44" /></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.4.45-green.svg" alt="Version 1.4.45" /></a>
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gtapps/hermitd/_gh_traffic_stats/.github/badges/clones.json" alt="Downloads" />
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" />
   <a href="https://discord.gg/54sJqAxhUh"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Join" /></a>
@@ -285,7 +285,7 @@ See [budgets](docs/config-reference.md#budget) and [routine scheduling](docs/rou
 
 ## Remote work
 
-**Live chat & voice through your AI app.** Reach your running agent from a conversation in Claude, ChatGPT, Grok, or Gemini with [hermitd-connector](plugins/hermitd-connector/README.md).
+**Live chat & voice through your AI app.** Reach your running agent from a conversation in Claude, ChatGPT, Grok, or Gemini with [hermitd-connector](../hermitd-connector/README.md).
 
 Reach the running agent through your connected channels or Claude Code Remote Control. You can also start separate sessions for additional work:
 
@@ -306,10 +306,10 @@ Optional plugins that add domain tools and workflows to your agent.
 - [dev-hermit](../hermitd-dev/README.md): Branch discipline, push guards, and gated PR workflows.
 - [homeassistant-hermit](../hermitd-homeassistant/README.md): Home Assistant tools, automation workflows, and safety checks.
 - [fitness-hermit](../hermitd-fitness/README.md): Strava integration, activity analysis, and training routines.
-- [hermitd-feed](plugins/hermitd-feed/README.md): Source curation, recurring briefs, and weekly synthesis.
-- [hermitd-connector](plugins/hermitd-connector/README.md): Pair people to talk to the agent from their own Claude, ChatGPT, Grok or Gemini app.
+- [hermitd-feed](../hermitd-feed/README.md): Source curation, recurring briefs, and weekly synthesis.
+- [hermitd-connector](../hermitd-connector/README.md): Pair people to talk to the agent from their own Claude, ChatGPT, Grok or Gemini app.
 - [hermitd-laravel-forge](../hermitd-laravel-forge/README.md): Laravel Forge deployments, logs, and server management.
-- [hermitd-scribe](plugins/hermitd-scribe/README.md): GitHub issues and comments from proposals through a dedicated bot identity.
+- [hermitd-scribe](../hermitd-scribe/README.md): GitHub issues and comments from proposals through a dedicated bot identity.
 
 You can run separate agents for different responsibilities, each with its own working state, knowledge, and routines. See [Creating Your Own Hermit](docs/creating-your-own-hermit.md).
 
