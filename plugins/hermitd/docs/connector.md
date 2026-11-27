@@ -40,7 +40,7 @@ Another app can connect only once its sign-in callback address is added to the t
 ## Limits
 
 - On a tmux install the agent runs as the same user as the trusted server, so the split is not a boundary there, and nothing restarts the server if it dies until the next `hermitd start`; `/hermit-doctor` reports it meanwhile.
-- A separate chat is not a private agent. Every person talks to the same session, which holds all its chats and uses the same tool accounts. People who must not see each other's work need separate agents.
+- A separate chat is not a private agent. Every person talks to the same session, which holds all its chats, its memory and the operator profile it loads, and uses the same tool accounts. The agent can repeat any of it to any paired person. People who must not see each other's work, or yours, need separate agents.
 - A pairing is not a verified app account: it is whoever completed the sign-in page with the code you approved.
 - Replies are an outbound path to every paired person.
 - The words reaching the agent are written by the assistant in the person's app, which may also read web pages and mail. Member authority caps what such a turn can do; it does not prevent one.
