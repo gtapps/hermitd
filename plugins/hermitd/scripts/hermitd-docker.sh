@@ -110,7 +110,10 @@ _refuse_if_host_tmux_owner() {
   local owner status mode via
   owner=$(cd / && bun "$HOST_SCRIPTS/boot-owner.ts" docker "$PROJECT_DIR/.hermit" 2>/dev/null || true)
   IFS=$'\t' read -r status mode via <<< "$(bun -e 'try { const r = JSON.parse(process.argv[1]); console.log([r.status, r.mode, r.via].map(v => v ?? "").join("\t")); } catch { console.log(""); }' "$owner")"
-  [ "$status" = owned ] || return 0
+  if [ "$status" != owned ]; then
+    [ "$status" = clear ] || echo "[hermit] Warning: boot-owner check failed; the container's entrypoint still checks." >&2
+    return 0
+  fi
   if [ "$via" = tmux ]; then
     echo "[hermit] BOOT CONFLICT: host tmux session for this project's '$mode' hermit is running." >&2
   else

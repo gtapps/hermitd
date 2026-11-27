@@ -36,8 +36,8 @@ export type BootOwner = { mode: string; age_secs: number | null; via: 'tmux' | '
  * The live instance of another runtime that owns this state folder, or null when
  * `target` may boot here: the one boot-ownership verdict every boot path asks.
  * A live host tmux session counts only for a Docker boot (a host boot over its
- * own session is serialized by the lifecycle lock); callers inside a container,
- * which cannot see host tmux, supply a tmux probe that returns false.
+ * own session is serialized by the lifecycle lock). Inside a container the probe
+ * sees only the container's tmux, so there the liveness files decide.
  */
 export function bootOwner(verdict: LivenessVerdict, target: string): BootOwner | null {
   const e = verdict.evidence;

@@ -10,13 +10,13 @@
  *   {"status":"clear"}                                    boot may proceed
  *   {"status":"clear","reason":"forced"}                  HERMIT_FORCE_BOOT=1
  *   {"status":"owned","mode":"tmux","age_secs":42|null,"via":"tmux"|"liveness"}
- * Inside a container the host's tmux is invisible, so only the shared liveness
- * files count there.
+ * The tmux probe sees only this namespace's tmux. The entrypoint asks before the
+ * container starts its own tmux server, so there only the shared liveness files
+ * count.
  */
 
 import path from 'node:path';
 import { readRuntimeJson } from './lib/runtime';
-import { isContainer } from './lib/container';
 import { bootOwner, residentLiveness, REAL_LIVENESS_DEPS } from './lib/resident-liveness';
 
 const TARGETS = ['tmux', 'interactive', 'docker'];
@@ -34,9 +34,7 @@ if (import.meta.main) {
   }
   const rt = readRuntimeJson(path.join(hermitRoot, 'state'));
   const sessionName = typeof rt?.tmux_session === 'string' ? rt.tmux_session : '';
-  const deps = REAL_LIVENESS_DEPS(hermitRoot);
-  if (isContainer()) deps.tmuxAlive = () => false;
-  const owner = bootOwner(residentLiveness(rt, sessionName, deps), target);
+  const owner = bootOwner(residentLiveness(rt, sessionName, REAL_LIVENESS_DEPS(hermitRoot)), target);
   console.log(JSON.stringify(owner ? { status: 'owned', ...owner } : { status: 'clear' }));
   process.exit(0);
 }

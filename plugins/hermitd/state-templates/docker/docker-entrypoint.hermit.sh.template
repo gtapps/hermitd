@@ -496,8 +496,8 @@ fi
 
 # --- 4b. Singleton guard: refuse to boot over a live non-docker owner ---
 # hermitd-start's own guard self-skips inside a container, so the container-side
-# check lives here, through the boot-owner verb hermitd-start and hermitd-docker
-# share. Booting a second claude beside a live owner recreates the split-brain
+# check lives here, through the boot-owner verb over the boot-ownership verdict
+# hermitd-start and hermitd-docker share. Booting a second claude beside a live owner recreates the split-brain
 # incident. Go inert (no claude, container flips unhealthy via the tmux
 # healthcheck) rather than exit, so `restart: unless-stopped` can't loop us.
 # HERMIT_FORCE_BOOT=1 overrides, for split-state recovery. A failed check proves
@@ -511,7 +511,7 @@ if [ "$_owner_status" = "owned" ]; then
   # Bash defers a trapped signal until a foreground command returns, and PID 1
   # has no default signal action. docker stop/compose down do not re-trigger
   # restart: unless-stopped, so make the sleep interruptible through wait.
-  trap 'echo "[docker-entrypoint] Stop requested while inert — exiting."; exit 0' SIGTERM SIGINT
+  trap 'echo "[docker-entrypoint] Stop requested while inert, exiting."; exit 0' SIGTERM SIGINT
   while true; do sleep 300 & wait $! || true; done
 elif [ "$_owner_status" != "clear" ]; then
   echo "[docker-entrypoint] Warning: boot-owner check failed; booting without it."

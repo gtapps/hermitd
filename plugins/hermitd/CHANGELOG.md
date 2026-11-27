@@ -12,6 +12,7 @@
 - `/hermitd:cost-reflect` may name a change worth considering for its biggest spend drivers, with what it trades away, when you ask about spend.
 - `/hermitd:hermit-settings heartbeat` can change `clean_recheck_cooldown`.
 2. Run `.hermit/bin/hermitd-run settings-edit .hermit/config.json get channels.connector.allowed_users`. If it returns a list, tell the operator that only the IDs in it can reach the agent through the connector, that every other paired person is dropped, and that removing the list lets everyone paired with `hermitd connector pair` in again. Only on their yes, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json unset channels.connector.allowed_users`. Otherwise write no config.
+3. **Refresh the Docker entrypoint** (Docker hermits only). Run hermit-evolve step 5c to refresh `docker-entrypoint.hermit.sh`, preserving customizations through its backup and sidecar procedure, so the container's boot-conflict check ignores liveness files left before the last reboot or launch. The update that launched evolve builds and restarts with the refreshed file; for a standalone evolve, apply it with `hermitd-docker update`.
 
 
 ### Fixed
