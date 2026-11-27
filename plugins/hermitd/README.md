@@ -2,7 +2,7 @@
 <p align="center">
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <a href="https://code.claude.com/docs/en/plugins"><img src="https://img.shields.io/badge/Claude%20Code-plugin-orange.svg" alt="Claude Code Plugin" /></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.4.43-green.svg" alt="Version 1.4.43" /></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-1.4.44-green.svg" alt="Version 1.4.44" /></a>
   <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gtapps/hermitd/_gh_traffic_stats/.github/badges/clones.json" alt="Downloads" />
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" />
   <a href="https://discord.gg/54sJqAxhUh"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Join" /></a>
@@ -254,7 +254,7 @@ Reflection runs daily when something is due, after routines configured to reflec
 | “remind me Monday at 14:00 to pay the invoice” | Delivers a durable reminder at the due minute in monitor mode, even after a restart. |
 | “Download last month's invoices from the supplier portal.” | Uses its [own managed browser](docs/how-to-use.md#browser-tasks) by default and offers phone Take over and Hand back on Docker and Linux/WSL2 tmux. The operator's Chrome is opt-in for their account. |
 | “When I ask for a status update, include blockers.” | Remembers instructions for that channel. |
-| “What else could you be doing for me?” | [Make me proactive](skills/make-me-proactive/SKILL.md) offers standing jobs such as reminders and watches. Say yes to set one up, or ask to “brainstorm capabilities” for new capability ideas. |
+| “What else could you be doing for me?” | [Make me proactive](plugins/hermitd/skills/make-me-proactive/SKILL.md) offers standing jobs such as reminders and watches. Say yes to set one up, or ask to “brainstorm capabilities” for new capability ideas. |
 
 ## Cost
 
@@ -285,19 +285,19 @@ See [budgets](docs/config-reference.md#budget) and [routine scheduling](docs/rou
 
 ## Remote work
 
-**Live chat & voice through your AI app.** Reach your running agent from a conversation in Claude, ChatGPT, Grok, or Gemini with [hermitd-connector](../hermitd-connector/README.md).
+**Live chat & voice through your AI app.** Reach your running agent from a conversation in Claude, ChatGPT, Grok, or Gemini with [hermitd-connector](plugins/hermitd-connector/README.md).
 
 Reach the running agent through your connected channels or Claude Code Remote Control. You can also start separate sessions for additional work:
 
-- **Background sessions with follow-up.** Through [`/spawn-session`](skills/spawn-session/SKILL.md), the agent launches a local Claude Code helper in the project, or in another folder with `--cwd`, and relays its status when it becomes idle. Claude Code isolates the helper's edits in a Git worktree unless the project sets `worktree.bgIsolation` to `none`; pass `--worktree` to give it one from the start. Set the helper’s model and effort with options such as `--model sonnet --effort high`.
+- **Background sessions with follow-up.** Through [`/spawn-session`](plugins/hermitd/skills/spawn-session/SKILL.md), the agent launches a local Claude Code helper in the project, or in another folder with `--cwd`, and relays its status when it becomes idle. Claude Code isolates the helper's edits in a Git worktree unless the project sets `worktree.bgIsolation` to `none`; pass `--worktree` to give it one from the start. Set the helper’s model and effort with options such as `--model sonnet --effort high`.
 - **Task threads for helpers.** Helpers end on their full report, and the resident handles the receipt after the idle notice. Chat tasks receive their reports in the task conversation. Reply-only channels and terminal sessions get a short report-back with the full report available on request. Related new work can return to the same idle helper in the same chat and folder. Use `!model` or `!effort` in a bound thread to switch the helper, and `!status` to see results ready for review.
-- **Local [Remote Control](https://code.claude.com/docs/en/remote-control) gate.** Through [`/rc-gate`](skills/rc-gate/SKILL.md), the agent manages a Remote Control server on your machine or server. While the gate is open, you can spawn new Claude Code sessions from the Claude app, using your local files and tools. Each session gets its own Git worktree, while the agent keeps running.
+- **Local [Remote Control](https://code.claude.com/docs/en/remote-control) gate.** Through [`/rc-gate`](plugins/hermitd/skills/rc-gate/SKILL.md), the agent manages a Remote Control server on your machine or server. While the gate is open, you can spawn new Claude Code sessions from the Claude app, using your local files and tools. Each session gets its own Git worktree, while the agent keeps running.
 
 Both session-spawning paths require a Git workspace. Remote Control requires a Claude sign-in through `/login` on the machine running the agent.
 
 **Watch other sessions.** Through [Claude Code cross-session messaging](https://code.claude.com/docs/en/cross-session-messaging), ask the agent to watch a local Claude Code session, including one you started interactively, and notify you when it next becomes idle.
 
-**Claude Code controls from chat.** Use `!model sonnet`, `!effort high`, `!advisor opus`, `!compact`, `!clear`, `!doctor` (alias `!checkup`), and `!permission-mode auto` directly from your connected chat. Control the agent’s work with `!pause`, `!resume`, and `!snooze 2h`. Use [`/when-done-switch-to --model sonnet`](skills/when-done-switch-to/SKILL.md) to switch automatically at the end of the current turn.
+**Claude Code controls from chat.** Use `!model sonnet`, `!effort high`, `!advisor opus`, `!compact`, `!clear`, `!doctor` (alias `!checkup`), and `!permission-mode auto` directly from your connected chat. Control the agent’s work with `!pause`, `!resume`, and `!snooze 2h`. Use [`/when-done-switch-to --model sonnet`](plugins/hermitd/skills/when-done-switch-to/SKILL.md) to switch automatically at the end of the current turn.
 
 ## Extensions
 
@@ -306,10 +306,10 @@ Optional plugins that add domain tools and workflows to your agent.
 - [dev-hermit](../hermitd-dev/README.md): Branch discipline, push guards, and gated PR workflows.
 - [homeassistant-hermit](../hermitd-homeassistant/README.md): Home Assistant tools, automation workflows, and safety checks.
 - [fitness-hermit](../hermitd-fitness/README.md): Strava integration, activity analysis, and training routines.
-- [hermitd-feed](../hermitd-feed/README.md): Source curation, recurring briefs, and weekly synthesis.
-- [hermitd-connector](../hermitd-connector/README.md): Pair people to talk to the agent from their own Claude, ChatGPT, Grok or Gemini app.
+- [hermitd-feed](plugins/hermitd-feed/README.md): Source curation, recurring briefs, and weekly synthesis.
+- [hermitd-connector](plugins/hermitd-connector/README.md): Pair people to talk to the agent from their own Claude, ChatGPT, Grok or Gemini app.
 - [hermitd-laravel-forge](../hermitd-laravel-forge/README.md): Laravel Forge deployments, logs, and server management.
-- [hermitd-scribe](../hermitd-scribe/README.md): GitHub issues and comments from proposals through a dedicated bot identity.
+- [hermitd-scribe](plugins/hermitd-scribe/README.md): GitHub issues and comments from proposals through a dedicated bot identity.
 
 You can run separate agents for different responsibilities, each with its own working state, knowledge, and routines. See [Creating Your Own Hermit](docs/creating-your-own-hermit.md).
 
@@ -354,7 +354,7 @@ See the [Upgrade guide](docs/upgrading.md) for details.
 
 ## Community
 
-Join the [Discord community](https://discord.gg/54sJqAxhUh) for setup help and discussion. See [CONTRIBUTING.md](../../CONTRIBUTING.md) for reporting bugs or contributing.
+Join the [Discord community](https://discord.gg/54sJqAxhUh) for setup help and discussion. See [CONTRIBUTING.md](CONTRIBUTING.md) for reporting bugs or contributing.
 
 ## Credits
 
