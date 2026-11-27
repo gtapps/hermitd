@@ -3693,7 +3693,7 @@ test('responder invocation evidence has one resident Skill hook writer', () => {
 
 describe('shared resident liveness (anti-drift)', () => {
   test('lifecycle deciders use the shared verdict', () => {
-    for (const file of ['hermitd-stop.ts', 'hermitd-start.ts', 'docker-preflight.ts', 'startup-context.ts', 'hermitd-watchdog.ts']) {
+    for (const file of ['hermitd-stop.ts', 'hermitd-start.ts', 'docker-preflight.ts', 'boot-owner.ts', 'startup-context.ts', 'hermitd-watchdog.ts']) {
       const source = fs.readFileSync(path.join(SCRIPTS, file), 'utf-8');
       expect(source).not.toContain('sharedLivenessAgeSecs(');
       expect(source).toContain('./lib/resident-liveness');
