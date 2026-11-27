@@ -1032,6 +1032,45 @@ test('browser-default-on migration requests permission for the protected browser
   expectAsk((await runGate(payload({ dir, tool: 'Bash', input: { command: cmd('migrate browser-default-on') } }), dir)).stdout, 'Hermit setting: browser');
 });
 
+describe('settings-edit calls judged by the writer step', () => {
+  const terminal = () => ({ kind: 'terminal', proven: true }) as any;
+  const judge = (config: any, rest: string, prefix = '') =>
+    protectedMutation(`${prefix}${cmd(rest)}`, fixture(config), terminal, 'default', [], { targets: [], channelFiles: [] });
+
+  test('a migration asks only when it changes a protected path on this config', () => {
+    const cases: Array<[any, string, string[] | null]> = [
+      [{}, 'migrate browser-default-on', ['browser']],
+      [{ browser: { enabled: false } }, 'migrate browser-default-on', null],
+      [{ channels: { chat: { dm_channel_id: '7' } } }, 'migrate channel-home', ['channels.chat.default_chat_id']],
+      [{ channels: { chat: { default_chat_id: '7', dm_channel_id: '7' } } }, 'migrate channel-home', null],
+      [{ boot_skill: '/x:y' }, 'migrate clear-sibling-boot-skill --skill /x:y', ['boot_skill']],
+      [{ boot_skill: '/a:b' }, 'migrate clear-sibling-boot-skill --skill /x:y && echo done', null],
+      [{ boot_skill: '/x:y' }, "migrate clear-sibling-boot-skill --skill '/x:y'", ['clear-sibling-boot-skill']],
+      [{ timezone: 'UTC' }, 'migrate timezone-check', null],
+      [{}, 'migrate no-such-migration', ['no-such-migration']],
+    ];
+    for (const [config, rest, expected] of cases) expect([rest, judge(config, rest)]).toEqual([rest, expected]);
+  });
+
+  test('a call after another shell command is not simulated', () => {
+    expect(judge({ boot_skill: '/a:b' }, 'migrate clear-sibling-boot-skill --skill /x:y', 'cd . && ')).toEqual(['clear-sibling-boot-skill']);
+    expect(judge({}, `channel-register custom '{"plugin":"bridge"}'`, 'true; ')).toEqual(['channels.custom', 'docker.recommended_plugins']);
+  });
+
+  test('channel-register names the entry and any Docker boot entry it adds', () => {
+    const entry = { plugin: 'bridge', marketplace: 'org/repo', scope: 'local', enabled: true };
+    expect(judge({ docker: { recommended_plugins: [entry] } }, `channel-register custom '{"plugin":"bridge","docker_source":"org/repo"}'`))
+      .toEqual(['channels.custom']);
+    expect(judge({}, `channel-register custom '{"plugin":"bridge","docker_source":"org/repo"}'`))
+      .toEqual(['channels.custom', 'docker.recommended_plugins']);
+  });
+
+  test('a container write that fails in the writer stays opaque', () => {
+    expect(judge({ voice: { prose: 'x' } }, 'toggle voice')).toEqual(['voice']);
+    expect(judge({ channels: {} }, 'append channels 1')).toEqual(['channels']);
+  });
+});
+
 
 for (const mode of ['bypassPermissions', 'auto', 'default']) {
   for (const command of [

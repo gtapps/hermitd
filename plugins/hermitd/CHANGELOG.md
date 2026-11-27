@@ -6,6 +6,10 @@
 
 - Operator-authored mod commands can be exposed to chat through `chat_commands`, which ships empty.
 
+### Changed
+
+- A `settings-edit migrate` that would change a protected setting raises the native permission prompt, judged by its effect on the current config
+
 ### Upgrade Instructions
 
 1. If `.hermit/config.json` has no `chat_commands` key, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set chat_commands '[]'`. Leave an existing value untouched.
