@@ -289,6 +289,8 @@ export async function sendToOwnedChat(
 ): Promise<OwnedSendResult> {
   if (!isKey(chatKey)) return { ok: false, error: 'invalid_chat', route: 'chat' };
   const { source, chat, thread } = parseKey(chatKey);
+  // A Discord thread is its own chat id; a `~thread` there would post to the parent.
+  if (source === 'discord' && thread !== undefined) return { ok: false, error: 'invalid_chat', route: 'chat' };
   const target = { id: source, chat_id: chat, thread };
   const config = opts.config ?? readSettledConfig(hermitDir);
   if (!getEnabledChannels(config).includes(target.id)) return { ok: false, error: 'channel_disabled', route: 'chat' };

@@ -15,4 +15,5 @@ test('a key builds, checks and takes itself apart', () => {
 test('the first tilde after the source starts the thread', () => {
   expect(parseKey('slack:C1~1712345678.123456~x')).toEqual({ source: 'slack', chat: 'C1', thread: '1712345678.123456~x' });
   expect(parseKey('custom:C1~')).toEqual({ source: 'custom', chat: 'C1', thread: '' });
+  expect(parseKey('shared').source).toBe('shared');
 });

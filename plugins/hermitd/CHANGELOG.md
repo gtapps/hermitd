@@ -18,7 +18,7 @@
 
 - A follow-up for a helper whose session stopped resumes it on this machine instead of reporting the message as queued. For a helper offline on another machine, the agent offers a new helper there, since its queued message is never delivered.
 - Connector access requests in `/hermitd:channel-access` point to `hermitd connector pair` and `revoke` instead of adding an `allowed_users` entry that shut out every other paired person.
-- Decision reminders and `later` deliveries for a task in a thread reach that thread on channels with a thread attribute, such as Telegram forum topics and channel plugins, instead of failing on a chat id that still carried the thread.
+- Decision reminders, `later` deliveries, and routine or watch notices bound to a thread reach that thread on channels with a thread attribute, such as Telegram forum topics and channel plugins, instead of failing on a chat id that still carried the thread.
 
 ## [1.4.44] - 2026-11-27
 

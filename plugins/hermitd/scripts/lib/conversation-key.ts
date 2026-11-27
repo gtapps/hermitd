@@ -23,7 +23,7 @@ export function parseKey(key: string): { source: string; chat: string; thread?: 
   const rest = key.slice(colon + 1);
   const tilde = rest.indexOf('~');
   return {
-    source: key.slice(0, colon),
+    source: colon < 0 ? key : key.slice(0, colon),
     chat: tilde < 0 ? rest : rest.slice(0, tilde),
     thread: tilde < 0 ? undefined : rest.slice(tilde + 1),
   };

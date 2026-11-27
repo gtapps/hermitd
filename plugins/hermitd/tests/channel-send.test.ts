@@ -1642,6 +1642,7 @@ test('an owned send takes the thread from the key', async () => {
     const env = fs.readFileSync(path.join(wd.dir, 'env.out'), 'utf8');
     expect(env).toContain('HERMIT_CHAT_ID=C1\n');
     expect(env).toContain('HERMIT_THREAD_ID=T1\n');
+    expect(await sendToOwnedChat(hermit(wd.dir), 'discord:C1~T1', 'hello', { config })).toMatchObject({ ok: false, error: 'invalid_chat' });
   } finally { wd.cleanup(); }
 });
 
