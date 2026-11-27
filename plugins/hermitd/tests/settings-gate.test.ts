@@ -1047,6 +1047,9 @@ describe('settings-edit calls judged by the writer step', () => {
       [{ boot_skill: '/a:b' }, 'migrate clear-sibling-boot-skill --skill /x:y && echo done', null],
       [{ boot_skill: '/x:y' }, "migrate clear-sibling-boot-skill --skill '/x:y'", ['clear-sibling-boot-skill']],
       [{ timezone: 'UTC' }, 'migrate timezone-check', null],
+      [{ timezone: 'UTC' }, 'migrate timezone-check 2>&1', null],
+      [{ timezone: 'UTC' }, 'migrate timezone-check # note', null],
+      [{ boot_skill: '/x:y' }, 'migrate clear-sibling-boot-skill --skill /x:y 2>/dev/null', ['boot_skill']],
       [{}, 'migrate no-such-migration', ['no-such-migration']],
     ];
     for (const [config, rest, expected] of cases) expect([rest, judge(config, rest)]).toEqual([rest, expected]);
@@ -1055,6 +1058,18 @@ describe('settings-edit calls judged by the writer step', () => {
   test('a call after another shell command is not simulated', () => {
     expect(judge({ boot_skill: '/a:b' }, 'migrate clear-sibling-boot-skill --skill /x:y', 'cd . && ')).toEqual(['clear-sibling-boot-skill']);
     expect(judge({}, `channel-register custom '{"plugin":"bridge"}'`, 'true; ')).toEqual(['channels.custom', 'docker.recommended_plugins']);
+  });
+
+  test('a call glued to the next one by a separator does not hide that call', () => {
+    expect(judge({}, `unset model;${cmd('set permission_mode auto')}`)).toEqual(['permission_mode=auto']);
+    expect(judge({}, `migrate timezone-check;${cmd('set permission_mode auto')}`)).toEqual(['permission_mode=auto']);
+    expect(judge({}, 'toggle x\n./settings-edit.ts .hermit/config.json set permission_mode auto')).toEqual(['permission_mode=auto']);
+  });
+
+  test('a spliced quote in a channel payload is not simulated', () => {
+    const entry = { plugin: "it'\\''s", marketplace: 'org/repo', scope: 'local', enabled: true };
+    expect(judge({ docker: { recommended_plugins: [entry] } }, `channel-register custom '{"plugin":"it'\\''s","docker_source":"org/repo"}'`))
+      .toEqual(['channels.custom', 'docker.recommended_plugins']);
   });
 
   test('channel-register names the entry and any Docker boot entry it adds', () => {

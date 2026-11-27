@@ -114,8 +114,10 @@ function containerChanges(file: string, cwd: string, dotted: string, verb: strin
  * null when one is quoted or expanded and so not read here.
  */
 function migrateArgs(call: RegExpExecArray, command: string): string[] | null {
-  const text = [call[3], call[4] ?? '', command.slice(call.index + call[0].length)].join(' ');
-  const words = text.split(/[;&|\n<>]/)[0].split(/\s+/).filter(Boolean);
+  const start = call.indices?.[3]?.[0];
+  const text = start === undefined ? '' : command.slice(start);
+  // A redirect's fd number (`2>&1`) and a trailing `# comment` are shell, not arguments.
+  const words = text.split(/\s(?:\d*[<>]|#)|[;&|\n<>]/)[0].split(/\s+/).filter(Boolean);
   return words.some(word => /[$`\\'"*?~{}\[\]]/.test(word)) ? null : words;
 }
 
@@ -947,8 +949,8 @@ export function protectedMutation(
 
   // Calls are found in the blanked text, so a heredoc mention cannot swallow the call after it;
   // the arguments are read from the raw command at the same offset.
-  const settingsEdit = String.raw`(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('(?:[^']|'\\'')*'|"[^"]*"|\S+))?`;
-  const rawCall = new RegExp(settingsEdit, 'y');
+  const settingsEdit = String.raw`(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:[ \t]+([^\s;&|<>]+))?(?:[ \t]+('(?:[^']|'\\'')*'|"[^"]*"|[^\s;&|<>]+))?`;
+  const rawCall = new RegExp(settingsEdit, 'yd');
   const matches = [...settingsText.matchAll(new RegExp(settingsEdit, 'g'))].flatMap(found => {
     rawCall.lastIndex = found.index;
     const m = rawCall.exec(command);
@@ -971,8 +973,9 @@ export function protectedMutation(
     if (verb === 'channel-register') {
       // Naming a channel entry enrolls it, so it asks whatever the payload holds.
       shown.push(`channels.${t || '<unknown>'}`);
-      // Only a single-quoted literal is read whole: the double-quoted capture stops at an escaped quote.
-      const edit = simulable && token.startsWith("'") && !SHELL_EXPANDS.test(token)
+      // Only a single-quoted literal is read whole: the double-quoted capture stops at an escaped quote,
+      // and a spliced `'\''` reaches settings-edit as a bare quote, so it is not simulated either.
+      const edit = simulable && token.startsWith("'") && !SHELL_EXPANDS.test(token) && !token.includes("'\\''")
         ? simulatedEdit(file, cwd, verb, [t, value]) : null;
       const entry = `channels.${t}`;
       const others = edit
