@@ -13,7 +13,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { isAllowedSender, isTrustedController, isPrimaryOperator, channelBotIdentity } from '../channel-auth';
+import { senderRole, atLeast, channelBotIdentity } from '../channel-auth';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { isPaused, pauseReasonLabel } from '../pause';
 import { resolveTimezone, budgetLine } from '../spend-status';
@@ -265,18 +265,18 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   const addressed = resolveSlashCommand(envelope.body, channelBotIdentity(config, envelope.source));
   if (!addressed || !['/status', '/scheduled'].includes(addressed.command) || addressed.rest.length > 0) return;
 
-  if (!isAllowedSender(config, envelope.source, envelope.userId)) return;
+  const role = senderRole(config, envelope.source, envelope.userId, envelope.chatId);
+  if (role === 'none') return;
 
-  // Full status only for the trusted operator (explicit allowlist, or the DM chat
-  // when no list is set); any other accepted sender gets a redacted, coarse reply.
-  const trusted = isTrustedController(config, envelope.source, envelope.userId, envelope.chatId);
+  // Full status only for a controller; any other admitted sender gets a redacted, coarse reply.
+  const trusted = atLeast(role, 'controller');
   const chatKey = conversationKey(envelope.sourceKey, envelope.chatId, envelope.thread);
   const scheduled = addressed.command === '/scheduled';
   const reply = scheduled ? composeScheduledReply(dir, config, chatKey, trusted) : composeStatusReply(dir, config, {
     redact: !trusted,
     senderKey: envelope.userId === null ? null : `${envelope.sourceKey}:${envelope.userId}`,
     chatKey,
-    primary: isPrimaryOperator(config, envelope.source, envelope.userId, envelope.chatId),
+    primary: role === 'operator',
   });
   // Reply to the chat the request arrived on — not the globally-resolved
   // outbound channel — so a status asked in a group or a non-primary channel is

@@ -12,8 +12,11 @@ import path from 'node:path';
 import { setupWorkdir } from './helpers/workdir';
 import { normalizeChannelSource, parseChannelEnvelope } from '../scripts/lib/channel-envelope';
 import {
-  isAllowedSender, isTrustedController, isPrimaryOperator, canCompleteAuthentication, recallScope, audienceVisible, briefVisibility,
+  isAllowedSender, senderRole, atLeast, controlRefusal, recallScope, audienceVisible, briefVisibility,
 } from '../scripts/lib/channel-auth';
+
+const controller = (c: any, s: string, u: string | null, ch: string | null) => atLeast(senderRole(c, s, u, ch), 'controller');
+const operator = (c: any, s: string, u: string | null, ch: string | null) => senderRole(c, s, u, ch) === 'operator';
 
 const scopeWorkdir = setupWorkdir();
 const scopeDir = path.join(scopeWorkdir.dir, '.hermit');
@@ -60,22 +63,22 @@ describe('isAllowedSender with plugin-qualified sources', () => {
   });
 });
 
-describe('isTrustedController with plugin-qualified sources', () => {
+describe('controller role with plugin-qualified sources', () => {
   test('DM-binding match on a qualified source, no allowlist configured', () => {
     const config = { channels: { discord: { default_chat_id: '1' } } };
-    expect(isTrustedController(config, 'plugin:discord:discord', 'U1', '1')).toBe(true);
-    expect(isTrustedController(config, 'plugin:discord:discord', 'U1', '99')).toBe(false);
+    expect(controller(config, 'plugin:discord:discord', 'U1', '1')).toBe(true);
+    expect(controller(config, 'plugin:discord:discord', 'U1', '99')).toBe(false);
   });
 
   test('explicit allowlist on a qualified source wins over DM binding', () => {
     const config = { channels: { discord: { allowed_users: ['ALLOWED'], default_chat_id: '1' } } };
-    expect(isTrustedController(config, 'plugin:discord:discord', 'ALLOWED', '99')).toBe(true);
-    expect(isTrustedController(config, 'plugin:discord:discord', 'STRANGER', '1')).toBe(false);
+    expect(controller(config, 'plugin:discord:discord', 'ALLOWED', '99')).toBe(true);
+    expect(controller(config, 'plugin:discord:discord', 'STRANGER', '1')).toBe(false);
   });
 
   test('allowed_users=[] lockdown on a qualified source — nobody trusted', () => {
     const config = { channels: { discord: { allowed_users: [] } } };
-    expect(isTrustedController(config, 'plugin:discord:discord', 'ANYONE', '1')).toBe(false);
+    expect(controller(config, 'plugin:discord:discord', 'ANYONE', '1')).toBe(false);
   });
 
   test('normalized bare key is authoritative — the send path uses the same key, so auth must too', () => {
@@ -84,7 +87,7 @@ describe('isTrustedController with plugin-qualified sources', () => {
     // auth gate honored the qualified key it would pass a sender the send path
     // can't route/token (the #634 auth/send split). The bare key is the one truth.
     const qualifiedOnly = { channels: { 'plugin:discord:discord': { default_chat_id: '1' } } };
-    expect(isTrustedController(qualifiedOnly, 'plugin:discord:discord', 'U1', '1')).toBe(false);
+    expect(controller(qualifiedOnly, 'plugin:discord:discord', 'U1', '1')).toBe(false);
 
     // When both forms are present, the normalized (bare) key wins.
     const both = {
@@ -93,45 +96,69 @@ describe('isTrustedController with plugin-qualified sources', () => {
         discord: { default_chat_id: '99' },
       },
     };
-    expect(isTrustedController(both, 'plugin:discord:discord', 'U1', '99')).toBe(true);
-    expect(isTrustedController(both, 'plugin:discord:discord', 'U1', '1')).toBe(false);
+    expect(controller(both, 'plugin:discord:discord', 'U1', '99')).toBe(true);
+    expect(controller(both, 'plugin:discord:discord', 'U1', '1')).toBe(false);
   });
 
   test('genericity: an unrecognized custom channel plugin normalizes the same way', () => {
     const config = { channels: { crm: { default_chat_id: '1' } } };
-    expect(isTrustedController(config, 'plugin:acme-crm:crm', 'U1', '1')).toBe(true);
+    expect(controller(config, 'plugin:acme-crm:crm', 'U1', '1')).toBe(true);
   });
 
   test('no config entry matches, qualified or normalized — untrusted (fails closed)', () => {
     const config = { channels: {} };
-    expect(isTrustedController(config, 'plugin:discord:discord', 'U1', '1')).toBe(false);
+    expect(controller(config, 'plugin:discord:discord', 'U1', '1')).toBe(false);
   });
 });
 
 // Without an allowlist, only a seeded home grants control authority.
-describe('isTrustedController — pinned-home anchor', () => {
+describe('controller role: pinned-home anchor', () => {
   test('the pin is the anchor', () => {
     const config = { channels: { discord: { default_chat_id: 'HOME' } } };
-    expect(isTrustedController(config, 'discord', 'U1', 'HOME')).toBe(true);
-    expect(isTrustedController(config, 'discord', 'U1', 'OTHER')).toBe(false);
+    expect(controller(config, 'discord', 'U1', 'HOME')).toBe(true);
+    expect(controller(config, 'discord', 'U1', 'OTHER')).toBe(false);
   });
 
   test('an unseeded home grants no control authority', () => {
     const config = { channels: { discord: {} } };
-    expect(isTrustedController(config, 'discord', 'U1', 'D1')).toBe(false);
+    expect(controller(config, 'discord', 'U1', 'D1')).toBe(false);
   });
 
   test('an explicit allowlist still wins over the pin', () => {
     const config = {
       channels: { discord: { allowed_users: ['ALLOWED'], default_chat_id: 'HOME' } },
     };
-    expect(isTrustedController(config, 'discord', 'ALLOWED', 'ANY')).toBe(true);
-    expect(isTrustedController(config, 'discord', 'STRANGER', 'HOME')).toBe(false);
+    expect(controller(config, 'discord', 'ALLOWED', 'ANY')).toBe(true);
+    expect(controller(config, 'discord', 'STRANGER', 'HOME')).toBe(false);
+  });
+
+  test('only the first allowed user controls when operators is absent', () => {
+    const config = { channels: { discord: { allowed_users: ['FIRST', 'SECOND'], default_chat_id: 'HOME' } } };
+    expect(controller(config, 'discord', 'FIRST', 'ANY')).toBe(true);
+    expect(controller(config, 'discord', 'SECOND', 'HOME')).toBe(false);
+    expect(senderRole(config, 'discord', 'SECOND', 'HOME')).toBe('member');
+  });
+
+  test('operators move control from the pinned home to the listed IDs', () => {
+    const config = { channels: { discord: { operators: ['OP'], default_chat_id: 'HOME' } } };
+    expect(controller(config, 'discord', 'OP', 'ANY')).toBe(true);
+    expect(controller(config, 'discord', 'MEMBER', 'HOME')).toBe(false);
+  });
+
+  test('a non-technical home controls with no lists but is not an operator', () => {
+    const config = { operator_profile: 'non-technical', channels: { discord: { default_chat_id: 'HOME' } } };
+    expect(senderRole(config, 'discord', 'CLIENT', 'HOME')).toBe('controller');
+  });
+
+  test('a sender who is not admitted has no role', () => {
+    const config = { channels: { discord: { allowed_users: ['A'], operators: ['B'] } } };
+    expect(senderRole(config, 'discord', 'B', 'HOME')).toBe('none');
+    expect(controlRefusal('/pause')).toContain('!pause refused');
   });
 
   test('allowed_users=[] lockdown is not reopened by a matching pin', () => {
     const config = { channels: { discord: { allowed_users: [], default_chat_id: 'HOME' } } };
-    expect(isTrustedController(config, 'discord', 'ANYONE', 'HOME')).toBe(false);
+    expect(controller(config, 'discord', 'ANYONE', 'HOME')).toBe(false);
   });
 });
 
@@ -296,9 +323,9 @@ for (const type of [10, 11, 12]) test(`thread type ${type} inherits parent recal
 });
 
 
-describe('isPrimaryOperator', () => {
+describe('operator role', () => {
   const primary = (entry: any, user = 'u1', chat = 'home', profile = 'technical') =>
-    isPrimaryOperator({ channels: { discord: entry }, operator_profile: profile }, 'plugin:discord:discord', user, chat);
+    operator({ channels: { discord: entry }, operator_profile: profile }, 'plugin:discord:discord', user, chat);
   test('operators override the allowlist, including empty operators', () => {
     expect(primary({ operators: ['u2'], allowed_users: ['u1'] })).toBe(false);
     expect(primary({ operators: ['u1'] })).toBe(true);
@@ -318,8 +345,8 @@ describe('isPrimaryOperator', () => {
 });
 
 
-describe('canCompleteAuthentication', () => {
-  const authority = (entry: any, user = 'a') => canCompleteAuthentication(
+describe('controller role: operators and home fallback', () => {
+  const authority = (entry: any, user = 'a') => controller(
     { operator_profile: 'non-technical', channels: { custom: entry } }, 'custom', user, 'home');
   test('unnamed operators fall back to the trusted home', () => {
     expect(authority({ default_chat_id: 'home' })).toBe(true);

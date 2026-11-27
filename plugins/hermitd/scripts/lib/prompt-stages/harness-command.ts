@@ -2,7 +2,7 @@
 
 import { clip, safeForLLM } from '../sanitize';
 import { senderLabel } from '../channel-envelope';
-import { isTrustedController, channelBotIdentity } from '../channel-auth';
+import { senderRole, atLeast, controlRefusal, channelBotIdentity } from '../channel-auth';
 import { parseHarnessCommand, writePendingCommand, renderCommand, permissionModeRefusal } from '../harness-command';
 import { resolveSlashCommand } from '../channel-slash-address';
 import type { ReplyTarget } from '../harness-mod';
@@ -22,8 +22,9 @@ export function run(ctx: StageContext): StageResult | void {
   const dir = ctx.dir;
   const config = ctx.config();
 
-  const authorized = isTrustedController(config, env.source, env.userId, env.chatId);
-  if (!authorized) return; // unauthorized — silent no-op
+  const role = senderRole(config, env.source, env.userId, env.chatId);
+  if (role === 'none' || !config) return; // not admitted, or no readable config: silent no-op
+  if (!atLeast(role, 'controller')) return { context: controlRefusal(parsed.command) };
 
   if (ctx.harnessMode) {
     const reply_to: ReplyTarget = { source: env.sourceKey, chat_id: env.chatId };

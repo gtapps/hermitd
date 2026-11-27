@@ -120,7 +120,8 @@ describe('channel-status-responder', () => {
       expect(stub.requests[1].body.text).toContain('Loja question');
       expect(stub.requests[1].body.text).toContain('1 waiting on admin.');
       expect(stub.requests[1].body.text).not.toContain('DM report');
-      expect(stub.requests[2].body.text).toBe('All quiet — nothing in progress, nothing waiting.');
+      // Ana is the second allowed user, not an operator, so she gets the coarse reply.
+      expect(stub.requests[2].body.text).toBe('Idle.');
     } finally { stub.stop(); wd.cleanup(); }
   });
 

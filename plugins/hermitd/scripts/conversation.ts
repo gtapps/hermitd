@@ -4,7 +4,7 @@ import { appendJsonlLine } from './lib/append-jsonl';
 // `is-trusted` prints `OK` for a trusted sender and `{"status":"untrusted"}` otherwise, both at
 // exit 0: a caller must read stdout, never the exit code alone, to decide trust.
 import { conversationKey, checkKey } from './lib/conversation-key';
-import { isTrustedController, allowedUserIds } from './lib/channel-auth';
+import { senderRole, atLeast, allowedUserIds } from './lib/channel-auth';
 import { pinStateDirOrExit } from './lib/cc-compat';
 import { createThread, isGuildChannelType, isThreadChannelType, lookupChat } from './lib/channel-chats';
 import { threadRecords, agentQuestion } from './lib/tasks';
@@ -108,7 +108,7 @@ async function main(): Promise<void> {
     case 'is-trusted': {
       require(['source', 'user_id', 'chat_id']);
       // An untrusted sender is an expected answer, not a failure: callers branch on stdout.
-      if (isTrustedController(config, opts.source, opts.user_id, opts.chat_id)) emit('OK');
+      if (atLeast(senderRole(config, opts.source, opts.user_id, opts.chat_id), 'controller')) emit('OK');
       emitJson({ status: 'untrusted' });
     }
   }

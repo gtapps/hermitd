@@ -26,7 +26,7 @@
 //
 // Addressing only — never authorization. Who may actually pause, resume or
 // interrogate the hermit is decided downstream by channel-auth.ts's
-// isTrustedController/isAllowedSender, which this layer does not consult and
+// senderRole/isAllowedSender, which this layer does not consult and
 // cannot widen.
 
 import type { ChannelBotIdentity } from './channel-auth';

@@ -6,11 +6,14 @@
 
 import { describe, test, expect } from 'bun:test';
 import {
-  isAllowedSender, isTrustedController, isPrimaryOperator, canCompleteAuthentication, recallScope,
+  isAllowedSender, senderRole, atLeast, recallScope,
 } from '../scripts/lib/channel-auth';
 import { seedDefaultChatId } from '../scripts/channel-hook';
 import { eligible, resolve } from '../scripts/resolve-outbound-channel';
 import { validate } from '../scripts/validate-config';
+
+const controller = (c: any, s: string, u: string | null, ch: string | null) => atLeast(senderRole(c, s, u, ch), 'controller');
+const operator = (c: any, s: string, u: string | null, ch: string | null) => senderRole(c, s, u, ch) === 'operator';
 
 const HOME = 'c-1';
 
@@ -28,16 +31,14 @@ describe('members_only authority', () => {
   for (const [name, entry] of shapes) {
     test(`${name}: no control, operator or sign-in authority`, () => {
       const on = config({ ...entry, members_only: true });
-      expect(isTrustedController(on, 'plugin:hermitd-connector:connector', 'u1', HOME)).toBe(false);
-      expect(isPrimaryOperator(on, 'connector', 'u1', HOME)).toBe(false);
-      expect(canCompleteAuthentication(on, 'connector', 'u1', HOME)).toBe(false);
+      expect(controller(on, 'plugin:hermitd-connector:connector', 'u1', HOME)).toBe(false);
+      expect(operator(on, 'connector', 'u1', HOME)).toBe(false);
     });
   }
 
   test('without the key the same shapes keep their authority', () => {
-    expect(isTrustedController(config({ default_chat_id: HOME }), 'connector', 'u1', HOME)).toBe(true);
-    expect(isPrimaryOperator(config({ allowed_users: ['u1'] }), 'connector', 'u1', HOME)).toBe(true);
-    expect(canCompleteAuthentication(config({ default_chat_id: HOME }), 'connector', 'u1', HOME)).toBe(true);
+    expect(controller(config({ default_chat_id: HOME }), 'connector', 'u1', HOME)).toBe(true);
+    expect(operator(config({ allowed_users: ['u1'] }), 'connector', 'u1', HOME)).toBe(true);
     expect(recallScope(config({ default_chat_id: HOME }), 'connector', HOME, '/nonexistent')).toBeNull();
   });
 
@@ -57,7 +58,7 @@ describe('members_only authority', () => {
   }
 
   test('a non-boolean value grants nothing extra and removes nothing', () => {
-    expect(isTrustedController(config({ default_chat_id: HOME, members_only: 'yes' }), 'connector', 'u1', HOME)).toBe(true);
+    expect(controller(config({ default_chat_id: HOME, members_only: 'yes' }), 'connector', 'u1', HOME)).toBe(true);
   });
 });
 

@@ -1,7 +1,7 @@
 import { conversationKey } from '../conversation-key';
 import { conversationRecords, agentQuestion, decodeDecision, latestWaitIsStall, readTasks, threadRecords, taskListing, type Task } from '../tasks';
 import { resolveSlashCommand } from '../channel-slash-address';
-import { channelBotIdentity, isAllowedSender, isPrimaryOperator, isSelfMentioned } from '../channel-auth';
+import { channelBotIdentity, isAllowedSender, senderRole, isSelfMentioned } from '../channel-auth';
 import { classifyChat } from '../channel-chats';
 import { safeForLLM } from '../sanitize';
 import { capture } from './channel-reply-reminder';
@@ -79,7 +79,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
       const proposalCount = inChat.length - people.length;
       const answerHint = `answer with .hermit/bin/hermitd-run task answer .hermit --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>`;
       // A primary sender also decides admin questions with no chat, counted as `!status` counts them.
-      if (isPrimaryOperator(ctx.config(), env.source, env.userId, env.chatId)) {
+      if (senderRole(ctx.config(), env.source, env.userId, env.chatId) === 'operator') {
         let admin = 0;
         try {
           admin = readTasks(ctx.dir).filter(task => task.status === 'open' && task.waiting_on !== null && task.decision !== null
