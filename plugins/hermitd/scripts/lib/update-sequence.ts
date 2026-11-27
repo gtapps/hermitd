@@ -90,7 +90,7 @@ export interface UpdateTarget {
   updatePlugin(row: PluginRow): Promise<'ok' | 'held' | 'failed'>;
   /** The state folder for the doctor report and the history row. */
   stateDir(): string;
-  /** Write the update marker; throw UpdateExit when it cannot be written safely. */
+  /** Write the update marker; throw when it cannot be written safely. */
   stampMarker(): void;
   clearMarker(): void;
   /** Whether a running agent takes the update now. */
@@ -138,9 +138,13 @@ export class UpdateExit extends Error {
   constructor(readonly code: number, readonly interrupted = false) { super(`exit ${code}`); }
 }
 
+// A signal that arrives while a command runs waits for it to finish, as a shell trap does.
+let commandsRunning = 0;
+let pendingExit = 0;
+
 /**
- * Run a command from `cwd`. A command killed by the operator's interrupt ends the
- * update the same way the shell trap did.
+ * Run a command from `cwd`. A command killed by the operator's interrupt, or one that
+ * ran while the update was signalled, ends the update the same way the shell trap did.
  */
 export async function spawnCommand(argv: string[], cwd: string, opts: RunOptions = {}): Promise<RunResult> {
   const stdout = opts.stdout ?? 'pipe';
@@ -152,13 +156,18 @@ export async function spawnCommand(argv: string[], cwd: string, opts: RunOptions
   } catch {
     return { code: 127, out: '' };
   }
-  const [o, e] = await Promise.all([
-    stdout === 'pipe' ? new Response(proc.stdout as ReadableStream).text() : '',
-    stderr === 'pipe' ? new Response(proc.stderr as ReadableStream).text() : '',
-  ]);
-  const code = await proc.exited;
+  commandsRunning++;
+  let o: string, e: string, code: number;
+  try {
+    [o, e] = await Promise.all([
+      stdout === 'pipe' ? new Response(proc.stdout as ReadableStream).text() : '',
+      stderr === 'pipe' ? new Response(proc.stderr as ReadableStream).text() : '',
+    ]);
+    code = await proc.exited;
+  } finally { commandsRunning--; }
   if (proc.signalCode === 'SIGINT') throw new UpdateExit(130, true);
   if (proc.signalCode === 'SIGTERM') throw new UpdateExit(143, true);
+  if (pendingExit) throw new UpdateExit(pendingExit, true);
   return { code, out: o + e };
 }
 
@@ -288,7 +297,13 @@ export async function runUpdate(target: UpdateTarget, opts: UpdateOptions): Prom
     if (!interrupted && interruptMessage) err('[hermit] Update interrupted before the restart; rerun `hermitd update` to finish.');
     interrupted = true;
   };
-  const onSignal = (code: number) => () => { noteInterrupt(); removeMarker(); process.exit(code); };
+  pendingExit = 0;
+  const onSignal = (code: number) => () => {
+    if (commandsRunning > 0) { pendingExit = code; return; }
+    noteInterrupt();
+    removeMarker();
+    process.exit(code);
+  };
   const onSigint = onSignal(130);
   const onSigterm = onSignal(143);
   // A closed terminal has nowhere to print; the marker still goes, as the shell's EXIT trap did.
@@ -308,7 +323,15 @@ export async function runUpdate(target: UpdateTarget, opts: UpdateOptions): Prom
       return Array.isArray(list) ? list : [];
     } catch { return []; }
   };
-  const stampMarker = () => { markerOwned = true; target.stampMarker(); };
+  // The first stamp must land; a restamp around a wait is best effort, as in the shell.
+  const stampMarker = (required: boolean) => {
+    markerOwned = true;
+    try { target.stampMarker(); } catch {
+      if (!required) return;
+      err('[hermit] Could not safely write the update marker.');
+      throw new UpdateExit(1);
+    }
+  };
 
   try {
     const listBefore = target.updatesPlugins ? await listPlugins() : [];
@@ -325,7 +348,7 @@ export async function runUpdate(target: UpdateTarget, opts: UpdateOptions): Prom
       if (!/^(y|yes)$/i.test(ans.trim())) { out('[hermit] Aborted.'); return 0; }
     }
     if (target.markerAtStart) {
-      stampMarker();
+      stampMarker(true);
       interruptMessage = true;
     }
 
@@ -375,9 +398,13 @@ export async function runUpdate(target: UpdateTarget, opts: UpdateOptions): Prom
 
     if (await target.live(anyOk)) {
       selfRun = await target.selfRun?.() ?? false;
-      if (!target.markerAtStart && !selfRun) {
-        stampMarker();
-        interruptMessage = true;
+      if (!target.markerAtStart) {
+        // Also clears a marker an earlier run left, as the shell's EXIT trap did.
+        markerOwned = true;
+        if (!selfRun) {
+          stampMarker(true);
+          interruptMessage = true;
+        }
       }
       await applyLive();
     } else {
@@ -546,9 +573,9 @@ export async function runUpdate(target: UpdateTarget, opts: UpdateOptions): Prom
       if (selfRun) return true;
       if (expect.length > 0) out('[hermit] Waiting for hermit-evolve (up to 45 min)...');
       // Restamp around each wait so the watchdog's one-hour deferral spans the whole update.
-      stampMarker();
+      stampMarker(false);
       const r = await run(['.hermit/bin/hermitd-watchdog', 'await-upgrade', ...expect]);
-      stampMarker();
+      stampMarker(false);
       let reply: { status?: unknown; reason?: unknown } = {};
       if (r.code === 0) { try { reply = JSON.parse(r.out); } catch {} }
       if (reply.status === 'ready') return true;

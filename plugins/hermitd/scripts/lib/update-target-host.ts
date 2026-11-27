@@ -55,7 +55,10 @@ export function hostTarget(projectDir: string): UpdateTarget {
       return 'failed';
     },
 
-    stateDir: () => stateDir,
+    stateDir() {
+      fs.mkdirSync(stateDir, { recursive: true });
+      return stateDir;
+    },
     stampMarker() {
       fs.mkdirSync(stateDir, { recursive: true });
       fs.writeFileSync(markerPath, JSON.stringify({ at: new Date().toISOString() }) + '\n');

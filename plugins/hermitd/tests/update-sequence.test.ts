@@ -160,6 +160,32 @@ describe('update sequence order (host shape)', () => {
     expect(r.marker).toBe(false);
   });
 
+  test('self-run clears a marker an earlier run left', async () => {
+    const wd = setupWorkdir();
+    try {
+      write(hermit(wd.dir, 'config.json'), '{}');
+      write(hermit(wd.dir, 'state', 'update-in-progress.json'), '{"at":"stale"}');
+      const { target } = recorder(wd.dir, { selfRun: true });
+      expect(await runUpdate(target, { projectDir: wd.dir, dryRun: false, assumeYes: true })).toBe(0);
+      expect(fs.existsSync(hermit(wd.dir, 'state', 'update-in-progress.json'))).toBe(false);
+    } finally { wd.cleanup(); }
+  });
+
+  test('a restamp that fails around a wait does not stop the update; a failed first stamp does', async () => {
+    for (const [failFrom, code, bounced] of [[2, 0, true], [1, 1, false]] as const) {
+      const wd = setupWorkdir();
+      try {
+        write(hermit(wd.dir, 'config.json'), JSON.stringify({ _hermit_versions: { hermitd: '1.2.0' } }));
+        const { target, calls } = recorder(wd.dir);
+        let stamps = 0;
+        const stamp = target.stampMarker.bind(target);
+        target.stampMarker = () => { if (++stamps >= failFrom) throw new Error('unsafe_state_dir'); stamp(); };
+        expect(await runUpdate(target, { projectDir: wd.dir, dryRun: false, assumeYes: true })).toBe(code);
+        expect(calls.some(x => x.startsWith('bounce'))).toBe(bounced);
+      } finally { wd.cleanup(); }
+    }
+  });
+
   test('a blocking Claude Code minimum: nothing queued or restarted, doctor without --fix', async () => {
     const r = await update({ verdict: 'block' });
     expect(r.calls).toContain('floor 2.1.300 held=false');
@@ -257,6 +283,52 @@ describe('update sequence order (Docker shape)', () => {
     expect(r.marker).toBe(false);
     expect(r.history).toBeNull();
   });
+});
+
+describe('update sequence signals', () => {
+  // A SIGTERM sent to the update alone (kill, timeout) lets the running command finish,
+  // then ends before the restart with 143, as the shell trap did.
+  test('SIGTERM waits for the running command, then exits 143 without a bounce', async () => {
+    const wd = setupWorkdir();
+    try {
+      const proj = wd.dir;
+      write(hermit(proj, 'config.json'), '{}');
+      const script = path.join(proj, 'run.ts');
+      write(script, `
+import fs from 'node:fs';
+import { runUpdate, spawnCommand } from ${JSON.stringify(path.resolve(import.meta.dir, '../scripts/lib/update-sequence.ts'))};
+const proj = ${JSON.stringify(proj)};
+const list = JSON.stringify([{ id: 'hermitd@m', scope: 'local', enabled: true, version: '1', projectPath: proj }]);
+const target = {
+  trigger: 't', mode: 'm', updatesPlugins: true, includeUserScope: false, needsPlugins: true, markerAtStart: false,
+  run: (argv) => argv[1] === 'await-upgrade'
+    ? spawnCommand(['sh', '-c', 'touch "$0/ready"; while [ ! -f "$0/go" ]; do sleep 0.05; done; touch "$0/done"; echo "{\\\\"status\\\\":\\\\"ready\\\\"}"', proj], proj)
+    : Promise.resolve({ code: 0, out: argv.join(' ') === 'claude plugin list --json' ? list : '{"status":"ok"}' }),
+  printPlan() {}, updatePlugin: async () => 'ok', stateDir: () => proj + '/.hermit/state',
+  stampMarker() { fs.mkdirSync(proj + '/.hermit/state', { recursive: true }); fs.writeFileSync(proj + '/.hermit/state/update-in-progress.json', '{}'); },
+  clearMarker() { fs.rmSync(proj + '/.hermit/state/update-in-progress.json', { force: true }); },
+  live: async () => true, floorVerdict: async () => 'ok', printReloadFailed() {},
+  bounce: async () => { fs.writeFileSync(proj + '/bounced', ''); return true; },
+  doctor: async () => {}, historyFields: async () => ({}), printSummary() {}, installHostCli: async () => {},
+};
+process.exit(await runUpdate(target, { projectDir: proj, dryRun: false, assumeYes: true, handleSignals: true }));
+`);
+      const proc = Bun.spawn({ cmd: [process.execPath, script], cwd: proj, stdout: 'pipe', stderr: 'pipe' });
+      const deadline = Date.now() + 10000;
+      while (!fs.existsSync(path.join(proj, 'ready')) && Date.now() < deadline) await Bun.sleep(20);
+      expect(fs.existsSync(path.join(proj, 'ready'))).toBe(true);
+      proc.kill('SIGTERM');
+      // The parent has the signal; let the command finish only now.
+      await Bun.sleep(100);
+      write(path.join(proj, 'go'), '');
+      const stderr = await new Response(proc.stderr).text();
+      expect(await proc.exited).toBe(143);
+      expect(fs.existsSync(path.join(proj, 'done'))).toBe(true);
+      expect(fs.existsSync(path.join(proj, 'bounced'))).toBe(false);
+      expect(fs.existsSync(hermit(proj, 'state', 'update-in-progress.json'))).toBe(false);
+      expect(stderr).toContain('Update interrupted before the restart');
+    } finally { wd.cleanup(); }
+  }, 20000);
 });
 
 describe('update sequence helpers', () => {

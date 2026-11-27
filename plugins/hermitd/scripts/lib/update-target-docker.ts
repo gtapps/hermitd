@@ -102,19 +102,12 @@ export function dockerTarget(projectDir: string, mode: { ccOnly: boolean; plugin
 
     stateDir,
     stampMarker() {
-      let dir: string;
-      try { dir = stateDir(); } catch {
-        err('[hermit] Could not safely write the update marker.');
-        throw new UpdateExit(1);
-      }
+      const dir = stateDir();
       // `build` tells an update-launched evolve whether this run rebuilds the image.
       const temporary = path.join(dir, `.update-marker-${crypto.randomUUID()}`);
       try {
         fs.writeFileSync(temporary, JSON.stringify({ at: new Date().toISOString(), build: !pluginsOnly }) + '\n', { flag: 'wx', mode: 0o600 });
         fs.renameSync(temporary, path.join(dir, MARKER));
-      } catch {
-        err('[hermit] Could not safely write the update marker.');
-        throw new UpdateExit(1);
       } finally { fs.rmSync(temporary, { force: true }); }
     },
     clearMarker() {
