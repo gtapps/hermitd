@@ -48,7 +48,7 @@ Account connectors are added and authorized on claude.ai, and each one reaches e
 
 ## Browser phone takeover
 
-Managed browsers on Docker and hosts work without takeover setup for public pages. Phone sign-in is opt-in: `/hermitd:browser` collects a short `browser.admins` list in chat through the native-prompt settings route, asks for one host `hermitd run browser-host` command, verifies it, and declares one `browser-handback` stream monitor. Existing hermits receive the browser through upgrade; viewer access remains opt-in.
+Managed browsers on Docker and hosts work without takeover setup for public pages. Phone sign-in is opt-in: `/hermitd:browser` collects a short `browser.admins` list in chat through the native-prompt settings route, asks for one host `hermitd run browser-host` command, which also declares one `browser-handback` stream monitor, and verifies it. Existing hermits receive the browser through upgrade; viewer access remains opt-in.
 
 Takeover needs Tailscale. Docker also needs server 28.0.0 or newer and an image whose `/etc/hermit/managed-browser` marker contains `display=plugin`. The plugin owns display startup independently of the entrypoint; older bare markers require `hermitd update`. For an unconverted install, run `/hermitd:docker-customize "Convert"` before the host rebuild. It publishes one loopback port and uses tailnet-only Serve, never Funnel. Linux/WSL2 tmux hosts use the same command for prerequisites and display startup; macOS hosts outside Docker and interactive hermits refuse takeover; Docker Desktop host-networking loopback reachability remains unverified and a failed route check is reported. No image rebuild is needed for takeover on an image already carrying the managed browser.
 

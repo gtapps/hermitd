@@ -684,6 +684,12 @@ export function mutateTask(dir: string, verb: string, id: string | undefined, fl
           if (record.decision !== null) record.waiting_on = decodeDecision(record.decision).authority;
         }
         record.waiting_since = now;
+        // A worker's result or question ends its hold, so the execution boundary stops
+        // reading the record as running without waiting on the resident's hand-back.
+        if (report?.author === 'worker' && WORKER_OWNER.test(record.owner)) {
+          record.last_worker = record.owner.slice('worker:'.length);
+          record.owner = 'resident';
+        }
       } else if (verb === 'close') {
         const by = flag(flags, 'by');
         if (by !== 'check' && by !== 'confirmed') throw new Error('invalid_closed_by:check|confirmed');
@@ -892,8 +898,9 @@ export function passesExecutionBoundary(dir: string, options: { minTokens?: numb
   const runtime = readJson(path.join(dir, 'state/runtime.json'));
   if (!execution.cc_session_id || execution.cc_session_id !== runtime?.cc_session_id) return { ok: false, reason: 'stale-identity' };
   if (!execution.at || Date.now() - Date.parse(execution.at) < 60000) return { ok: false, reason: 'idle-too-fresh' };
-  // The resident takes a record back (`note --owner resident`) before it posts a
-  // result or parks it, so ownership alone says whether a worker still holds it.
+  // A worker's result or needs-input report returns the record to the resident, and the
+  // resident takes it back (`note --owner resident`) on any other stop, so ownership
+  // alone says whether a worker still holds it.
   if (readTasks(dir).some(r => r.status === 'open' && r.owner.startsWith('worker:'))) return { ok: false, reason: 'worker-running' };
   const resident = findResident(runtime, runtime?.config_dir);
   if (resident && !['idle', 'shell'].includes(resident.status)) return { ok: false, reason: 'registry-busy' };
