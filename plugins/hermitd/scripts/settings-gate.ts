@@ -18,7 +18,7 @@ import { parseDecideArgs, canonicalDecideCommand } from './lib/task-decide-args'
 import fs from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { getPath } from './settings-edit';
+import { getPath, applyEdit, WRITE_VERBS, TAKES_VALUE } from './settings-edit';
 import { readConfigRaw } from './lib/config-read';
 import { byArg } from './lib/settings/registry';
 import { askPathRegex } from './lib/settings/protected-paths';
@@ -35,12 +35,6 @@ import { resolveProjectScript } from './lib/routines/gate';
 import { clip, safeForLLM } from './lib/sanitize';
 
 type Json = any;
-
-/** settings-edit verbs that mutate config.json. */
-const WRITE_VERBS = new Set(['set', 'append', 'unset', 'toggle', 'apply-known', 'migrate', 'channel-register']);
-
-/** Write verbs that take a value after the target; see settings-edit.ts's dispatch. */
-const TAKES_VALUE = new Set(['set', 'append', 'apply-known', 'channel-register']);
 
 /** Static protected subtrees. Parent replacements compare only this content. */
 const ASK_PATH = askPathRegex();
@@ -67,34 +61,64 @@ function protectedChanges(before: Json, after: Json, dotted: string): string[] {
   return [...keys].flatMap(key => protectedChanges(before?.[key], after?.[key], `${dotted}.${key}`));
 }
 
-/** An uncertain parent write must not silently discard protected content. */
-function containerChanges(file: string, cwd: string, dotted: string, verb: string, token: string): string[] {
+/** A config file token the shell may rewrite before settings-edit sees it. */
+const OPAQUE_FILE = /[$`~\\*?\[\]{}]/;
+
+/** Does the shell rewrite this value token before settings-edit sees it? */
+function opaqueValue(token: string): boolean {
   const raw = stripQuotes(token);
   // An unquoted `{…,…}` is brace-expanded before settings-edit sees it, so the
   // value it writes is not the JSON this text shows: opaque, like a `$`.
   const braceExpands = !/^['"]/.test(token) && /\{[^{}]*,/.test(raw);
-  if (/[$`~\\*?\[\]{}]/.test(file) || /[$`\\]/.test(raw) || braceExpands) return [dotted];
+  return /[$`\\]/.test(raw) || braceExpands;
+}
+
+/**
+ * Run settings-edit's own write step on a copy of the config and return the
+ * config after it with the protected paths it changed. Null when the outcome is
+ * unknown (an unreadable file, a refused edit); callers ask then.
+ */
+function simulatedEdit(file: string, cwd: string, verb: string, args: string[]): { after: Json; changed: string[] } | null {
   try {
-    let config: Json = {};
+    const target = path.resolve(cwd, file);
+    let before: Json = {};
     try {
-      const text = fs.readFileSync(path.resolve(cwd, file), 'utf8');
-      config = text.trim() ? JSON.parse(text) : {};
+      const text = fs.readFileSync(target, 'utf8');
+      before = text.trim() ? JSON.parse(text) : {};
     } catch (err: any) {
-      if (err.code !== 'ENOENT') return [dotted];
+      if (err.code !== 'ENOENT') return null;
     }
-    if (!config || typeof config !== 'object' || Array.isArray(config)) return [dotted];
-    let after: Json;
-    if (verb === 'set') {
-      if (raw === '') return [dotted];
-      after = raw === 'none' || raw === 'clear' ? null : JSON.parse(raw);
-      if (after !== null && (typeof after !== 'object' || Array.isArray(after))) return [dotted];
-    } else if (verb !== 'unset') {
-      return [dotted];
-    }
-    return protectedChanges(getPath(config, dotted), after, dotted);
+    if (!before || typeof before !== 'object' || Array.isArray(before)) return null;
+    const after = structuredClone(before);
+    applyEdit(after, verb, args, path.dirname(target));
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    return { after, changed: [...keys].flatMap(key => protectedChanges(before[key], after[key], key)) };
   } catch {
-    return [dotted];
+    return null;
   }
+}
+
+/** An uncertain parent write must not silently discard protected content. */
+function containerChanges(file: string, cwd: string, dotted: string, verb: string, target: string, token: string): string[] {
+  if (opaqueValue(token)) return [dotted];
+  const edit = simulatedEdit(file, cwd, verb, TAKES_VALUE.has(verb) ? [target, stripQuotes(token)] : [target]);
+  if (!edit) return [dotted];
+  // A parent replaced by a scalar or an array is not compared field by field.
+  const value = getPath(edit.after, dotted);
+  if (value != null && (typeof value !== 'object' || Array.isArray(value))) return [dotted];
+  return edit.changed;
+}
+
+/**
+ * The literal words of a `migrate` call up to the end of its shell command, or
+ * null when one is quoted or expanded and so not read here.
+ */
+function migrateArgs(call: RegExpExecArray, command: string): string[] | null {
+  const start = call.indices?.[3]?.[0];
+  const text = start === undefined ? '' : command.slice(start);
+  // A redirect's fd number (`2>&1`) and a trailing `# comment` are shell, not arguments.
+  const words = text.split(/\s(?:\d*[<>]|#)|[;&|\n<>]/)[0].split(/\s+/).filter(Boolean);
+  return words.some(word => /[$`\\'"*?~{}\[\]]/.test(word)) ? null : words;
 }
 
 /**
@@ -383,7 +407,6 @@ function chatLeafChanged(dotted: string, value: string, turn: () => string | nul
  * other verb's target is already dotted and passes through so ASK_PATH matches.
  */
 function resolveTarget(verb: string, target: string): string {
-  if (verb === 'migrate' && target === 'browser-default-on') return 'browser';
   return verb === 'apply-known' ? (byArg(target)?.path ?? target) : target;
 }
 
@@ -926,8 +949,8 @@ export function protectedMutation(
 
   // Calls are found in the blanked text, so a heredoc mention cannot swallow the call after it;
   // the arguments are read from the raw command at the same offset.
-  const settingsEdit = String.raw`(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:\s+(\S+))?(?:\s+('(?:[^']|'\\'')*'|"[^"]*"|\S+))?`;
-  const rawCall = new RegExp(settingsEdit, 'y');
+  const settingsEdit = String.raw`(?:settings-edit(?:\.ts)?)["']?\s+('[^']*'|"[^"]*"|\S+)\s+([a-z-]+)(?:[ \t]+([^\s;&|<>]+))?(?:[ \t]+('(?:[^']|'\\'')*'|"[^"]*"|[^\s;&|<>]+))?`;
+  const rawCall = new RegExp(settingsEdit, 'yd');
   const matches = [...settingsText.matchAll(new RegExp(settingsEdit, 'g'))].flatMap(found => {
     rawCall.lastIndex = found.index;
     const m = rawCall.exec(command);
@@ -943,26 +966,40 @@ export function protectedMutation(
     // theirs belongs to the shell (a `&&`, a redirect), not to the setting.
     const token = TAKES_VALUE.has(verb) ? (m[4] ?? '') : '';
     const value = stripQuotes(token);
+    // A preceding shell command can change cwd or the comparison baseline, so a
+    // call after one is opaque rather than simulated against the file as it is now.
+    const file = stripQuotes(m[1]);
+    const simulable = !/[;&|\n]/.test(command.slice(0, m.index)) && !OPAQUE_FILE.test(file);
     if (verb === 'channel-register') {
+      // Naming a channel entry enrolls it, so it asks whatever the payload holds.
       shown.push(`channels.${t || '<unknown>'}`);
-      // Opaque payloads can include a boot entry too; never simulate the merge.
-      // Only a single-quoted literal is read whole: the double-quoted capture stops at an escaped quote.
-      if (value.includes('docker_source') || !token.startsWith("'") || SHELL_EXPANDS.test(token)) shown.push('docker.recommended_plugins');
+      // Only a single-quoted literal is read whole: the double-quoted capture stops at an escaped quote,
+      // and a spliced `'\''` reaches settings-edit as a bare quote, so it is not simulated either.
+      const edit = simulable && token.startsWith("'") && !SHELL_EXPANDS.test(token) && !token.includes("'\\''")
+        ? simulatedEdit(file, cwd, verb, [t, value]) : null;
+      const entry = `channels.${t}`;
+      const others = edit
+        ? edit.changed.filter(field => field !== entry && !field.startsWith(`${entry}.`))
+        : ['docker.recommended_plugins'];
+      for (const field of others) if (!shown.includes(field)) shown.push(field);
       continue;
     }
     if (SHELL_EXPANDS.test(t)) {
       if (!shown.includes(t)) shown.push(t);
       continue;
     }
+    if (verb === 'migrate') {
+      // A migration asks when it would change a protected path on this config.
+      const args = simulable ? migrateArgs(m, command) : null;
+      const edit = args ? simulatedEdit(file, cwd, verb, args) : null;
+      for (const field of edit ? edit.changed : [t]) if (!shown.includes(field)) shown.push(field);
+      continue;
+    }
     const dotted = resolveTarget(verb, t);
     if ((dotted === 'monitors' || dotted.startsWith('monitors.'))
       && silentWatchWrite(command, verb, dotted, token, mode, origin)) continue;
     if (!ASK_PATH.test(dotted) && ASK_CONTAINER.test(dotted)) {
-      // A preceding shell command can change cwd or the comparison baseline.
-      // Keep such parent writes opaque rather than interpreting shell programs.
-      const changed = command.slice(0, m.index).match(/[;&|\n]/)
-        ? [dotted]
-        : containerChanges(stripQuotes(m[1]), cwd, dotted, verb, token);
+      const changed = simulable ? containerChanges(file, cwd, dotted, verb, t, token) : [dotted];
       for (const field of changed) if (!shown.includes(field)) shown.push(field);
       continue;
     }

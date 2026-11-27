@@ -52,6 +52,7 @@ type Json = any;
 // Versioned migrations preserve unrelated operator settings. The normal persist
 // path validates the complete result and records only the changed leaves.
 // A migration declares whether it takes arguments and any effect after persist.
+// `run` only reads files: the settings gate runs it on a copy, so writes belong in `afterPersist`.
 type Report = Record<string, unknown>;
 type Migration = {
   run: (config: Json, ctx: { args: string[]; hermitDir: string }) => Report | void;
@@ -464,6 +465,126 @@ export function applyKnown(config: Json, arg: string, raw: string): ApplyResult 
 
 }
 
+// --- Write verbs: one step shared by the CLI and the settings gate ---
+
+/** The verbs that write the config file. */
+export const WRITE_VERBS: ReadonlySet<string> = new Set(['set', 'append', 'unset', 'toggle', 'apply-known', 'migrate', 'channel-register']);
+
+/** Write verbs that take a value after their target. */
+export const TAKES_VALUE: ReadonlySet<string> = new Set(['set', 'append', 'apply-known', 'channel-register']);
+
+/**
+ * What a write verb decided. `stop` ends the command with that reply and writes
+ * nothing. Otherwise `write` says whether the config changed enough to persist,
+ * `reply` is printed when it has keys, and `afterPersist` runs after the write.
+ */
+export type EditOutcome =
+  | { stop: Json }
+  | { write: boolean; reply?: Json; afterPersist?: () => void; actor?: string };
+
+/**
+ * Apply one write verb to `config` in place. A refusal throws an Error whose
+ * message is the CLI's error token. No file is touched: the settings gate runs
+ * this on a copy to see what a command would change.
+ */
+export function applyEdit(config: Json, op: string, args: string[], hermitDir: string): EditOutcome {
+  switch (op) {
+    case 'migrate': {
+      const migration = Object.hasOwn(migrations, args[0]) ? migrations[args[0]] : undefined;
+      if (!migration || (!migration.takesArgs && args.length !== 1)) throw new Error('unsupported_migration');
+      const prior = JSON.stringify(config);
+      let report: Report | void;
+      try {
+        report = migration.run(config, { args: args.slice(1), hermitDir });
+      } catch (err) {
+        throw new Error(`migration_conflict:${(err as Error).message}`);
+      }
+      return {
+        write: prior !== JSON.stringify(config),
+        reply: report || undefined,
+        afterPersist: report && migration.afterPersist ? () => migration.afterPersist!(hermitDir, report) : undefined,
+        actor: `settings-migrate:${args[0]}`,
+      };
+    }
+
+    case 'apply-known': {
+      const [arg, value] = args;
+      if (!arg || value === undefined) throw new Error('usage');
+      const result = applyKnown(config, arg, value);
+      if (!result.ok) return { stop: { status: 'refused', reason: result.reason, detail: result.detail } };
+      return { write: true, reply: { path: result.path, value: result.value, applies: result.applies } };
+    }
+
+    case 'channel-register': {
+      const [key, raw] = args;
+      if (args.length !== 2 || !key || !/^[A-Za-z0-9_-]+$/.test(key)
+        || ['primary', '__proto__', 'constructor', 'prototype'].includes(key)) throw new Error('invalid_channel_key');
+      const prior = JSON.stringify(config);
+      const payload = parseValue(raw);
+      const allowed = ['plugin', 'marketplace', 'attributes', 'send_script', 'format', 'state_dir', 'members_only', 'docker_source'];
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('invalid_registration');
+      if (Object.keys(payload).some(field => !allowed.includes(field))) throw new Error('unknown_registration_field');
+      const { docker_source: dockerSource, ...fields } = payload;
+      if (Object.hasOwn(payload, 'docker_source')
+        && (typeof dockerSource !== 'string' || !/^[^/\s]+\/[^/\s]+$/.test(dockerSource))) throw new Error('invalid_docker_source');
+      const existing = getPath(config, `channels.${key}`);
+      if (existing !== undefined && (!existing || typeof existing !== 'object' || Array.isArray(existing))) throw new Error('invalid_channel_entry');
+      const merged = { ...existing, ...fields };
+      for (const [field, value] of Object.entries({ enabled: true, default_chat_id: null, state_dir: `.claude.local/channels/${key}` })) {
+        if (!Object.hasOwn(merged, field)) merged[field] = value;
+      }
+      setPath(config, `channels.${key}`, merged);
+      if (dockerSource !== undefined) {
+        const plugin = merged.plugin ?? key;
+        const entries = getPath(config, 'docker.recommended_plugins');
+        if (entries !== undefined && !Array.isArray(entries)) throw new Error('invalid_boot_entries');
+        if (!entries?.some((entry: Json) => entry?.plugin === plugin && entry?.marketplace === dockerSource)) {
+          setPath(config, 'docker.recommended_plugins', [...(entries ?? []), { plugin, marketplace: dockerSource, scope: 'local', enabled: true }]);
+        }
+      }
+      if (prior === JSON.stringify(config)) return { stop: { status: 'unchanged' } };
+      return { write: true };
+    }
+
+    case 'set': {
+      const dotted = args[0];
+      if (!dotted || args.length < 2) throw new Error('usage');
+      setPath(config, dotted, parseValue(args[1]));
+      return { write: true };
+    }
+
+    case 'append': {
+      const dotted = args[0];
+      if (!dotted || args.length < 2) throw new Error('usage');
+      const current = getPath(config, dotted);
+      if (current !== undefined && !Array.isArray(current)) throw new Error(`not_an_array:${dotted}`);
+      const value = parseValue(args[1]);
+      if (typeof value?.id === 'string' && current?.some((entry: Json) => entry?.id === value.id)) {
+        throw new Error(`duplicate_id:${value.id}`);
+      }
+      setPath(config, dotted, [...(current ?? []), value]);
+      return { write: true };
+    }
+
+    case 'unset': {
+      const dotted = args[0];
+      if (!dotted) throw new Error('usage');
+      if (!unsetPath(config, dotted)) return { stop: { status: 'none', reason: 'not_set' } };
+      return { write: true };
+    }
+
+    case 'toggle': {
+      const dotted = args[0];
+      if (!dotted) throw new Error('usage');
+      togglePath(config, dotted);
+      return { write: true };
+    }
+
+    default:
+      throw new Error(`unknown_op:${op}`);
+  }
+}
+
 // --- CLI dispatch ---
 
 if (import.meta.main) {
@@ -549,22 +670,6 @@ if (import.meta.main) {
   const done = (warnings: string[]): never => (warnings.length ? emitJson({ warnings }) : emit('OK'));
 
   switch (op) {
-    case 'migrate': {
-      const migration = Object.hasOwn(migrations, rest[0]) ? migrations[rest[0]] : undefined;
-      if (!migration || (!migration.takesArgs && rest.length !== 1)) exitError('unsupported_migration');
-      let report: Report | void;
-      try {
-        report = migration.run(config, { args: rest.slice(1), hermitDir: stateDir });
-      } catch (err) {
-        exitError(`migration_conflict:${(err as Error).message}`);
-      }
-      const warnings = JSON.stringify(before) !== JSON.stringify(config) ? persist(`settings-migrate:${rest[0]}`) : [];
-      if (report) migration.afterPersist?.(stateDir, report);
-      if (report && Object.keys(report).length) emitJson({ ...report, ...(warnings.length ? { warnings } : {}) });
-      done(warnings);
-      break;
-    }
-
     case 'get': {
       const value = getPath(config, rest[0]);
       emitJson(value === undefined ? { status: 'none', reason: 'not_set' } : { value });
@@ -576,101 +681,19 @@ if (import.meta.main) {
       break;
     }
 
-    case 'apply-known': {
-      const [arg, value] = rest;
-      if (!arg || value === undefined) exitError();
-      const result = applyKnown(config, arg, value);
-      if (!result.ok) emitJson({ status: 'refused', reason: result.reason, detail: result.detail });
-      const warnings = persist();
-      emitJson({ path: result.path, value: result.value, applies: result.applies, ...(warnings.length ? { warnings } : {}) });
-      break;
-    }
-
-    case 'channel-register': {
-      const [key, raw] = rest;
-      if (rest.length !== 2 || !key || !/^[A-Za-z0-9_-]+$/.test(key)
-        || ['primary', '__proto__', 'constructor', 'prototype'].includes(key)) exitError('invalid_channel_key');
-      const payload = parseValue(raw);
-      const allowed = ['plugin', 'marketplace', 'attributes', 'send_script', 'format', 'state_dir', 'members_only', 'docker_source'];
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) exitError('invalid_registration');
-      if (Object.keys(payload).some(field => !allowed.includes(field))) exitError('unknown_registration_field');
-      const { docker_source: dockerSource, ...fields } = payload;
-      if (Object.hasOwn(payload, 'docker_source')
-        && (typeof dockerSource !== 'string' || !/^[^/\s]+\/[^/\s]+$/.test(dockerSource))) exitError('invalid_docker_source');
-      const existing = getPath(config, `channels.${key}`);
-      if (existing !== undefined && (!existing || typeof existing !== 'object' || Array.isArray(existing))) exitError('invalid_channel_entry');
-      const merged = { ...existing, ...fields };
-      for (const [field, value] of Object.entries({ enabled: true, default_chat_id: null, state_dir: `.claude.local/channels/${key}` })) {
-        if (!Object.hasOwn(merged, field)) merged[field] = value;
-      }
-      setPath(config, `channels.${key}`, merged);
-      if (dockerSource !== undefined) {
-        const plugin = merged.plugin ?? key;
-        const entries = getPath(config, 'docker.recommended_plugins');
-        if (entries !== undefined && !Array.isArray(entries)) exitError('invalid_boot_entries');
-        if (!entries?.some((entry: Json) => entry?.plugin === plugin && entry?.marketplace === dockerSource)) {
-          setPath(config, 'docker.recommended_plugins', [...(entries ?? []), { plugin, marketplace: dockerSource, scope: 'local', enabled: true }]);
-        }
-      }
-      if (JSON.stringify(before) === JSON.stringify(config)) emitJson({ status: 'unchanged' });
-      done(persist());
-      break;
-    }
-
-    case 'set': {
-      const dotted = rest[0];
-      if (!dotted || rest.length < 2) exitError();
+    default: {
+      let outcome: EditOutcome;
       try {
-        setPath(config, dotted, parseValue(rest[1]));
+        outcome = applyEdit(config, op, rest, stateDir);
       } catch (err) {
         failJson(err);
         process.exit();
       }
-      done(persist());
-      break;
+      if ('stop' in outcome) emitJson(outcome.stop);
+      const warnings = outcome.write ? persist(outcome.actor) : [];
+      outcome.afterPersist?.();
+      if (outcome.reply && Object.keys(outcome.reply).length) emitJson({ ...outcome.reply, ...(warnings.length ? { warnings } : {}) });
+      done(warnings);
     }
-
-    case 'append': {
-      const dotted = rest[0];
-      if (!dotted || rest.length < 2) exitError();
-      const current = getPath(config, dotted);
-      if (current !== undefined && !Array.isArray(current)) exitError(`not_an_array:${dotted}`);
-      const value = parseValue(rest[1]);
-      if (typeof value?.id === 'string' && current?.some((entry: Json) => entry?.id === value.id)) {
-        exitError(`duplicate_id:${value.id}`);
-      }
-      try {
-        setPath(config, dotted, [...(current ?? []), value]);
-      } catch (err) {
-        failJson(err);
-        process.exit();
-      }
-      done(persist());
-      break;
-    }
-
-    case 'unset': {
-      const dotted = rest[0];
-      if (!dotted) exitError();
-      if (!unsetPath(config, dotted)) emitJson({ status: 'none', reason: 'not_set' });
-      done(persist());
-      break;
-    }
-
-    case 'toggle': {
-      const dotted = rest[0];
-      if (!dotted) exitError();
-      try {
-        togglePath(config, dotted);
-      } catch (err) {
-        failJson(err);
-        process.exit();
-      }
-      done(persist());
-      break;
-    }
-
-    default:
-      exitError(`unknown_op:${op}`);
   }
 }
