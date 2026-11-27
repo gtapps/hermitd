@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Connector access requests in `/hermitd:channel-access` point to `hermitd connector pair` and `revoke` instead of adding an `allowed_users` entry that shut out every other paired person.
+
 ## [1.4.44] - 2026-11-27
 
 ### Fixed

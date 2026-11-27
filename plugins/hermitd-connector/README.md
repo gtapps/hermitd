@@ -49,7 +49,7 @@ To work with the same agent throughout a voice chat, say “For the rest of this
 
 If the agent needs longer, say “Check whether Atlas has an update.” Messages wait while the agent is offline. Voice mode may shorten a long reply.
 
-Each person has their own chat with the agent. Everyone paired with that agent shares its session, tools, and accounts. Use separate agents when people need to keep their work private.
+Each person has their own chat with the agent. Everyone paired with that agent shares its session, memory, tools, and accounts, including what it knows about you. Use separate agents when people need to keep their work private.
 
 ## Manage it
 
