@@ -24,7 +24,7 @@ import { wallMinutes } from '../cron-shift';
 import { sendToChannel } from '../channel-send';
 import { loadMessages, type Messages } from '../messages';
 import { readTasks, currentWork, latestWaitIsStall, type Task } from '../tasks';
-import { conversationKey } from '../conversation-key';
+import { baseChat, conversationKey } from '../conversation-key';
 import { homeChatKey } from '../home-chat';
 import { decodeDecision } from '../tasks';
 import { clip } from '../sanitize';
@@ -134,8 +134,8 @@ function minutesUntilNextFire(dowField: string, fireMin: number, nowMin: number,
 // suffix on either key is ignored, so a thread lists its whole chat's entries.
 function belongsToChat(entry: Json, chatKey: string | undefined, home: string | null): boolean {
   if (chatKey === undefined) return false;
-  const chat = chatKey.split('~')[0];
-  if (typeof entry?.chat === 'string') return entry.chat.split('~')[0] === chat;
+  const chat = baseChat(chatKey);
+  if (typeof entry?.chat === 'string') return baseChat(entry.chat) === chat;
   return home !== null && home === chat;
 }
 

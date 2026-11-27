@@ -131,7 +131,7 @@ const microSuppressed = (id: string, consecutive_clean = 0) => ({
 });
 
 describe('pending decision delivery budget', () => {
-  function decisionFixture(authority = 'admin', extra: object = {}) {
+  function decisionFixture(authority = 'admin', extra: object = {}, conversation = 'telegram:team') {
     const f = taskFixture();
     const tokenDir = path.join(f.dir, '..', '.claude.local', 'channels', 'telegram');
     fs.mkdirSync(tokenDir, { recursive: true });
@@ -139,7 +139,7 @@ describe('pending decision delivery budget', () => {
     f.put('config.json', { operator_profile: 'non-technical', timezone: 'UTC', heartbeat: { active_hours: { start: '00:00', end: '24:00' } }, channels: { telegram: { enabled: true, default_chat_id: 'home', state_dir: tokenDir, ...extra } } });
     fs.writeFileSync(path.join(f.dir, 'HEARTBEAT.md'), '# Checks\n- Review proposals/ for attention\n');
     const receipt = mutateTask(f.dir, 'open', undefined, { requester: 'agent', title: 'Question', done: 'Answered',
-      ...(authority === 'admin' ? { kind: 'proposal' } : { conversation: 'telegram:team' }),
+      ...(authority === 'admin' ? { kind: 'proposal' } : { conversation }),
       'waiting-on': authority, decision: JSON.stringify({ purpose: authority === 'admin' ? 'consent' : 'input', authority, generation: 1 }),
     }, '') as { id: string };
     const send = async (url: string, generation = 1) => runScript('channel-send.ts', { cwd: f.dir + '/..', args: [f.dir, '--notice'], env: { AGENT_DIR: f.dir, HERMIT_TELEGRAM_API_URL: url },
@@ -211,6 +211,14 @@ describe('pending decision delivery budget', () => {
     try {
       await f.send(stub.url);
       expect(stub.requests[0].body.chat_id).toBe('team');
+      expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 1 }] });
+    } finally { stub.stop(); f.cleanup(); }
+  });
+  test('an input decision on a threaded task goes to its thread', async () => {
+    const f = decisionFixture('chat', {}, 'telegram:team~7'); const stub = startHttpStub();
+    try {
+      await f.send(stub.url);
+      expect(stub.requests[0].body).toMatchObject({ chat_id: 'team', message_thread_id: '7' });
       expect(pendingDecisions(f.dir)).toMatchObject({ ok: true, records: [{ delivered: 1 }] });
     } finally { stub.stop(); f.cleanup(); }
   });

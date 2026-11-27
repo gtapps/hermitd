@@ -8,7 +8,7 @@ import { acquireLockWithWait, releaseLock } from './lockfile';
 import { writeFileAtomic } from './md-write';
 import { readJson } from './cli';
 import { readSettledConfig } from './config-read';
-import { isKey } from './conversation-key';
+import { isKey, parseKey } from './conversation-key';
 import { conversationHistory, isLoggingEnabled } from './channel-log';
 import { allowedUserIds } from './channel-auth';
 import { threadRecords, type Task } from './tasks';
@@ -50,9 +50,8 @@ function withStore<T>(dir: string, body: (store: Store) => T): T {
 }
 
 function conversation(key: string) {
-  const [source, target] = key.split(':');
-  const at = target.indexOf('~');
-  return { source, chatId: at < 0 ? target : target.slice(0, at), thread: at < 0 ? undefined : target.slice(at + 1) };
+  const { source, chat, thread } = parseKey(key);
+  return { source, chatId: chat, thread };
 }
 
 export function markUnfinished(dir: string, key: string, ts: string): void {

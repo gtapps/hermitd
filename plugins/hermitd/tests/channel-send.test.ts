@@ -1625,10 +1625,25 @@ test('core egress formats built-ins and passes Telegram threads', async () => {
   const wd = setupChannelWorkdir();
   const stub = startHttpStub();
   try {
-    const result = await withApi(stub.url, () => sendToOwnedChat(hermit(wd.dir), 'telegram:12345', '**hello** [link](https://example.com)', { thread: '42' }));
+    const result = await withApi(stub.url, () => sendToOwnedChat(hermit(wd.dir), 'telegram:12345~42', '**hello** [link](https://example.com)'));
     expect(result.ok).toBe(true);
     expect(stub.requests[0].body).toMatchObject({ text: 'hello link\nhttps://example.com', message_thread_id: '42' });
   } finally { stub.stop(); wd.cleanup(); }
+});
+
+test('an owned send takes the thread from the key', async () => {
+  const wd = setupWorkdir();
+  try {
+    write(path.join(wd.dir, 'send.sh'), '#!/bin/sh\ncat > /dev/null\nenv > env.out\n');
+    fs.chmodSync(path.join(wd.dir, 'send.sh'), 0o755);
+    const config = { channels: { custom: { send_script: 'send.sh' } } };
+    const result = await sendToOwnedChat(hermit(wd.dir), 'custom:C1~T1', 'hello', { config });
+    expect(result).toMatchObject({ ok: true, route: 'chat' });
+    const env = fs.readFileSync(path.join(wd.dir, 'env.out'), 'utf8');
+    expect(env).toContain('HERMIT_CHAT_ID=C1\n');
+    expect(env).toContain('HERMIT_THREAD_ID=T1\n');
+    expect(await sendToOwnedChat(hermit(wd.dir), 'discord:C1~T1', 'hello', { config })).toMatchObject({ ok: false, error: 'invalid_chat' });
+  } finally { wd.cleanup(); }
 });
 
 test('custom send scripts receive converted unsplit text only when declared', async () => {
