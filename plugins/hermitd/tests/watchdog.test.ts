@@ -5596,6 +5596,9 @@ test('legacy resident-missing stamp does not prevent restart without RESIDENT.md
   expect(await waitForStartMarker(h)).toBe(true);
   expect(fs.readFileSync(eventsFile(h), 'utf8')).toContain('tree-verified');
   expect(fs.readFileSync(eventsFile(h), 'utf8')).not.toContain('operator notified; restart skipped');
+  const runtime = readJson(state(h, 'runtime.json'));
+  expect(runtime.last_error).toBe('unclean_shutdown');
+  expect(runtime.watchdog_restart_reason).toBe('dead-process');
 }));
 
 

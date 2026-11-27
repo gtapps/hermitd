@@ -64,12 +64,17 @@ test('a survivor after the kill aborts: no credential commit, no start, lock rel
 
 test('a held lifecycle lock backs off before touching anything', () => inFixture(async (f) => {
   // A live, same-user holder other than this process (which would re-take its own lock).
-  fs.writeFileSync(stateFile(f, '.lifecycle.lock'), String(process.ppid));
-  await doRestart(f.world, 'resident', 'dead-process', readState(f, 'runtime.json'), 'UTC');
-  expect(f.steps).toEqual([]);
-  expect(events(f)).toBe('');
-  expect(readState(f, 'runtime.json').last_error).toBeUndefined();
-  expect(fs.readFileSync(stateFile(f, '.lifecycle.lock'), 'utf8')).toBe(String(process.ppid));
+  const holder = Bun.spawn(['sleep', '30']);
+  try {
+    fs.writeFileSync(stateFile(f, '.lifecycle.lock'), String(holder.pid));
+    await doRestart(f.world, 'resident', 'dead-process', readState(f, 'runtime.json'), 'UTC');
+    expect(f.steps).toEqual([]);
+    expect(events(f)).toBe('');
+    expect(readState(f, 'runtime.json').last_error).toBeUndefined();
+    expect(fs.readFileSync(stateFile(f, '.lifecycle.lock'), 'utf8')).toBe(String(holder.pid));
+  } finally {
+    holder.kill();
+  }
 }));
 
 test('a missing start binary still records the restart but announces nothing', () => inFixture(async (f) => {
@@ -125,6 +130,7 @@ for (const [scenario, { expected, requested }] of Object.entries(scenarios)) {
     // Every restart stamps its time without clobbering what the caller wrote.
     const ws = readState(f, 'watchdog-state.json');
     expect(Date.parse(ws.last_restart_at)).toBeGreaterThan(Date.parse(priorRestart));
+    expect(ws.consecutive_stale).toBe(2);
     expect(ws.last_pane_hash).toBe('abc');
   }));
 }
