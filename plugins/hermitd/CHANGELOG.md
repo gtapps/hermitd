@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- A follow-up for a helper whose session stopped resumes it on this machine instead of reporting the message as queued. A helper offline on another machine gets an offer of a new helper there, since its queued message is never delivered.
+- A follow-up for a helper whose session stopped resumes it on this machine instead of reporting the message as queued. For a helper offline on another machine, the agent offers a new helper there, since its queued message is never delivered.
 
 ## [1.4.44] - 2026-11-27
 

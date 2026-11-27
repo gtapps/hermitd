@@ -90,4 +90,4 @@ execution:
     The operator writes in the terminal: the wholesale export helper on my laptop stopped partway. Continue the task, and also add the supplier SKUs. Handle it with /hermitd:task.
 graders:
   - {"name":"no-local-resume","type":"tool_used","tool":"Bash","input_match":"claude --bg","min":0,"max":0,"weight":2}
-  - {"name":"rubric","type":"llm","criteria":"PASS if the reply tells the operator the follow-up cannot reach the stopped helper on the laptop from here and offers to start a new helper on the laptop environment (it may also mention resuming the old one on the laptop). FAIL if it says the message is queued and will run when the laptop reconnects, or asks the operator to wait for that.","weight":2}
+  - {"name":"rubric","type":"llm","criteria":"PASS if the reply says the follow-up was not sent to the offline helper (or that a message to it would not arrive) and offers to start a new helper on the laptop environment; mentioning that the old one can be resumed on the laptop is fine. FAIL if it says the follow-up was sent or queued and will run when the laptop reconnects, or asks the operator to wait for the laptop.","weight":2}

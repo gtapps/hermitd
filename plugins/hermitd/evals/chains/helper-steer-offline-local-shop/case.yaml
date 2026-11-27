@@ -90,4 +90,4 @@ execution:
 graders:
   - {"name":"resumes-in-place","type":"tool_used","tool":"Bash","input_match":"claude --bg --resume c0ffee12-3456-4789-8abc-def012345678\\s+'","weight":3}
   - {"name":"no-fresh-launch","type":"tool_used","tool":"Bash","input_match":"claude --bg(?! --resume)","min":0,"max":0,"weight":2}
-  - {"name":"no-wait-for-reconnect","type":"regex","target":"last_message","pattern":"reconnect","weight":1,"match":"not_contains"}
+  - {"name":"no-wait-for-reconnect","type":"regex","target":"last_message","pattern":"(?:until|when|once)\\s+(?:it|the (?:helper|machine|session)|that machine)\\s+reconnects","flags":"i","weight":1,"match":"not_contains"}

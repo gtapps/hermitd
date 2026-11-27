@@ -544,7 +544,7 @@ chainCase('helper-steer-offline-local-shop', 'heldout', 'A follow-up for a local
     + steer('the wholesale export helper stopped partway because it hit the usage limit'),
   [{ name: 'resumes-in-place', type: 'tool_used', tool: 'Bash', input_match: String.raw`claude --bg --resume ${STOPPED_SID}\s+'`, weight: 3 },
     { name: 'no-fresh-launch', type: 'tool_used', tool: 'Bash', input_match: String.raw`claude --bg(?! --resume)`, min: 0, max: 0, weight: 2 },
-    last('no-wait-for-reconnect', 'reconnect', 1, true)],
+    { name: 'no-wait-for-reconnect', type: 'regex', target: 'last_message', pattern: String.raw`(?:until|when|once)\s+(?:it|the (?:helper|machine|session)|that machine)\s+reconnects`, flags: 'i', weight: 1, match: 'not_contains' }],
   chainScaffold(), STEER_TOOLS, STEER_OPTS);
 chainCase('helper-steer-offline-remote-shop', 'heldout', 'A follow-up for a helper on another machine whose Remote Control row is offline.',
   'Say the follow-up cannot reach it from here and offer a new helper on that environment',
@@ -552,7 +552,7 @@ chainCase('helper-steer-offline-remote-shop', 'heldout', 'A follow-up for a help
     '- config.json: remote true, remote_environments has laptop'])
     + steer('the wholesale export helper on my laptop stopped partway'),
   [{ name: 'no-local-resume', type: 'tool_used', tool: 'Bash', input_match: 'claude --bg', min: 0, max: 0, weight: 2 },
-    rubric('PASS if the reply tells the operator the follow-up cannot reach the stopped helper on the laptop from here and offers to start a new helper on the laptop environment (it may also mention resuming the old one on the laptop). FAIL if it says the message is queued and will run when the laptop reconnects, or asks the operator to wait for that.')],
+    rubric('PASS if the reply says the follow-up was not sent to the offline helper (or that a message to it would not arrive) and offers to start a new helper on the laptop environment; mentioning that the old one can be resumed on the laptop is fine. FAIL if it says the follow-up was sent or queued and will run when the laptop reconnects, or asks the operator to wait for the laptop.')],
   residentScaffold({ ...RESIDENT_CONFIG, remote: true, remote_environments: { laptop: 'env_01EvalLaptop' } },
     { '.hermit/OPERATOR.md': '# Operator\n\nRuns a small online tea shop alone. Prefers short messages.\n' }),
   STEER_TOOLS, STEER_OPTS);
