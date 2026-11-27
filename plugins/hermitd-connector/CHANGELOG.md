@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.0.4] - 2026-11-27
 
 ### Changed
 - Channel instructions tell the agent that paired people are admitted members it should serve, without asking them to prove who they are

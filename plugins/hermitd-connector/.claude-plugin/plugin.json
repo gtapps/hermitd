@@ -1,10 +1,10 @@
 {
   "name": "hermitd-connector",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "dependencies": [
     {
       "name": "hermitd",
-      "version": "^1.4.39"
+      "version": "^1.4.45"
     }
   ],
   "description": "The in-agent channel for the hermitd connector: messages people send from their own Claude app reach the agent as a member, and its replies go back to them.",
@@ -25,7 +25,9 @@
   "mcpServers": {
     "connector": {
       "command": "bun",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server.ts"]
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/server.ts"
+      ]
     }
   },
   "channels": [
