@@ -26,6 +26,8 @@ interface HostOptions {
 }
 
 const onPath = (name: string) => Bun.which(name, { PATH: process.env.PATH });
+const NO_ADMINS = 'Browser display ready. Phone takeover is off: browser.admins is empty. Add admins with /hermitd:browser setup, then rerun hermitd run browser-host.';
+const HANDBACK_MONITOR = { id: 'browser-handback', description: 'Browser control handed back', class: 'stream', enabled: true, command: '.hermit/bin/hermitd-run browser events' };
 export function tailscaleCLI(): string {
   const found = onPath('tailscale');
   if (found) return found;
@@ -120,7 +122,7 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
   if (deployment === 'host' && (options.platform ?? browserHostPlatform()) === 'darwin' && config.browser.admins.length) throw new Error('takeover_unsupported: use Claude in Chrome on macOS');
   if (deployment === 'host') {
     await installHostPrerequisites(project, options);
-    if (!config.browser.admins.length) { startDisplay(); return { status: 'ready' }; }
+    if (!config.browser.admins.length) { startDisplay(); log(NO_ADMINS); return { status: 'ready' }; }
     if (browserRuntimeMode(dir) !== 'tmux') throw new Error('takeover_needs_tmux: phone takeover runs only for always-on tmux hermits. Start the hermit with hermitd start, then rerun hermitd run browser-host.');
   }
   if (deployment === 'docker_host') {
@@ -142,6 +144,7 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
   };
   if (!config.browser.admins.length) {
     if (deployment === 'docker_host') await ensureDockerDisplay();
+    log(NO_ADMINS);
     return { status: 'ready' };
   }
   const tailscale = tailscaleCLI();
@@ -185,13 +188,21 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
   };
   const script = (name: string) => path.join(import.meta.dir, name + '.ts');
   const set = (key: string, value: unknown) => required([process.execPath, script('settings-edit'), path.join(dir, 'config.json'), 'set', key, JSON.stringify(value)]);
+  const registerHandback = async () => {
+    const monitors = config.monitors;
+    const index = monitors.findIndex((entry: any) => entry?.id === HANDBACK_MONITOR.id);
+    if (index >= 0 && Bun.deepEquals(monitors[index], HANDBACK_MONITOR)) return;
+    await set('monitors', index >= 0 ? monitors.map((entry: any, i: number) => i === index ? HANDBACK_MONITOR : entry) : [...monitors, HANDBACK_MONITOR]);
+  };
+  const ready = `Browser viewer ready: https://${host}:${port}/ (handback monitor registered)`;
   if (config.browser.port !== port) await set('browser.port', port);
   if (config.browser.host !== host) await set('browser.host', host);
   if (configured && config.browser.port === port) {
     if (deployment === 'docker_host') await ensureDockerDisplay();
     else startDisplay();
     await verifyRoute();
-    log(`Browser viewer ready: https://${host}:${port}/`);
+    await registerHandback();
+    log(ready);
     return { status: 'ready', host, port };
   }
   if (deployment === 'docker_host') {
@@ -227,7 +238,8 @@ export async function setupBrowserHost(project = process.cwd(), options: HostOpt
   }
   if (deployment === 'docker_host') await ensureDockerDisplay();
   await verifyRoute();
-  log(`Browser viewer ready: https://${host}:${port}/`);
+  await registerHandback();
+  log(ready);
   return { status: 'ready', host, port };
 }
 
