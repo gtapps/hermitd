@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.1.13] - 2026-11-27
 
 ### Fixed
 - A proxy that refuses the GitHub tunnel reports `proxy_refused` on Bun 1.4.5 and later instead of `proxy_unreachable`.
