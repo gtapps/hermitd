@@ -2,14 +2,17 @@
 
 ## [Unreleased]
 
-### Changed
-
-- `hermitd run browser-host` registers the `browser-handback` monitor once the viewer is verified, so phone sign-in setup no longer asks for a separate monitor approval in chat.
-
 ### Fixed
 
+- Managed browser commands no longer lose or corrupt their output when stdout and stderr go to one file, as in Claude Code's Bash tool; `eval`, `get` and other quiet commands returned nothing to the agent.
+- Take over restores the phone-width page when the agent had widened the signed-in browser with `set viewport` or `set device`, so the page is no longer cut off on the right.
 - `hermitd run browser-host` says phone takeover is off when no browser admins are set, instead of exiting silently.
 - A worker's result or question returns its task to the agent, so a finished worker no longer blocks context compaction.
+
+### Changed
+
+- The takeover viewer shows a one-line gesture hint after Take over: two fingers scroll, pinch zooms the page.
+- `hermitd run browser-host` registers the `browser-handback` monitor once the viewer is verified, so phone sign-in setup no longer asks for a separate monitor approval in chat.
 
 ### Upgrade Instructions
 

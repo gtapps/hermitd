@@ -48,16 +48,25 @@ if (argv[2] === 'auth' && argv[3] === 'list') {
 }
 process.exit(Number((argv[3] === 'save' ? env.TEST_SAVE_EXIT : undefined) ?? env.TEST_EXIT ?? 0));
 `, { mode: 0o755 });
-  const runCaptured = async (argv: string[], env: Record<string, string> = {}, options: { deployment?: 'host' | 'container'; data?: string; platform?: NodeJS.Platform } = {}, stdin?: string) => {
-    const child = Bun.spawn([process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', browserData: ${JSON.stringify(browserData)}, marker: ${JSON.stringify(path.join(root, 'marker'))}, ...${JSON.stringify(options)}, ensureDisplay: async () => {
+  type RunOptions = { deployment?: 'host' | 'container'; data?: string; platform?: NodeJS.Platform; takeoverReset?: boolean };
+  // With a file, a shell appends stdout and stderr to it the way the Bash tool collects output.
+  const spawnAgent = (argv: string[], env: Record<string, string>, options: RunOptions, stdin: string | undefined, file?: string) => Bun.spawn([...file ? ['sh', '-c', 'exec "$@" >>"$OUTPUT_FILE" 2>&1', 'sh'] : [], process.execPath, '-e', `import { runBrowserAgent } from ${JSON.stringify(path.join(PLUGIN_ROOT, 'scripts/browser-agent.ts'))}; process.exitCode = await runBrowserAgent(${JSON.stringify(argv)}, ${JSON.stringify(binary)}, () => true, { deployment: 'container', browserData: ${JSON.stringify(browserData)}, marker: ${JSON.stringify(path.join(root, 'marker'))}, ...${JSON.stringify(options)}, ensureDisplay: async () => {
       const fs = await import('node:fs');
       fs.appendFileSync(${JSON.stringify(path.join(root, 'display-calls'))}, 'ensure\\n');
       return process.env.TEST_BLOCKER ? { blocker: process.env.TEST_BLOCKER } : JSON.parse(fs.readFileSync(${JSON.stringify(path.join(dir, 'state/browser-display.json'))}, 'utf8'));
     } });`], {
-      cwd: root, env: { ...process.env, HOME: root, AGENT_DIR: dir, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, DISPLAY: ':99', AGENT_BROWSER_PROFILE: '/bad', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_IDLE_TIMEOUT_MS: '15', XDG_RUNTIME_DIR: '/run/shared', ...env }, stdin: stdin === undefined ? 'ignore' : new Blob([stdin]), stdout: 'pipe', stderr: 'pipe',
+      cwd: root, env: { ...process.env, HOME: root, AGENT_DIR: dir, HERMIT_PLUGIN_ROOT: PLUGIN_ROOT, DISPLAY: ':99', AGENT_BROWSER_PROFILE: '/bad', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_IDLE_TIMEOUT_MS: '15', XDG_RUNTIME_DIR: '/run/shared', ...file ? { OUTPUT_FILE: file } : {}, ...env }, stdin: stdin === undefined ? 'ignore' : new Blob([stdin]), stdout: 'pipe', stderr: 'pipe',
     });
+  const runCaptured = async (argv: string[], env: Record<string, string> = {}, options: RunOptions = {}, stdin?: string) => {
+    const child = spawnAgent(argv, env, options, stdin);
     const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
     return { code, stdout, stderr, data: JSON.parse(stdout) };
+  };
+  const runToFile = async (argv: string[]) => {
+    const file = path.join(root, 'shared-output');
+    fs.writeFileSync(file, 'before\n');
+    await spawnAgent(argv, {}, {}, undefined, file).exited;
+    return fs.readFileSync(file, 'utf8');
   };
   const run = async (...args: Parameters<typeof runCaptured>) => {
     const { code, stderr, data } = await runCaptured(...args);
@@ -65,7 +74,7 @@ process.exit(Number((argv[3] === 'save' ? env.TEST_SAVE_EXIT : undefined) ?? env
   };
   const calls = (): { argv: string[]; stdin: string; env: Record<string, string> }[] =>
     fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf8').trimEnd().split('\n').map(line => JSON.parse(line)) : [];
-  return { dir, root, binary, browserData, socket, run, runCaptured, calls };
+  return { dir, root, binary, browserData, socket, run, runCaptured, runToFile, calls };
 }
 
 test('concurrent first calls and later calls use one private vault key instead of the ambient key', async () => {
@@ -245,6 +254,32 @@ test('persistent commands require a live claim, renew it and preserve argv and e
   expect(result.data.argv).toEqual(['open', 'https://example.com/a?x=1&y=two words']);
   expect(result.data.env).toMatchObject({ DISPLAY: ':17', AGENT_BROWSER_HEADED: '1', AGENT_BROWSER_PROFILE: '/home/claude/.claude/browser/profile', AGENT_BROWSER_ARGS: ['--no-sandbox', '--host-resolver-rules=MAP 169.254.* ^NOTFOUND', '--disable-blink-features=AutomationControlled', ...DOCKER_WEBGL, '--window-size=500,1082', '--window-position=0,0'].join('\n'), AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' });
   expect(browserLease('status', undefined, dir).expires_at!).toBeGreaterThan(before);
+});
+
+test('output survives when stdout and stderr share a file and stderr is empty', async () => {
+  const { runToFile } = fixture();
+  const output = await runToFile(['--session', 'public', 'get', 'url']);
+  expect(output.startsWith('before\n')).toBe(true);
+  expect(JSON.parse(output.slice('before\n'.length)).argv).toEqual(['--session', 'public', 'get', 'url']);
+});
+
+test('a signed-in viewport override is marked until close, and the takeover reset needs no claim', async () => {
+  const { dir, run } = fixture();
+  const marker = path.join(browserSocketDir(dir), 'viewport-override');
+  browserLease('claim', 'task', dir);
+  expect((await run(['--task', 'task', 'snapshot'])).code).toBe(0);
+  expect(fs.existsSync(marker)).toBe(false);
+  expect((await run(['--task', 'task', 'set', 'viewport', '1280', '900'])).code).toBe(0);
+  expect(fs.existsSync(marker)).toBe(true);
+  expect((await run(['--task', 'task', 'close'])).code).toBe(0);
+  expect(fs.existsSync(marker)).toBe(false);
+  expect((await run(['--session', 'public', 'set', 'device', 'iPhone 15'])).code).toBe(0);
+  expect(fs.existsSync(marker)).toBe(false);
+  browserLease('release', 'task', dir);
+  const reset = await run(['set', 'viewport', '500', '935'], {}, { takeoverReset: true });
+  expect(reset.code).toBe(0);
+  expect(reset.data.argv).toEqual(['set', 'viewport', '500', '935']);
+  expect(fs.existsSync(marker)).toBe(false);
 });
 
 test('only the holding task drives the persistent browser', async () => {
