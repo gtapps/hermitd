@@ -9,8 +9,6 @@
 ### Fixed
 
 - `hermitd run browser-host` says phone takeover is off when no browser admins are set, instead of exiting silently.
-### Fixed
-
 - A worker's result or question returns its task to the agent, so a finished worker no longer blocks context compaction.
 
 ### Upgrade Instructions
