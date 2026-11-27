@@ -39,7 +39,7 @@ On a channel-tagged turn, every free-form `Ask:` prompt below is delivered via t
 /hermitd:hermit-settings delegation-effort — effort for background helpers and task workers
 /hermitd:hermit-settings brief          — configure morning brief
 /hermitd:hermit-settings permissions    — configure unattended mode
-/hermitd:hermit-settings heartbeat      — enable/disable, interval, quiet mode, active hours, check model and effort
+/hermitd:hermit-settings heartbeat      — enable/disable, interval, quiet mode, active hours, check model and effort, clean recheck cooldown
 /hermitd:hermit-settings watchdog       — scheduler_enabled, enable/disable, stale_factor, wedge_floor, escalate_after, operator_grace, context hygiene compaction
 /hermitd:hermit-settings routines        — manage scheduled routines (add/edit/remove/enable/disable)
 /hermitd:hermit-settings env              — view/edit environment variables
@@ -243,8 +243,8 @@ Note: "Channel changes take effect on next `hermitd-start` run (type `/hermitd:h
     stale     — alert if no session progress for (e.g. 2h, 30m) [current]
   ```
   Then ask each field in sequence.
-- The check's model and effort (`heartbeat.model`: `opus` / `sonnet` / `haiku`, or `none` for the session model; `heartbeat.effort`: `low` / `medium` / `high` / `xhigh` / `max`, or `none` for the subagent's own effort) are shown with the current config and changed only when the operator asks for them.
-- Write each changed field through `settings-edit ... set heartbeat.<field> <value>` (`heartbeat.enabled`, `heartbeat.every`, `heartbeat.active_hours.start`, `heartbeat.active_hours.end`, `heartbeat.stale_threshold`, `heartbeat.model`, `heartbeat.effort`). Per-field dotted sets preserve the untouched siblings (`waiting_timeout`, `clean_recheck_cooldown`).
+- The check's model and effort (`heartbeat.model`: `opus` / `sonnet` / `haiku`, or `none` for the session model; `heartbeat.effort`: `low` / `medium` / `high` / `xhigh` / `max`, or `none` for the subagent's own effort) and `heartbeat.clean_recheck_cooldown` (a duration, or `none` to re-check every tick) are shown with the current config and changed only when the operator asks for them.
+- Write each changed field through `settings-edit ... set heartbeat.<field> <value>` (`heartbeat.enabled`, `heartbeat.every`, `heartbeat.active_hours.start`, `heartbeat.active_hours.end`, `heartbeat.stale_threshold`, `heartbeat.model`, `heartbeat.effort`, `heartbeat.clean_recheck_cooldown`). Per-field dotted sets preserve the untouched sibling (`waiting_timeout`).
 - **After the change is written**, reconcile the live Monitor with the new state via the Skill tool. The monitor's poll interval is baked in at `start` time from `heartbeat.every`, so a config-only change otherwise leaves the running monitor on the old cadence (and `/hermit-doctor` would flag the mismatch). Surface the result inline:
   - If heartbeat is now **enabled**: invoke `/hermitd:heartbeat start` (idempotent — stops the old monitor and re-registers at the new interval). Success: "Heartbeat monitor restarted at new interval (`<every>`). Active immediately."
   - If heartbeat is now **disabled**: invoke `/hermitd:heartbeat stop`. Success: "Heartbeat monitor stopped."

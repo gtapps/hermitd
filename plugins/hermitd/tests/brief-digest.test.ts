@@ -24,20 +24,24 @@ async function seed(f: ReturnType<typeof taskFixture>) {
 test('empty install and CLI mode and argument contracts', async () => {
   const f = taskFixture();
   try {
-    const missing = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, 'morning'] });
+    const run = (args: string[]) => runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, ...args] });
+    const modes = ['morning', 'evening', 'daily'] as BriefMode[];
+    const errors = [[['bad'], 'invalid_mode:bad'], [['daily', 'extra'], 'invalid_arguments']] as const;
+    // The script only reads, so the spawns run concurrently: one cold start of wall time instead of six.
+    const [missing, ...rest] = await Promise.all([run(['morning']), ...modes.map(mode => run([mode, '--agent'])), ...errors.map(([args]) => run([...args]))]);
     expect(missing.exitCode).toBe(0);
     expect(JSON.parse(missing.stdout)).toEqual({ status: 'needs_selector' });
     await expect(briefContext(f.dir, {})).rejects.toThrow('needs_selector');
-    for (const mode of ['morning', 'evening', 'daily'] as BriefMode[]) {
-      const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, mode, '--agent'] });
+    for (const [i, mode] of modes.entries()) {
+      const result = rest[i];
       expect(result.exitCode).toBe(0);
       const row = JSON.parse(result.stdout);
       expect(Object.keys(row)).toEqual(mode === 'morning' ? ['mode', 'today', 'scope', 'agent_steps', 'latest', 'decisions_pending', 'open', 'decisions', 'duties', 'omitted'] : ['mode', 'today', 'scope', 'agent_steps', 'records', 'decisions_pending', 'open', 'decisions', 'duties', 'omitted']);
       expect(row.open).toEqual([]);
       expect(mode === 'morning' ? row.latest : row.records).toEqual(mode === 'morning' ? null : []);
     }
-    for (const [args, error] of [[['bad'], 'invalid_mode:bad'], [['daily', 'extra'], 'invalid_arguments']] as const) {
-      const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, ...args] });
+    for (const [i, [, error]] of errors.entries()) {
+      const result = rest[modes.length + i];
       expect(result.exitCode).toBe(1);
       expect(JSON.parse(result.stdout).error).toBe(error);
     }
@@ -236,13 +240,15 @@ test('brief selectors scope all record sections and suppress agent-wide sections
     expect((await briefDigest(f.dir, 'morning', reference, { chat: 'discord:group' })).decisions_pending.map(row => row.id)).toEqual([decision.id]);
     expect((await briefDigest(f.dir, 'morning', reference, { agent: true })).scope).toBe('agent');
     expect((await briefDigest(f.dir, 'morning', reference, { routine: 'home' })).scope).toBe('agent');
-    for (const args of [['context', '--routine', 'group'], ['context', '--chat', 'discord:group']]) {
-      const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, ...args] });
+    const run = (args: string[]) => runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, ...args] });
+    const valid = [['context', '--routine', 'group'], ['context', '--chat', 'discord:group']];
+    const invalid = [['context', '--routine', 'missing'], ['morning', '--chat', 'bad'], ['morning', '--chat', 'discord:group', '--routine', 'group']];
+    const results = await Promise.all([...valid, ...invalid].map(run));
+    for (const result of results.slice(0, valid.length)) {
       expect(result.exitCode).toBe(0);
       expect(JSON.parse(result.stdout)).toEqual({ scope: 'chat', agent_steps: false, destination: 'discord:group' });
     }
-    for (const args of [['context', '--routine', 'missing'], ['morning', '--chat', 'bad'], ['morning', '--chat', 'discord:group', '--routine', 'group']]) {
-      const result = await runScript('brief-digest.ts', { cwd: path.dirname(f.dir), env: { AGENT_DIR: f.dir }, args: [f.dir, ...args] });
+    for (const result of results.slice(valid.length)) {
       expect(result.exitCode).toBe(1);
       expect(JSON.parse(result.stdout)).toHaveProperty('error');
     }
