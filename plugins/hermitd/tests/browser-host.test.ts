@@ -134,10 +134,10 @@ test.serial('the handback monitor is enforced and other monitors are preserved',
   const f = fixture(); try {
     const other = { id: 'mail', description: 'Mail', command: 'mail-watch', enabled: true };
     const config = JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8'));
-    config.monitors = [{ ...HANDBACK, enabled: false }, other];
+    config.monitors = [{ ...HANDBACK, enabled: false, chat: 'discord:123' }, other];
     fs.writeFileSync(path.join(f.dir, 'config.json'), JSON.stringify(config));
     await setupBrowserHost(f.project, f.opts);
-    expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8')).monitors).toEqual([HANDBACK, other]);
+    expect(JSON.parse(fs.readFileSync(path.join(f.dir, 'config.json'), 'utf8')).monitors).toEqual([{ ...HANDBACK, chat: 'discord:123' }, other]);
   } finally { f.stop(); }
 });
 

@@ -2,13 +2,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- `hermitd run browser-host` says phone takeover is off when no browser admins are set, instead of exiting silently.
-
 ### Changed
 
 - `hermitd run browser-host` registers the `browser-handback` monitor once the viewer is verified, so phone sign-in setup no longer asks for a separate monitor approval in chat.
+
+### Fixed
+
+- `hermitd run browser-host` says phone takeover is off when no browser admins are set, instead of exiting silently.
 
 ## [1.4.43] - 2026-11-24
 
