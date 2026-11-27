@@ -41,7 +41,7 @@ import { readConfigRaw } from '../config-read';
 import { logRoutineEvent } from './event';
 import { runGate } from './gate';
 import { readRows } from '../later-ledger';
-import { operatorTurnOpen } from '../operator-turn';
+import { operatorTurnOpen } from '../turn-state';
 
 type Json = any;
 

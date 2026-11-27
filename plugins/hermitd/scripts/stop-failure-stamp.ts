@@ -1,5 +1,5 @@
 import { stampInterrupted } from './lib/routines/unfinished';
-import { observeTurnEnd } from './lib/tasks';
+import { turnEnded } from './lib/turn-state';
 // stop-failure-stamp.ts — StopFailure hook
 //
 // Claude Code fires StopFailure when a turn ends in an upstream failure instead
@@ -40,7 +40,7 @@ function main(payload: Json): void {
 
   const stateDir = path.join(hermitDir(), 'state');
   if (isGuest(stateDir, sessionId(payload))) return;
-  observeTurnEnd(hermitDir(), sessionId(payload), backgroundTasks(payload).entries, 'stop-failure');
+  turnEnded(hermitDir(), { cause: 'stop-failure', session: sessionId(payload), backgroundTasks: backgroundTasks(payload).entries });
 
   const stamp = {
     error: payload.error,

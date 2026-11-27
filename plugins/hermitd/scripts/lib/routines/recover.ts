@@ -4,6 +4,7 @@ import { ownedTarget, resolve } from '../../resolve-outbound-channel';
 import { conversationHistory, isLoggingEnabled } from '../channel-log';
 import { clip, safeForLLM } from '../sanitize';
 import { readJson } from '../cli';
+import { readExecutionRaw } from '../turn-state';
 import { readSettledConfig } from '../config-read';
 import { readTailLines } from '../cc-compat';
 import { isPaused } from '../pause';
@@ -24,7 +25,7 @@ function ledger(dir: string): any[] {
 }
 
 export function recoveryTurnLive(dir: string, sessionId: string | undefined, lastTurnCompleteAt?: number | null): boolean {
-  const execution = readJson(path.join(dir, 'state/execution.json'));
+  const execution = readExecutionRaw(dir);
   return execution?.state === 'in_flight' && execution.cc_session_id === sessionId
     && (lastTurnCompleteAt == null || Date.parse(execution.at ?? '') > lastTurnCompleteAt);
 }
