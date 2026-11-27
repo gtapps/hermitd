@@ -53,6 +53,7 @@
     {"id": "hermitd:make-me-proactive", "schedule": "0 10 15 * *", "skill": "hermitd:make-me-proactive", "enabled": true}
   ],
   "monitors": [],
+  "chat_commands": [],
   "env": {
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "65",
     "MAX_THINKING_TOKENS": "10000",

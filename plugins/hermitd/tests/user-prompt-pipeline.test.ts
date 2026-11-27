@@ -1235,3 +1235,19 @@ test('two subprocess first-chat claims inject only once', async () => {
   expect(results.filter(r => r.stdout.includes('FIRST_CHAT_FIXTURE'))).toHaveLength(1);
   expect(fs.existsSync(marker)).toBe(false);
 });
+
+test('chat commands respect helper thread routing and appear in help', async () => {
+  for (const owner of ['resident', 'worker:a1b2c3d4e5f6a7b8c', 'helper:review']) {
+    const wd = setupThreadWorkdir();
+    const file = hermit(wd.dir, 'config.json');
+    const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+    config.chat_commands = ['issues', { name: 'helpercmd', session: 'helper' }];
+    fs.writeFileSync(file, JSON.stringify(config));
+    expect((await openThreadTask(wd, 'discord:thread', owner, false)).exitCode).toBe(0);
+    const resident = await runThread(wd, '!issues', '');
+    expect(resident.stdout.includes('does not reach the resident')).toBe(owner.startsWith('helper:'));
+    const helper = await runThread(wd, '!helpercmd', '');
+    expect(helper.stdout).not.toContain('does not reach the resident');
+    expect((await runThread(wd, '!help', '')).stdout).toContain('[chat commands: issues, helpercmd]');
+  }
+});

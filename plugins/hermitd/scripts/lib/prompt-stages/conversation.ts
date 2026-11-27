@@ -1,5 +1,8 @@
+import { CONVERSATION_COMMANDS, THREAD_HARNESS_COMMANDS } from './command-names';
+export { CONVERSATION_COMMANDS, THREAD_HARNESS_COMMANDS } from './command-names';
 import { conversationKey } from '../conversation-key';
 import { conversationRecords, agentQuestion, decodeDecision, latestWaitIsStall, readTasks, threadRecords, taskListing, type Task } from '../tasks';
+import { resolveChatCommand } from '../harness-command';
 import { resolveSlashCommand } from '../channel-slash-address';
 import { channelBotIdentity, isAllowedSender, senderRole, isSelfMentioned } from '../channel-auth';
 import { classifyChat } from '../channel-chats';
@@ -7,6 +10,7 @@ import { safeForLLM } from '../sanitize';
 import { capture } from './channel-reply-reminder';
 import { EFFORT, HELPER_MODEL } from '../settings/enums';
 import type { StageContext, StageResult } from './types';
+
 
 export function openTasksLine(key: string, work: Task[]): string {
   return `[task thread ${safeForLLM(key)}: open tasks ${work.map(task => task.handle).join(' ')}; ask which one]`;
@@ -23,13 +27,16 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
   const key = conversationKey(env.sourceKey, env.chatId, env.thread);
   const addressed = resolveSlashCommand(env.body, channelBotIdentity(ctx.config(), env.source));
   const name = addressed?.command.slice(1);
+  const chatCommand = resolveChatCommand(env.body, ctx.config(), channelBotIdentity(ctx.config(), env.source));
+  const chatNames = Array.isArray(ctx.config()?.chat_commands) ? ctx.config().chat_commands.map((entry: any) => typeof entry === 'string' ? entry : entry.name).join(', ') : '';
+  const chatHelp = chatNames ? `\n[chat commands: ${chatNames}]` : '';
   const args = addressed?.rest.trim() ?? '';
-  const conversationCommand = !!name && ['help', 'mute', 'unmute', 'restart'].includes(name) && !args;
+  const conversationCommand = !!name && CONVERSATION_COMMANDS.includes(name) && !args;
   // Harness commands sent into a worker-owned thread belong to the thread, not the
   // session: `!clear` restarts the worker and the rest are refused here, before the
   // harness-command stage could record them for the resident. A resident-owned thread
   // takes them as ordinary session commands, like any other chat.
-  const harnessCommand = !!name && ['clear', 'compact', 'model', 'effort', 'advisor', 'permission-mode'].includes(name);
+  const harnessCommand = !!name && THREAD_HARNESS_COMMANDS.includes(name);
   const chatType = await classifyChat(ctx.dir, ctx.config(), env.sourceKey, env.chatId, env.thread);
   const inThread = chatType === 'thread';
   const sharedRestart = chatType === 'shared' && name === 'restart';
@@ -102,7 +109,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
       }
     }
     if (conversationCommand || sharedRestart) {
-      lines.push(name === 'help' ? '[conversation command: help]' : '[conversation command outside a task thread]');
+      lines.push(name === 'help' ? `[conversation command: help]${chatHelp}` : '[conversation command outside a task thread]');
       return { context: lines.join('\n') };
     }
     // A message outside any task thread may continue work the sender's spawned
@@ -142,6 +149,10 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
       : '';
     context += `\n[waiting task ${record.id}: ${reason}${record.last_worker ? '; last_worker=' + record.last_worker : ''}; finished outcome: ${taskCommand} block ${target} --result-stdin; wait answered: ${taskCommand} answer ${target} --chat ${safeForLLM(key)} --user ${safeForLLM(env.userId ?? '<user>')} --reply <token>; legacy wait: ${taskCommand} note ${target} --clear-waiting --chat <chat> --user <user>${confirmed}${finishing}; nothing is owed when this message does not change the task]`;
   }
+  if (chatCommand && owner === 'helper' && chatCommand.session !== 'helper') {
+    ctx.skipHarnessCommand = true;
+    return { context: `${context}\n[conversation command refused: !${name} does not reach the resident from a task thread]` };
+  }
   if (harnessCommand && owner !== 'resident') {
     ctx.skipHarnessCommand = true;
     if (name === 'clear') return { context: `${context}\n[conversation command: restart]` };
@@ -157,7 +168,7 @@ export async function run(ctx: StageContext): Promise<StageResult | void> {
     const reason = name === 'model' || name === 'effort' ? 'per-conversation model/effort not supported' : `!${name} does not reach the resident from a task thread`;
     return { context: `${context}\n[conversation command refused: ${reason}]` };
   }
-  if (conversationCommand) return { context: `${context}\n[conversation command: ${name}]` };
+  if (conversationCommand) return { context: `${context}\n[conversation command: ${name}]${name === 'help' ? chatHelp : ''}` };
   // Mute silences ordinary steering, not an addressed command: pause/resume/snooze
   // and status are documented as always reachable from chat, and blocking here
   // settles the disposition before their stages ever run.

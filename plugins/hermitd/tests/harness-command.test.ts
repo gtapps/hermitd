@@ -333,3 +333,20 @@ describe('skill-relay marker', () => {
     fs.rmSync(root, { recursive: true });
   });
 });
+
+describe('chat command resolution', () => {
+  test('resolves listed names and addresses while excluding reserved names', async () => {
+    const { resolveChatCommand, RESERVED_BANG_NAMES, BARE_COMMANDS, ARG_COMMANDS } = await import('../scripts/lib/harness-command');
+    const { PAUSE_COMMANDS } = await import('../scripts/lib/prompt-stages/pause-keyword');
+    const { STATUS_COMMANDS } = await import('../scripts/lib/prompt-stages/channel-status-responder');
+    const { CONVERSATION_COMMANDS, THREAD_HARNESS_COMMANDS } = await import('../scripts/lib/prompt-stages/conversation');
+    const config = { chat_commands: ['issues', { name: 'other', session: 'helper' }, 'pause'] };
+    expect(resolveChatCommand('!issues', config)).toEqual({ command: '/issues', arg: null, session: 'resident' });
+    expect(resolveChatCommand('!other@bot hello', config, { username: 'bot', userId: null })).toEqual({ command: '/other', arg: 'hello', session: 'helper' });
+    expect(resolveChatCommand('@bot !issues hi', config, { username: 'bot', userId: null })?.arg).toBe('hi');
+    expect(resolveChatCommand('!missing', config)).toBeNull();
+    expect(resolveChatCommand('!pause', config)).toBeNull();
+    const expected = [...PAUSE_COMMANDS, ...STATUS_COMMANDS, ...BARE_COMMANDS, ...ARG_COMMANDS, ...CONVERSATION_COMMANDS, ...THREAD_HARNESS_COMMANDS, 'checkup', 'reload-plugins'].map(name => name.replace(/^\//, ''));
+    expect(RESERVED_BANG_NAMES).toEqual(new Set(expected));
+  });
+});

@@ -9,7 +9,12 @@ type Entry = {
   legs?: Leg[];
 };
 type Decision = Partial<Entry> & {
-  decision: 'pass' | 'run' | 'refuse' | 'ok' | 'queued' | 'send_failed' | 'deny' | 'decline';
+  decision: 'pass' | 'run' | 'refuse' | 'ok' | 'queued' | 'send_failed' | 'deny' | 'decline' | 'chat' | 'forward';
+  command?: string;
+  args?: string | null;
+  to?: string | { sessionId: string };
+  helper?: string;
+  name?: string;
   approvals?: string;
   after_seconds?: number;
   reason?: string;
@@ -19,6 +24,9 @@ type Decision = Partial<Entry> & {
   reply_to?: { source: string; chat_id: string };
   relays?: { text: string; reply_to: { source: string; chat_id: string } }[];
 };
+const pendingReplies = new Map<string, { reply_to: NonNullable<Decision['reply_to']>; helper: string; command: string; at: number }>();
+const pendingChats: Decision[] = [];
+let peerName: string | undefined;
 const TICK_MS = 2000;
 // The deadline only records an uncertain outcome; the run keeps its slot until it settles.
 const deadlineFor = (command: Command) => command.command === '/compact' ? 300_000 : 120_000;
@@ -29,7 +37,7 @@ const EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 // authorization and residency; ordinary prompts never start a process.
 export function isCommandPrompt(text: string): boolean {
   const body = /^\s*<channel\b[^>]*>([\s\S]*)<\/channel>\s*$/.exec(text)?.[1] ?? '';
-  return /^(?:(?:<@!?\d+>|@\S+)\s*)?!(?:model|effort|compact|clear|advisor|doctor|checkup)(?:@[^\s]+)?(?:\s|$)/i.test(body.trim());
+  return /^(?:(?:<@!?\d+>|@\S+)\s*)?![a-z0-9_-]+(?:@[^\s]+)?(?:\s|$)/i.test(body.trim());
 }
 
 export function classifyStdout(command: string, text: string): 'ok' | 'failed' {
@@ -241,7 +249,48 @@ async function runPause($: EngineInterface, entry: Decision) {
 }
 
 function schedule($: EngineInterface) {
-  $.clock.after(0, () => dispatch($));
+  $.clock.after(0, () => {
+    if (!busy() && pendingChats.length) return runChat($, pendingChats.shift()!);
+    return dispatch($);
+  });
+}
+
+async function commandText($: EngineInterface, name: string, args: string | null | undefined): Promise<string> {
+  try {
+    if (!(await $.command.list()).some(command => command.name === name)) return `!${name} is not available.`;
+    const out = await $.command.run({ command: name, args: args ?? '' });
+    return out.text || `!${name} returned no output.`;
+  } catch (error) {
+    return `!${name} failed: ${errorText(error).replace(/[\r\n]+/g, ' ')}`;
+  }
+}
+
+async function runChat($: EngineInterface, decision: Decision) {
+  running = true;
+  try {
+    const text = await commandText($, decision.command!.slice(1), decision.args);
+    await finalize($, { reason: text, reply_to: decision.reply_to });
+  } finally {
+    running = false;
+    schedule($);
+  }
+}
+
+async function forwardChat($: EngineInterface, decision: Decision) {
+  const id = crypto.randomUUID();
+  const name = decision.command!.slice(1);
+  const args = decision.args ?? '';
+  const shown = `${name}${args ? ` ${args}` : ''}`;
+  for (const [key, value] of pendingReplies) if (Date.now() - value.at > 86400000) pendingReplies.delete(key);
+  pendingReplies.set(id, { reply_to: decision.reply_to!, helper: decision.helper!, command: name, at: Date.now() });
+  const text = `The operator ran \`!${shown}\` in this task's conversation. Run \`/${shown}\`. If this session does not have that command, say so in your report; do not substitute another action.\n[hermitd chat-command ${JSON.stringify({ v: 1, id, command: name, args })}]`;
+  try {
+    const result = await $.session.send({ to: decision.to!, text });
+    if (!result.isDelivered) throw new Error(result.reason);
+  } catch (error) {
+    pendingReplies.delete(id);
+    await finalize($, { reason: `!${name} could not be forwarded: ${errorText(error).replace(/[\r\n]+/g, ' ')}`, reply_to: decision.reply_to });
+  }
 }
 
 function start($: EngineInterface, entry: Decision) {
@@ -425,10 +474,53 @@ export const register: Register = on => {
     if (result.decision === 'pass') return next(e);
     if (result.decision === 'queued') {
       $.clock.after(0, () => tick($));
+    } else if (result.decision === 'chat') {
+      pendingChats.push(result);
+      schedule($);
+    } else if (result.decision === 'forward') {
+      $.clock.after(0, () => forwardChat($, result));
     } else if (result.decision === 'refuse' && !result.silent) {
       $.clock.after(0, () => finalize($, result));
     }
     return { drop: 'Harness command handled by the native executor' };
+  });
+
+  on('session.receive', async ($, e, next) => {
+    if (e.origin.kind !== 'peer') return next(e);
+    const header = /^<cross-session-message\b([^\r\n>]*)>\r?\n/.exec(e.text);
+    if (!header) return next(e);
+    const from = /(?:^|\s)from="([^"<>\r\n]+)"/.exec(header[1]!)?.[1];
+    const fromName = /(?:^|\s)from-name="([^"<>\r\n]+)"/.exec(header[1]!)?.[1];
+    if (!from || !fromName) return next(e);
+    const body = e.text.slice(header[0].length).replace(/\r?\n<\/cross-session-message>\s*$/, '');
+    const resultMatch = /(?:^|\n)\[hermitd chat-command-result (\{[^\n]*\})\]\s*$/.exec(body);
+    if (resultMatch) {
+      let payload: any;
+      try { payload = JSON.parse(resultMatch[1]!); } catch { return next(e); }
+      const pending = payload.v === 1 && typeof payload.id === 'string' ? pendingReplies.get(payload.id) : undefined;
+      if (!pending || fromName !== pending.helper) return next(e);
+      const result = body.slice(0, resultMatch.index).trimEnd();
+      const header = `Result of \`!${pending.command}\`:`;
+      if (!result.startsWith(`${header}\n`)) return next(e);
+      pendingReplies.delete(payload.id);
+      const text = result.slice(header.length + 1);
+      $.clock.after(0, () => finalize($, { reason: `Result of \`!${pending.command}\` from helper ${pending.helper}:\n${text}`, reply_to: pending.reply_to }));
+      return { consumed: 'chat command result' };
+    }
+    const requestMatch = /(?:^|\n)\[hermitd chat-command (\{[^\n]*\})\]\s*$/.exec(body);
+    if (!requestMatch) return next(e);
+    let payload: any;
+    try { payload = JSON.parse(requestMatch[1]!); } catch { return next(e); }
+    if (payload.v !== 1 || typeof payload.id !== 'string' || typeof payload.command !== 'string' || typeof payload.args !== 'string') return next(e);
+    if (peerName === undefined) {
+      try { peerName = (await bridge($, 'peer-name')).name; } catch { return next(e); }
+    }
+    if (!peerName || fromName !== peerName || !(await $.command.list()).some(command => command.name === payload.command)) return next(e);
+    $.clock.after(0, async () => {
+      const text = (await commandText($, payload.command, payload.args)).slice(0, 4000);
+      await $.session.send({ to: from, text: `Result of \`!${payload.command}\`:\n${text}\n[hermitd chat-command-result ${JSON.stringify({ v: 1, id: payload.id })}]` });
+    });
+    return { consumed: 'chat command request' };
   });
 
   on('classic.PreModelSwitch', async ($, e, next) => {

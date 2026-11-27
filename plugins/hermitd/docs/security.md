@@ -239,6 +239,8 @@ Delete a step's entry from `permissions.ask` to stop it asking for everyone; an 
 
 ---
 
+Configured chat commands are restricted to controllers; other admitted senders receive a refusal.
+
 ## Auto-mode Classifier
 
 Claude Code's `--permission-mode auto` (the hermit's default) routes tool calls through a classifier that blocks anything it judges irreversible, destructive, or aimed outside the trusted environment — a second gate that runs after the permissions system, before a tool call executes. The live tmux probes used for the implementation ran on CC 2.1.201 with `--model sonnet`; current model/provider availability is governed by Claude Code rather than hard-coded here. Those probes settled how a hermit's own sealed settings writes interact with the classifier:

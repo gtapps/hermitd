@@ -751,3 +751,51 @@ test('turn-end restarts the quiet clock only when it closes an operator turn', a
   await call(wd, 'turn-end', JSON.stringify({ at, reason: 'aborted' }));
   expect(Date.parse(JSON.parse(fs.readFileSync(lastAction, 'utf8')).at)).toBe(at + 500);
 });
+
+test('chat command intake routes directly, enforces readiness and validates arguments', async () => {
+  const { wd, dir } = fixture();
+  const file = path.join(dir, 'config.json');
+  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+  config.chat_commands = ['issues'];
+  fs.writeFileSync(file, JSON.stringify(config));
+  expect(await call(wd, 'intake', envelope('!issues'))).toMatchObject({ decision: 'chat', command: '/issues', args: null });
+  expect(await call(wd, 'intake', envelope('!issues hello'))).toMatchObject({ decision: 'chat', args: 'hello' });
+  expect((await call(wd, 'intake', envelope(`!issues ${'x'.repeat(513)}`))).reason).toContain('512');
+  expect((await call(wd, 'intake', envelope('!issues a\nb'))).reason).toContain('one line');
+  expect((await call(wd, 'intake', envelope('!issues', 'stranger'))).decision).toBe('pass');
+  fs.unlinkSync(path.join(dir, 'state/harness-mod-loaded.json'));
+  expect((await call(wd, 'intake', envelope('!issues'))).reason).toContain('has not loaded');
+  fs.writeFileSync(path.join(dir, 'state/harness-mod-loaded.json'), JSON.stringify({ session_id: 'resident', queue: QUEUE_PROTOCOL }));
+  setRuntime(dir, { shutdown_requested_at: new Date().toISOString() });
+  expect((await call(wd, 'intake', envelope('!issues'))).reason).toContain('shutting down');
+  expect(listing(dir, QUEUE_DIR)).toEqual([]);
+});
+
+test('helper chat forwarding uses its own task handoff, cloud binding, or name', async () => {
+  const { wd, dir } = fixture();
+  const file = path.join(dir, 'config.json');
+  const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+  config.chat_commands = [{ name: 'issues', session: 'helper' }];
+  config.channels.telegram.attributes = { thread_id: 'message_thread_id' };
+  fs.writeFileSync(file, JSON.stringify(config));
+  expect((await openTask(wd.dir, dir, ['--owner', 'helper:review', '--requester', 'telegram:u1', '--conversation', 'telegram:12345~7'])).exitCode).toBe(0);
+  const { readTasks, encodeTask } = await import('../scripts/lib/tasks');
+  const task = readTasks(dir)[0];
+  const prompt = '<channel source="telegram" chat_id="12345" message_thread_id="7" user="u1">!issues x</channel>';
+  expect(await call(wd, 'intake', prompt)).toMatchObject({ decision: 'forward', to: 'review', helper: 'review', args: 'x' });
+  task.body = task.body.replace('## Progress\n', '## Progress\n- Handed to helper review (12345678-aaaa-bbbb)\n');
+  fs.writeFileSync(path.join(dir, 'tasks', `${task.id}.md`), encodeTask(task));
+  expect(await call(wd, 'intake', prompt)).toMatchObject({ decision: 'forward', to: { sessionId: '12345678-aaaa-bbbb' } });
+  fs.writeFileSync(path.join(dir, 'state/cloud-sessions.json'), JSON.stringify([{ task: task.id, helper: 'cloud-review' }]));
+  expect(await call(wd, 'intake', prompt)).toMatchObject({ decision: 'forward', to: 'cloud-review' });
+  expect(listing(dir, QUEUE_DIR)).toEqual([]);
+});
+
+test('peer-name works for a guest and no-id finalize clips its reply', async () => {
+  const { wd, dir } = fixture({ peer_name: 'resident-name' });
+  expect(await call(wd, 'peer-name', '', 'guest')).toEqual({ name: 'resident-name' });
+  const result = await call(wd, 'finalize', JSON.stringify({ reason: 'x'.repeat(5000), reply_to: { source: 'telegram', chat_id: '12345' } }));
+  expect(result.decision).toBe('send_failed');
+  expect(result.text.length).toBeLessThanOrEqual(4000);
+  expect(result.text).toStartWith('xxx');
+});

@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Operator-authored mod commands can be exposed to chat through `chat_commands`, which ships empty.
+
+### Upgrade Instructions
+
+1. If `.hermit/config.json` has no `chat_commands` key, run `.hermit/bin/hermitd-run settings-edit .hermit/config.json set chat_commands '[]'`. Leave an existing value untouched.
+
 ## [1.4.44] - 2026-11-27
 
 ### Fixed

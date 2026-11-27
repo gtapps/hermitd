@@ -34,6 +34,8 @@ A member's requested watch is saved disabled until a primary sender says yes in 
 
 ## Control commands
 
+Configured chat commands follow the same controller gate.
+
 Bare `!release` uses the same trusted-controller gate as pause. It releases human browser control, keeps the task claim, and reports whether anything was held. Other admitted senders get a short refusal; senders who are not admitted get no response.
 
 Control commands (`!pause`, `!stop`, `!resume`, `!snooze`, `!release`, `!model`, `!effort`, `!compact`, `!clear`, `!advisor`, `!doctor`) and full `!status` belong to the operators: the `operators` list, or the first `allowed_users` entry when `operators` is absent, or the maintainer chat or technical-profile home chat when neither list is set. With neither list, the pinned `default_chat_id` also controls on any profile; without a matching home chat there is no controller. A shared home matches every member, so set `operators` to narrow control there. Other admitted senders get a short refusal and a coarse `!status`; senders who are not admitted get no response. Removing the lists restores the home-chat fallback. The saved list and home pin survive restart; a new inbound DM does not move the pin. This rule does not own native approval delivery. Separately, adding a listening chat through `hermit-settings channels` asks for native approval and is refused under bypass permissions. See [security limitations](security.md#known-limitations).

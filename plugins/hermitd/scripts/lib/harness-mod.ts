@@ -21,6 +21,7 @@ export type HarnessRequest = {
   reply_to?: ReplyTarget;
   dir: string;
   requested_at?: string;
+  chat?: { session: 'resident' | 'helper'; owner: string; task?: string };
 };
 export type HarnessDecision =
   | { decision: 'pass' }
@@ -101,7 +102,7 @@ export function readOutcome(dir: string, id: string): QueueOutcome | null {
 
 const SKILL_RE = /^\/[a-z0-9][a-z0-9-]*:[a-z0-9][a-z0-9-]*$/i;
 const FREE_TEXT_MAX = 512;
-const freeText = (arg: unknown) => typeof arg === 'string' && arg.trim() !== '' && arg.length <= FREE_TEXT_MAX && !/\p{Cc}/u.test(arg);
+export const freeText = (arg: unknown) => typeof arg === 'string' && arg.trim() !== '' && arg.length <= FREE_TEXT_MAX && !/\p{Cc}/u.test(arg);
 
 /** Splits a configured skill string into its command and optional argument. */
 export function parseSkill(skill: string): ParsedCommand {

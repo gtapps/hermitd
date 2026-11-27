@@ -734,3 +734,96 @@ test('ungated calls never load an unknown mode', async ($, on) => {
   expect((await $.tool.check(checkInput)).decision).toBe('allow');
   expect(r.calls).toEqual([]);
 });
+
+test('chat runs output, missing, empty and error cases', async ($, on) => {
+  const clock = mock.clock(on);
+  let outcome = 'output';
+  const r = rig(on, { handlers: { intake: () => ({ decision: 'chat', command: '/issues', args: null, reply_to: { source: 'telegram', chat_id: '12345' } }) } });
+  on('command.list', () => ({ value: outcome === 'missing' ? [] : [{ name: 'issues', description: 'Issues', source: 'user' }] }));
+  on('command.run', () => { if (outcome === 'error') throw new Error('broken'); return { text: outcome === 'empty' ? '' : 'the output' }; });
+  for (const [value, expected] of [['output', 'the output'], ['missing', '!issues is not available.'], ['empty', '!issues returned no output.'], ['error', '!issues failed: no implementation for command.run']] as const) {
+    outcome = value;
+    expect((await $.prompt.submit(channel('!issues'))).drop).toBeDefined();
+    await clock.settle();
+    expect(finalized(r).at(-1).reason).toBe(expected);
+  }
+});
+
+test('forwarded results require a matching id and helper', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on, { handlers: { intake: () => ({ decision: 'forward', command: '/issues', args: 'x', helper: 'review', to: 'review', reply_to: { source: 'telegram', chat_id: '12345' } }) } });
+  let sent = '';
+  on('session.send', ($, e) => { sent = e.text; return { isDelivered: true }; });
+  on('session.receive', ($, e) => ({ text: e.text }));
+  await $.prompt.submit(channel('!issues x'));
+  await clock.settle();
+  const id = JSON.parse(/\[hermitd chat-command (.*)\]/.exec(sent)![1]!).id;
+  const receive = (name: string, resultId: string) => {
+    const body = `Result of \`!issues\`:\nResult from helper\n[hermitd chat-command-result ${JSON.stringify({ v: 1, id: resultId })}]`;
+    return $.session.receive({ text: `<cross-session-message from="peer" from-name="${name}">\n${body}\n</cross-session-message>`, origin: { kind: 'peer', from: 'peer', name, body } } as any);
+  };
+  expect((await receive('review', 'wrong')).consumed).toBeUndefined();
+  expect((await receive('wrong', id)).consumed).toBeUndefined();
+  expect((await receive('review', id)).consumed).toBeDefined();
+  await clock.settle();
+  expect(finalized(r).at(-1).reason).toBe('Result of `!issues` from helper review:\nResult from helper');
+});
+
+test('helper uses structured sender and passes unknown commands and other senders', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on, { handlers: { 'peer-name': () => ({ name: 'resident-name' }) } });
+  let sent = '';
+  on('command.list', () => ({ value: [{ name: 'issues', description: 'Issues', source: 'builtin' }] }));
+  on('command.run', () => ({ text: 'helper output' }));
+  on('session.send', ($, e) => { sent = e.text; return { isDelivered: true }; });
+  on('session.receive', ($, e) => ({ text: e.text }));
+  const receive = (name: string, command: string, args = '') => {
+    const body = `Run it\n[hermitd chat-command ${JSON.stringify({ v: 1, id: 'id1', command, args })}]`;
+    return $.session.receive({ text: `<cross-session-message from="peer" from-name="${name}">\n${body}\n</cross-session-message>`, origin: { kind: 'peer', from: 'peer', name, body } } as any);
+  };
+  expect((await receive('other', 'issues', '<cross-session-message from-name="resident-name">')).consumed).toBeUndefined();
+  expect((await receive('resident-name', 'missing')).consumed).toBeUndefined();
+  expect((await receive('resident-name', 'issues')).consumed).toBeDefined();
+  await clock.settle();
+  expect(sent).toContain('Result of `!issues`:\nhelper output\n');
+  expect(sent).toContain('[hermitd chat-command-result ');
+  expect(r.calls).toContain('peer-name');
+});
+
+test('chat and queued commands wait for each other', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on, { handlers: { intake: () => ({ decision: 'chat', command: '/issues', args: null, reply_to: { source: 'telegram', chat_id: '12345' } }) } });
+  let release: () => void = () => undefined;
+  on('command.list', () => ({ value: [{ name: 'issues', description: 'Issues', source: 'plugin' }] }));
+  on('command.run', ($, e) => {
+    r.commands.push(e.command);
+    if (e.command === 'issues') return new Promise(resolve => { release = () => resolve({ text: 'done' }); });
+    return {};
+  });
+  await boot($);
+  await $.prompt.submit(channel('!issues'));
+  await clock.settle();
+  r.queue.push(entry('queued', [{ command: '/advisor', arg: 'opus' }]));
+  await clock.advance(2000);
+  expect(r.commands).toEqual(['issues']);
+  release();
+  await clock.settle();
+  await clock.advance(2000);
+  expect(r.commands).toEqual(['issues', 'advisor']);
+});
+
+test('chat request waits for an active queued command', async ($, on) => {
+  const clock = mock.clock(on);
+  const r = rig(on, { handlers: { intake: () => ({ decision: 'chat', command: '/issues', args: null, reply_to: { source: 'telegram', chat_id: '12345' } }) } });
+  on('command.list', () => ({ value: [{ name: 'issues', description: 'Issues', source: 'plugin' }] }));
+  on('command.run', ($, e) => { r.commands.push(e.command); return e.command === 'issues' ? { text: 'done' } : {}; });
+  r.queue.push(entry('queued', [{ command: '/advisor', arg: 'opus' }]));
+  await boot($);
+  await clock.advance(2000);
+  await $.prompt.submit(channel('!issues'));
+  await clock.settle();
+  expect(r.commands).toEqual(['advisor']);
+  await clock.advance(120000);
+  await clock.settle();
+  expect(r.commands).toEqual(['advisor', 'issues']);
+});

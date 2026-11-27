@@ -8,6 +8,7 @@ const EXPECTED_PATHS = [
   'operator_profile',
   'env',
   'monitors',
+  'chat_commands',
   'boot_skill',
   'shutdown_skill',
   'backup',

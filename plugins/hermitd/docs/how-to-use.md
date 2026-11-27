@@ -164,6 +164,26 @@ You're always in control. Hermit suggests. You decide.
 
 ---
 
+### Your own chat commands
+
+You can expose an operator-authored mod command by listing its name in `.hermit/config.json`, for example `"chat_commands": ["issues"]`. Only controllers may run these commands. They run after the current turn and post their output in the asking conversation. The output also enters the session's transcript.
+
+A small mod can register a command and return text:
+
+```ts
+import type { Register } from 'claude-code';
+export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    const result = await next(e);
+    await $.command.register({ name: 'issues', description: 'List issues' });
+    return result;
+  });
+  on('command.run', { command: 'issues' }, async () => ({ text: 'No issues' }));
+};
+```
+
+For a helper-owned conversation, use `{ "name": "issues", "session": "helper" }` to run the command in that helper. A local helper answers without a model turn only when the hermitd plugin and its mod are loaded where it runs. Cloud helpers answer through their model.
+
 ## Tips
 
 - **Don't create session/proposal files by hand.** Skills handle lifecycle tracking.
