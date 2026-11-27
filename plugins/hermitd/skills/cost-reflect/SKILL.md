@@ -10,7 +10,7 @@ Runs a structural cost audit over the last 7 days of `cost-log.jsonl` and delive
 
 - **Manual (no arguments):** reply only to the invoking terminal or channel conversation.
 - **Automated (`--maintainer`, or any routine/proactive invocation):** produce the full technical
-  report and send it as a maintainer-tier notice.
+  report and send it as a maintainer-tier notice. Report figures only and name no change.
 
 ## Step 1 — Run the analyzer
 
@@ -32,9 +32,9 @@ Capture stdout. `status: "empty"` → say no spend is recorded yet and stop; the
 
 ## Step 2 — Relay the report
 
-**Terminal:** compose the report from the JSON in under 1500 characters: the window total with turns and sessions, the `by_type` split, `by_model` and `cold_starts` when non-empty, `by_source` (with `more_sources`), and `top_sessions`. Report the figures as given, without commentary.
+**Terminal:** compose the report from the JSON in under 1500 characters: the window total with turns and sessions, the `by_type` split, `by_model` and `cold_starts` when non-empty, `by_source` (with `more_sources`), and `top_sessions`. Report the figures as given. On a manual run, look at the two largest `by_source` entries and name at most two changes the operator can make, with each tradeoff, as options without promised savings. If nothing points to a change, say nothing stands out. Read [Cheap always-on](../../docs/always-on-ops.md#cheap-always-on), or [Context clears](../../docs/always-on-ops.md#context-clears) for context size, only when a driver points there. Offer settings changes through `/hermitd:hermit-settings`; for a routine, offer to look at it together. A session-model change weakens every conversation and applies at the next restart.
 
-**Channel (`--plain` output):** reply through that channel's reply tool, in the operator's language, for someone with no technical background: today's spend against a typical day (`today_usd`, `vs_typical`, `typical_day_usd`), each `drivers` `work` in everyday words with its `cost_usd` (`background_checks`: background check-ins; `scheduled_routines`: scheduled routines; `channel_messages`: their chat messages; `other_sessions`: other sessions on this machine; `conversations`: conversations with you), the `budget` cap when present, and that the figures are a tracking estimate, not a literal bill. No token types, session IDs, `PROP-`/`T-...` or slash commands.
+**Channel (`--plain` output):** reply through that channel's reply tool, in the operator's language, for someone with no technical background: today's spend against a typical day (`today_usd`, `vs_typical`, `typical_day_usd`), each `drivers` `work` in everyday words with its `cost_usd` (`background_checks`: background check-ins; `scheduled_routines`: scheduled routines; `channel_messages`: their chat messages; `other_sessions`: other sessions on this machine; `conversations`: conversations with you), the `budget` cap when present, and that the figures are a tracking estimate, not a literal bill. On a manual run, add at most one everyday-words sentence naming a change suggested by a driver and its cost in quality or delay, or say nothing stands out. Invite a reply in the operator's own words, for example "say 'check in less often' and I'll change it", never a bare yes, which answers a pending task decision. No token types, session IDs, `PROP-`/`T-...` or slash commands.
 
 ## Step 3 — Channel delivery
 

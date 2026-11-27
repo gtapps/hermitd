@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `/hermitd:cost-reflect` may name a change worth considering for its biggest spend drivers, with what it trades away, when you ask about spend.
+- `/hermitd:hermit-settings heartbeat` can change `clean_recheck_cooldown`.
+
 ### Fixed
 
 - A follow-up for a helper whose session stopped resumes it on this machine instead of reporting the message as queued. For a helper offline on another machine, the agent offers a new helper there, since its queued message is never delivered.
