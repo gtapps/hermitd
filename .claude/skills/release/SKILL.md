@@ -59,7 +59,7 @@ Run before anything else. Abort the release if any step fails.
    - Agents in `plugins/<slug>/CLAUDE.md` match actual `plugins/<slug>/agents/` files
    - Hook scripts referenced in `plugins/<slug>/hooks/hooks.json` exist in `plugins/<slug>/scripts/`
    - State-template JSON files parse correctly
-   - `config.json.template` keys are in sync with `DEFAULT_CONFIG` in `plugins/<slug>/scripts/hermitd-start.ts` (core only)
+   - `config.json.template` top-level keys are in sync with `TABLE` in `plugins/<slug>/scripts/lib/config-read.ts` (core only)
 
 If the auditor reports any FAIL, fix before proceeding. WARNs are acceptable if justified. Stale-reference detection-and-fix is consolidated into Step 4 below.
 

@@ -28,8 +28,8 @@ import path from 'node:path';
 
 import {
   registerHostProjectOnBoot,
-  DEFAULT_CONFIG,
   loadConfig,
+  markAlwaysOn,
   getEnabledChannels,
   iterChannelConfigs,
   writeSettingsEnv,
@@ -58,6 +58,7 @@ import {
 } from '../scripts/hermitd-start';
 import { transcriptDirFor } from '../scripts/lib/cc-compat';
 import { readRuntimeState } from '../scripts/lib/runtime';
+import { SETTLED_KEYS } from '../scripts/lib/config-read';
 import { renderHelperPrompt } from '../scripts/lib/helper-prompt';
 import { sha256 } from '../scripts/lib/hash';
 import { automodeAllowEntry, AUTOMODE_WATCH_ALLOW_ENTRY, SEALED_SETTINGS_OPS, TERMINAL_ONLY_SETTINGS_OPS } from '../scripts/lib/settings/automode-entries';
@@ -162,35 +163,6 @@ function captureLog<T>(fn: () => T): { result: T; out: string } {
     return { result: fn(), out: lines.length ? lines.join('\n') + '\n' : '' };
   } finally {
     console.log = orig;
-  }
-}
-
-/** Flatten a nested object to dot-separated key paths (port of _flatten_keys). */
-function flattenKeys(obj: any, prefix = ''): Set<string> {
-  const keys = new Set<string>();
-  for (const [k, v] of Object.entries(obj)) {
-    const p = prefix ? `${prefix}.${k}` : k;
-    keys.add(p);
-    if (v && typeof v === 'object' && !Array.isArray(v)) {
-      for (const s of flattenKeys(v, p)) keys.add(s);
-    }
-  }
-  return keys;
-}
-
-/** JSON type class for the type-sync contract. null matches any type. */
-function jsonType(v: any): string | null {
-  if (v === null) return null;
-  if (Array.isArray(v)) return 'array';
-  if (typeof v === 'object') return 'dict';
-  return typeof v;
-}
-
-function flattenTyped(obj: any, prefix: string, out: Record<string, string | null>): void {
-  for (const [k, v] of Object.entries(obj)) {
-    const p = prefix ? `${prefix}.${k}` : k;
-    out[p] = jsonType(v);
-    if (v && typeof v === 'object' && !Array.isArray(v)) flattenTyped(v, p, out);
   }
 }
 
@@ -710,121 +682,51 @@ describe('clearWatchRegistry', () => {
 });
 
 // ============================================================
-// Config contract tests (TestConfigContract)
+// Config template checks
 // ============================================================
 
-describe('config contract: template and DEFAULT_CONFIG must mirror', () => {
+describe('config template defaults', () => {
   const template = JSON.parse(
     fs.readFileSync(path.join(PLUGIN_ROOT, 'state-templates', 'config.json.template'), 'utf-8'),
   );
 
-  // Keys that exist only in template — consumed by scripts that handle
-  // their own missing-key logic (not part of loadConfig merge).
-  const TEMPLATE_ONLY_KEYS = new Set([
-    'routines', 'monitors', 'chat_commands',
-    // Settled by config-read.ts browser and transcription shapes; kept out of the loadConfig merge so boot write-back does not stamp them.
-    'browser', 'browser.enabled', 'browser.default', 'browser.admins', 'browser.port', 'browser.host', 'browser.inactivity_timeout', 'browser.saved_logins', 'browser.software_webgl', 'browser.chrome_args',
-    'transcription', 'transcription.enabled', 'transcription.echo',
-    'docker.recommended_plugins',
-    // Settled by config-read.ts docker shape (default true) for the Docker renderer; not part of the loadConfig merge.
-    'docker.git_identity_mount',
-    // Read directly by cron-registry.ts (raw config read, own default of 6) — not part of the loadConfig merge.
-    'routine_wake_lint', 'routine_wake_lint.max_windows',
-    // Settled by config-read.ts TABLE for task records; not part of the loadConfig merge.
-    'tasks', 'tasks.duties_open_records',
-    // Settled by config-read.ts TABLE for helper and worker dispatch; not part of the loadConfig merge.
-    'delegation', 'delegation.model', 'delegation.effort',
-    // Read directly by doctor-check.ts's routine-cost check (raw config read, own default of 2) — not part of the loadConfig merge.
-    'doctor', 'doctor.routine_cost_floor_usd',
-    // Read by hermitd-watchdog through lib/config-read (own default of '4h') — not part of the loadConfig merge.
-    'watchdog.wedge_floor',
-    // Settled default-on; boot write-back must not stamp it as operator-set (wedge_floor precedent).
-    'watchdog.scheduler_enabled',
-  ]);
-
-  test('key path sync: flattened key paths must match (excluding known template-only keys)', () => {
-    const templateKeys = flattenKeys(template);
-    const defaultKeys = flattenKeys(DEFAULT_CONFIG);
-
-    // Template keys missing from defaults (besides known exceptions)
-    const missingFromDefaults = [...templateKeys].filter(
-      (k) => !defaultKeys.has(k) && !TEMPLATE_ONLY_KEYS.has(k),
-    );
-    expect(missingFromDefaults).toEqual([]);
-
-    // Default keys missing from template
-    const missingFromTemplate = [...defaultKeys].filter((k) => !templateKeys.has(k));
-    expect(missingFromTemplate).toEqual([]);
+  test('quality_gate.tier is in the budget/balanced/quality enum', () => {
+    expect(['budget', 'balanced', 'quality']).toContain(template.quality_gate?.tier);
   });
 
-  test('type sync: for shared key paths, types must match (null matches any)', () => {
-    const templateFlat: Record<string, string | null> = {};
-    flattenTyped(template, '', templateFlat);
-    const defaultFlat: Record<string, string | null> = {};
-    flattenTyped(DEFAULT_CONFIG, '', defaultFlat);
-
-    const shared = Object.keys(templateFlat).filter((k) => k in defaultFlat).sort();
-    const mismatches: string[] = [];
-    for (const key of shared) {
-      const tType = templateFlat[key];
-      const dType = defaultFlat[key];
-      // null matches any type (it's a valid default)
-      if (tType === null || dType === null) continue;
-      if (tType !== dType) mismatches.push(`${key}: template=${tType}, default=${dType}`);
-    }
-    expect(mismatches).toEqual([]);
+  test('doctor routine uses explicit maintainer delivery', () => {
+    expect(template.routines.find((r: any) => r.id === 'hermitd:doctor')?.skill).toBe('hermitd:hermit-doctor --maintainer');
   });
 
-  test('quality_gate.tier in template + DEFAULT_CONFIG must be in the budget/balanced/quality enum', () => {
-    const validTiers = ['budget', 'balanced', 'quality'];
-    expect(validTiers).toContain(template.quality_gate?.tier);
-    expect(validTiers).toContain(DEFAULT_CONFIG.quality_gate?.tier);
-  });
-
-  test('doctor routine uses explicit maintainer delivery in template and DEFAULT_CONFIG', () => {
-    const expected = 'hermitd:hermit-doctor --maintainer';
-    expect(template.routines.find((r: any) => r.id === 'hermitd:doctor')?.skill).toBe(expected);
-    expect(DEFAULT_CONFIG.routines.find((r: any) => r.id === 'hermitd:doctor')?.skill).toBe(expected);
-  });
-
-  test('compact.min_context_tokens value parity: template and DEFAULT_CONFIG carry the same default', () => {
-    // The key/type mirror above never compares values, so the compact threshold
-    // (mirrored in template + DEFAULT_CONFIG + docs) could silently drift if only
-    // one site is changed — this pins the two executable sites to each other and
-    // to the current 100k compactible-conversation default.
+  test('compact.min_context_tokens default is 100k', () => {
     expect(template.context_hygiene.compact.min_context_tokens).toBe(100000);
-    expect(DEFAULT_CONFIG.context_hygiene.compact.min_context_tokens).toBe(100000);
   });
 });
 
 // ============================================================
-// Boot merge logic (TestConfigMerge)
+// Boot config read and always-on write-back
 // ============================================================
 
-describe('loadConfig merge', () => {
-  test('sparse config with one key should get all defaults', () => {
+describe('loadConfig', () => {
+  test('sparse config settles every table key without seeding routines or env', () => {
     writeConfig({ agent_name: 'Test' });
-    const merged = loadConfig();
-    const defaultPaths = flattenKeys(DEFAULT_CONFIG);
-    const mergedPaths = flattenKeys(merged);
-    const missing = [...defaultPaths].filter((k) => !mergedPaths.has(k));
-    expect(missing).toEqual([]);
-    expect(merged.agent_name).toBe('Test');
+    const config = loadConfig();
+    for (const key of SETTLED_KEYS) expect(config).toHaveProperty(key);
+    expect(config.agent_name).toBe('Test');
+    expect(config.routines).toEqual([]);
+    expect(config.env).toEqual({});
   });
 
-  test('user env override does not lose other env keys', () => {
-    writeConfig({ env: { AGENT_HOOK_PROFILE: 'minimal' } });
-    const merged = loadConfig();
-    expect(merged.env.AGENT_HOOK_PROFILE).toBe('minimal');
-    expect(merged.env).toContainKey('MAX_THINKING_TOKENS');
-    expect(merged.env.MAX_THINKING_TOKENS).toBe('10000');
+  test('env keys the operator removed stay removed', () => {
+    writeConfig({ env: { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' } });
+    expect(loadConfig().env).toEqual({ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' });
   });
 
   test('custom heartbeat.active_hours.start preserves default end', () => {
     writeConfig({ heartbeat: { active_hours: { start: '09:00' } } });
-    const merged = loadConfig();
-    expect(merged.heartbeat.active_hours.start).toBe('09:00');
-    expect(merged.heartbeat.active_hours.end).toBe('23:00');
+    const config = loadConfig();
+    expect(config.heartbeat.active_hours.start).toBe('09:00');
+    expect(config.heartbeat.active_hours.end).toBe('23:00');
   });
 
   test('no config.json should cause exit(1)', () => {
@@ -845,6 +747,47 @@ describe('loadConfig merge', () => {
       process.exit = origExit;
     }
     expect(exitCode).toBe(1);
+  });
+});
+
+describe('markAlwaysOn', () => {
+  test('patches only always_on and the doctor ratchet, leaving every other key byte-identical', () => {
+    const original = {
+      agent_name: 'Test',
+      model: 5,
+      env: { CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '80' },
+      routines: [
+        { id: 'hermitd:doctor', schedule: '10 9 * * 1', skill: 'hermitd:hermit-doctor', enabled: true },
+        { id: 'mine', schedule: '0 7 * * *', skill: 'local:thing', enabled: true },
+      ],
+      budget: { daily_usd: '5' },
+      custom_key: { nested: [1, 2] },
+    };
+    writeConfig(original);
+    loadConfig();
+    markAlwaysOn();
+    const written = JSON.parse(fs.readFileSync('.hermit/config.json', 'utf-8'));
+    const expected = structuredClone(original) as any;
+    expected.always_on = true;
+    expected.routines[0].schedule = '10 9 * * *';
+    expected.routines[0].skill = 'hermitd:hermit-doctor --maintainer';
+    expect(written).toEqual(expected);
+  });
+
+  test('a config write made after boot read survives', () => {
+    writeConfig({ agent_name: 'Test' });
+    loadConfig();
+    writeConfig({ agent_name: 'Test', language: 'en' });
+    markAlwaysOn();
+    const written = JSON.parse(fs.readFileSync('.hermit/config.json', 'utf-8'));
+    expect(written).toEqual({ agent_name: 'Test', language: 'en', always_on: true });
+  });
+
+  test('an unparseable config is left untouched', () => {
+    fs.writeFileSync('.hermit/config.json', '{ not json');
+    loadConfig();
+    markAlwaysOn();
+    expect(fs.readFileSync('.hermit/config.json', 'utf-8')).toBe('{ not json');
   });
 });
 
@@ -1184,6 +1127,14 @@ describe('writeSettingsEnv', () => {
     expect(readSettings().env.DISCORD_STATE_DIR).toBe('/tmp/live-discord');
   });
 
+  test('sweep is skipped when config.json is not an object', () => {
+    fs.writeFileSync('.hermit/config.json', '[]');
+    writeSettings({ env: { DISCORD_STATE_DIR: '/tmp/live-discord' } });
+    const config = loadConfig();
+    captureLog(() => writeSettingsEnv(config));
+    expect(readSettings().env.DISCORD_STATE_DIR).toBe('/tmp/live-discord');
+  });
+
   test('existing *_STATE_DIR in env wins over config (Docker sets it via compose)', () => {
     writeConfig({
       channels: { discord: { enabled: true, state_dir: '/tmp/from-config' } },
@@ -1254,7 +1205,7 @@ describe('writeSettingsEnv', () => {
 
   test('a managed launch with nothing configured defaults to strict', () => {
     // The parity fix: a tmux always-on hermit gets what a Docker one always had.
-    // Neither the template nor DEFAULT_CONFIG seeds a profile any more, so this
+    // The template seeds no profile, so this
     // is the shape a freshly hatched hermit actually boots with.
     writeConfig({});
     const config = loadConfig();
@@ -2056,11 +2007,11 @@ describe('writeSettingsEnv sandbox overlay', () => {
 // ============================================================
 
 describe('negative paths', () => {
-  test('invalid JSON in config.json falls open to the defaults merge', () => {
+  test('invalid JSON in config.json settles to defaults', () => {
     fs.writeFileSync('.hermit/config.json', '{bad json');
-    const merged = loadConfig();
-    expect(merged.escalation).toBe('balanced');
-    expect(merged.model).toBe('sonnet');
+    const config = loadConfig();
+    expect(config.escalation).toBe('balanced');
+    expect(config.model).toBe('sonnet');
   });
 
   test('non-dict channels does not crash iterChannelConfigs', () => {

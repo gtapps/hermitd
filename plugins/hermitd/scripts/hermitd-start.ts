@@ -19,7 +19,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { spawn, spawnSync, type SpawnOptions } from 'node:child_process';
 import { acquireLock, releaseLock } from './lib/lockfile';
-import { readConfigRaw } from './lib/config-read';
+import { readConfigRaw, settleConfig } from './lib/config-read';
 import { readJson } from './lib/cli';
 import { auditConfigChange } from './lib/config-audit';
 import { writeRuntimeJson, readRuntimeJson, readRuntimeState, refuseProjectionRoot, STATE_DIR, RUNTIME_JSON, RUNTIME_TMP, LIFECYCLE_LOCK } from './lib/runtime';
@@ -136,151 +136,6 @@ function resolveHookProfile(
 
 const PLUGIN_ROOT = path.resolve(import.meta.dirname, '..');
 
-const DEFAULT_CONFIG: Json = {
-  _hermit_versions: {},
-  agent_name: null,
-  language: null,
-  timezone: null,
-  escalation: 'balanced',
-  operator_profile: 'technical',
-  voice: { style: null, prose: null },
-  channels: {},
-  remote: true,
-  remote_environments: {},
-  auth_mode: null,
-  model: 'sonnet',
-  effort: null,
-  permission_mode: 'auto',
-  tmux_session_name: 'hermit-{project_name}',
-  auto_session: true,
-  always_on: false,
-  chrome: false,
-  push_notifications: true,
-  ask_gate: true,
-  approvals: 'personal',
-  routine_max_lateness_minutes: 60,
-  routines: [
-    { id: 'hermitd:dream', schedule: '0 1 * * *', skill: 'hermitd:dream', precheck: 'dream', model: 'sonnet', enabled: true },
-    { id: 'hermitd:reflect', schedule: '0 9 * * *', skill: 'hermitd:reflect', enabled: true },
-    { id: 'hermitd:weekly-review', schedule: '0 23 * * 0', skill: 'hermitd:weekly-review', enabled: true },
-    { id: 'hermitd:later-check', schedule: '5 9 * * *', skill: 'hermitd:later run', enabled: true, precheck: 'later' },
-    { id: 'hermitd:capability-brainstorm', schedule: '0 10 1 * *', skill: 'hermitd:capability-brainstorm', enabled: true },
-    { id: 'hermitd:make-me-proactive', schedule: '0 10 15 * *', skill: 'hermitd:make-me-proactive', enabled: true },
-    { id: 'hermitd:doctor', schedule: '10 9 * * 1', skill: 'hermitd:hermit-doctor --maintainer', model: 'haiku', enabled: true, precheck: 'doctor', precheck_timeout_s: 120 },
-  ],
-  monitors: [],
-  // No AGENT_HOOK_PROFILE here, and none in config.json.template either. Its
-  // absence is the signal that the operator has expressed no preference, which
-  // is what lets writeSettingsEnv default a managed launch to `strict`. Seeding
-  // it would make every hermit look like it had chosen `standard` deliberately.
-  env: {
-    CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: '65',
-    MAX_THINKING_TOKENS: '10000',
-    CLAUDE_CODE_DISABLE_AGENT_PROGRESS_SUMMARIES: '1',
-  },
-  boot_skill: null,
-  shutdown_skill: null,
-  scheduled_checks: [],
-  docker: {
-    packages: [],
-    recommended_plugins: [],
-    fleet_mesh: false,
-  },
-  tasks: {
-    duties_open_records: true,
-    queue_nudge_minutes: 60,
-  },
-  heartbeat: {
-    enabled: true,
-    every: '30m',
-    active_hours: {
-      start: '08:00',
-      end: '23:00',
-    },
-    stale_threshold: '2h',
-    waiting_timeout: null,
-    clean_recheck_cooldown: '6h',
-    model: 'haiku',
-    effort: 'high',
-  },
-  quality_gate: {
-    tier: 'budget',
-  },
-  knowledge: {
-    raw_retention_days: 14,
-    compiled_budget_chars: 2500,
-    working_set_warn: 20,
-    usage_stale_days: 30,
-    usage_auto_archive: true,
-    archive_retention_days: null,
-    channel_log_enabled: true,
-    channel_log_retention_days: 90,
-  },
-  // wedge_floor and scheduler_enabled are deliberately template-only, not part of
-  // this boot merge: the always-on branch writes the merged config back to disk,
-  // and stamping the defaults there on a restart would look like operator-set
-  // values (wedge_floor to the upgrade that derives it; scheduler_enabled would
-  // freeze the default against future changes). The watchdog and the boot
-  // auto-install gate read them through lib/config-read, which supplies the same
-  // defaults.
-  watchdog: {
-    enabled: false,
-    stale_factor: 2,
-    escalate_after: 3,
-    operator_grace: '15m',
-  },
-  budget: {
-    daily_usd: null,
-    weekly_usd: null,
-    monthly_usd: null,
-    action: 'alert',
-  },
-  telemetry_export: {
-    _note: 'Operator-directed health/cost export to your own webhook. Inert until you set destination.url. Never sent to plugin authors.',
-    enabled: false,
-    destination: { type: 'webhook', url: null, bearer_env: 'HERMIT_TELEMETRY_TOKEN' },
-    interval_hours: 24,
-    redact_operator_text: true,
-  },
-  backup: {
-    _note: 'Scheduled git snapshot of this hermit\'s own state. Inert until you run `bin/hermitd-run backup setup` from a terminal.',
-    enabled: false,
-    mode: 'workspace',
-    schedule: '0 3 * * *',
-    remote: null,
-    push: true,
-    include: [],
-  },
-  artifacts: {
-    dashboard: true,
-    weekly_review: false,
-    publish_authorized: null,
-    backend: 'claude',
-  },
-  channel_recovery: { enabled: true, max_age: '6h' },
-  context_hygiene: {
-    clear: { enabled: true, quiet: '1h', max_age: '24h', min_tokens: 20000 },
-    compact: {
-      enabled: true,
-      min_context_tokens: 100000,
-      min_interval: '4h',
-    },
-  },
-  skills: { learning: true, notify: 'on' },
-  reflection: {
-    graduation_min_sessions: 1,
-  },
-  routine_wake_lint: {
-    max_windows: 6,
-  },
-  doctor: {
-    routine_cost_floor_usd: 2,
-  },
-  storage_drift: {
-    ignore: [],
-  },
-};
-
 const sleep = (s: number) => new Promise((r) => setTimeout(r, s * 1000));
 
 /** Python shlex.quote: safe chars pass through, everything else single-quoted. */
@@ -295,10 +150,11 @@ function shlexJoin(args: string[]): string {
   return args.map(shlexQuote).join(' ');
 }
 
-/** True when config.json exists but could not be parsed — gates the write-back. */
+/** True when config.json exists but did not parse as an object: its settled
+ *  `channels` is empty, so the boot settings sweep must not act on it. */
 let configReadFailed = false;
 
-/** Load config.json or return defaults. */
+/** Load config.json through the settled read path every other script uses. */
 function loadConfig(): Json {
   if (!fs.existsSync(CONFIG_PATH)) {
     console.log(`[hermit] No config found at ${CONFIG_PATH}`);
@@ -306,35 +162,13 @@ function loadConfig(): Json {
     process.exit(1);
   }
 
-  // Malformed JSON no longer aborts the boot: fail open to the defaults merge
-  // below (validate-config and doctor surface the corruption). The always-on
-  // branch writes config.json back, so record the failure — writing the merged
-  // defaults over an unparseable file would destroy the operator's config.
+  // Malformed JSON does not abort the boot: it settles to defaults (validate-config
+  // and doctor surface the corruption). Settling never seeds operator-owned
+  // containers, so a missing or broken `routines` or `env` boots empty rather
+  // than resurrecting entries the operator removed.
   const raw = readConfigRaw(path.dirname(CONFIG_PATH));
-  configReadFailed = raw === null;
-  const config: Json = raw ?? {};
-
-  // Merge with defaults — shallow for top-level, deep for nested dicts.
-  // This boot-time merge deliberately SEEDS containers (routines, env) for
-  // sparse configs — different from lib/config-read's read-path settling,
-  // which settles missing containers to empty.
-  // Values in config may be null (JSON null), so fall back to {} for spreading.
-  const merged: Json = { ...DEFAULT_CONFIG, ...config };
-  for (const [key, def] of Object.entries(DEFAULT_CONFIG)) {
-    if (isDict(def)) {
-      merged[key] = { ...(def as Json), ...(config[key] || {}) };
-    }
-  }
-  // One more level for heartbeat.active_hours
-  if ('active_hours' in (DEFAULT_CONFIG.heartbeat ?? {})) {
-    const mergedHb = merged.heartbeat ?? {};
-    mergedHb.active_hours = {
-      ...DEFAULT_CONFIG.heartbeat.active_hours,
-      ...((config.heartbeat || {}).active_hours || {}),
-    };
-    merged.heartbeat = mergedHb;
-  }
-  return merged;
+  configReadFailed = !isDict(raw);
+  return settleConfig(raw ?? undefined);
 }
 
 // One-way ratchet: an always-on boot upgrades template-default doctor fields.
@@ -367,6 +201,25 @@ function applyAlwaysOnDoctorSchedule(config: Json): void {
   if (routine?.skill === LEGACY_DOCTOR_SKILL) {
     routine.skill = MAINTAINER_DOCTOR_SKILL;
   }
+}
+
+// `always_on` and the doctor ratchet are the only fields boot owns, so they are
+// patched onto the RAW object and that is what gets written, like hermitd-stop.
+// Writing the settled view would stamp every default as an operator-set value and
+// bake read-path normalization into the file. The file is re-read here rather than
+// reusing the boot-time read: the session is already running by now, and a write
+// it made in between must survive. A config that does not parse as an object is
+// left untouched.
+function markAlwaysOn(): void {
+  const raw = readConfigRaw(path.dirname(CONFIG_PATH));
+  if (!isDict(raw)) return;
+  const before = structuredClone(raw);
+  raw.always_on = true;
+  applyAlwaysOnDoctorSchedule(raw);
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(raw, null, 2) + '\n');
+    auditConfigChange(path.dirname(CONFIG_PATH), before, raw, 'hermitd-start');
+  } catch {}
 }
 
 /** Print a notice when the loaded plugin and the applied config stamp disagree.
@@ -1842,19 +1695,8 @@ async function main(): Promise<void> {
   clearWatchRegistry();
   clearEffortOverrideOnBoot(config);
 
-  // Mark as always-on mode in config
-  const alwaysOnBefore = structuredClone(config);
   config.always_on = true;
-  applyAlwaysOnDoctorSchedule(config);
-  // Skipped when the on-disk config was unparseable: `config` is then pure
-  // DEFAULT_CONFIG, and writing it would silently replace the operator's
-  // identity, channels, routines and budget with template defaults.
-  if (!configReadFailed) {
-    try {
-      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n');
-      auditConfigChange(path.dirname(CONFIG_PATH), alwaysOnBefore, config, 'hermitd-start');
-    } catch {}
-  }
+  markAlwaysOn();
 
   // Verify the session survived the boot period
   await sleep(3); // Wait for Claude to boot — increase if on slow hardware
@@ -1921,10 +1763,10 @@ export {
   RUNTIME_TMP,
   LIFECYCLE_LOCK,
   PROFILE_LEVELS,
-  DEFAULT_CONFIG,
   CHANNEL_PLUGINS,
   loadConfig,
   applyAlwaysOnDoctorSchedule,
+  markAlwaysOn,
   checkForUpgrade,
   checkPrerequisites,
   isContainer,
