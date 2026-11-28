@@ -34,7 +34,8 @@
     "inactivity_timeout": 900,
     "saved_logins": true,
     "software_webgl": true,
-    "chrome_args": []
+    "chrome_args": [],
+    "executable_path": null
   },
   "transcription": {
     "enabled": true,

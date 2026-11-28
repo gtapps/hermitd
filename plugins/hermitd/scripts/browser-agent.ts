@@ -467,6 +467,14 @@ export async function runBrowserAgent(argv: string[], realBinary?: string, chrom
     }
     if (pending && pending.task === task && !storeRequest && !closing) return refuseBrowserCommand('store_pending');
     if (argv.at(-1) !== 'close') {
+      // The signed-in profile only: anonymous sessions keep the pinned Chrome and its matching user agent.
+      // An absolute path or a bare command name on PATH; Bun.which refuses directories and non-executables.
+      const executable: string | null = config.browser.executable_path;
+      if (executable) {
+        const found = !path.isAbsolute(executable) && executable.includes('/') ? null : Bun.which(executable, { PATH: env.PATH ?? '' });
+        if (!found) { printJson({ error: `browser_executable_missing:${executable}` }); return 1; }
+        env.AGENT_BROWSER_EXECUTABLE_PATH = found;
+      }
       const display = await (options.ensureDisplay ?? (target => ensureDisplay(target, { deployment, marker: options.marker })))(dir);
       if ('blocker' in display) {
         const detail = host

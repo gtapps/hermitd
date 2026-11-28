@@ -229,7 +229,7 @@ describe('config reference coverage', () => {
 
 test('browser config settles defaults and validates admin entries and nullable integer ports', () => {
   const admins = [{ login: 'person@example.com', mentions: { custom: '@person' } }];
-  expect(settleConfig({}).browser).toEqual({ enabled: true, default: 'agent-browser', use_when_fetch_fails: true, admins: [], port: null, host: null, inactivity_timeout: 900, saved_logins: true, software_webgl: true, chrome_args: [] });
+  expect(settleConfig({}).browser).toEqual({ enabled: true, default: 'agent-browser', use_when_fetch_fails: true, admins: [], port: null, host: null, inactivity_timeout: 900, saved_logins: true, software_webgl: true, chrome_args: [], executable_path: null });
   expect(settleConfig({ browser: { saved_logins: false } }).browser.saved_logins).toBe(false);
   expect(validate({ ...template, browser: { saved_logins: 'false' } }).errors.join(' ')).toContain('browser.saved_logins');
   expect(settleConfig({ browser: { admins, port: 6081 } }).browser).toMatchObject({ admins, port: 6081 });

@@ -481,6 +481,31 @@ test('browser config refuses Chrome flags that override the wrapper policy', asy
   expect(await run(['--session', 'public', 'snapshot'], {}, { deployment: 'host', data, platform: 'linux' })).toMatchObject({ code: 1, data: { error: 'browser_arg_refused:--no-sandbox' } });
 });
 
+test('browser.executable_path runs an operator binary in the signed-in profile only', async () => {
+  const { dir, root, binary, run, calls } = fixture();
+  browserLease('claim', 'task', dir);
+  writeConfig(root, { browser: { executable_path: binary } });
+  expect((await run(['--task', 'task', 'snapshot'])).data.env.AGENT_BROWSER_EXECUTABLE_PATH).toBe(binary);
+  expect((await run(['--session', 'public', 'snapshot'])).data.env.AGENT_BROWSER_EXECUTABLE_PATH).toBeUndefined();
+  const bin = path.join(root, 'bin');
+  fs.mkdirSync(bin);
+  fs.copyFileSync(binary, path.join(bin, 'my-chromium'));
+  fs.chmodSync(path.join(bin, 'my-chromium'), 0o755);
+  fs.writeFileSync(path.join(root, 'plain'), '', { mode: 0o644 });
+  const PATH = `${bin}:${process.env.PATH}`;
+  writeConfig(root, { browser: { executable_path: 'my-chromium' } });
+  expect((await run(['--task', 'task', 'snapshot'], { PATH })).data.env.AGENT_BROWSER_EXECUTABLE_PATH).toBe(path.join(bin, 'my-chromium'));
+  const before = calls().length;
+  for (const value of ['missing-chromium', 'bin/my-chromium', path.join(root, 'plain'), bin]) {
+    writeConfig(root, { browser: { executable_path: value } });
+    expect(await run(['--task', 'task', 'snapshot'], { PATH })).toMatchObject({ code: 1, data: { error: `browser_executable_missing:${value}` } });
+  }
+  expect(calls().length).toBe(before);
+  const closed = await run(['--task', 'task', 'close'], { PATH });
+  expect(closed.code).toBe(0);
+  expect(closed.data.env.AGENT_BROWSER_EXECUTABLE_PATH).toBeUndefined();
+});
+
 test('host anonymous sessions derive the Chrome major from the installed directory', async () => {
   const { dir, run } = fixture();
   const data = path.join(dir, '../browser-data');
