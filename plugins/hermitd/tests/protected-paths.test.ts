@@ -57,6 +57,7 @@ describe('protected settings paths', () => {
   test('browser launch settings require the settings gate', () => {
     expect(askPathRegex().test('browser.software_webgl')).toBe(true);
     expect(askPathRegex().test('browser.chrome_args')).toBe(true);
+    expect(askPathRegex().test('browser.executable_path')).toBe(true);
   });
   test('named remote environments require the settings gate', () => {
     expect(askPathRegex().test('remote_environments.laptop.local')).toBe(true);

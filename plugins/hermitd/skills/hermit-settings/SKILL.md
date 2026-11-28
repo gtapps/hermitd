@@ -115,6 +115,7 @@ Pass the **argument name**, not the dotted path — the script looks the path up
 | `browser-inactivity-timeout` | `browser.inactivity_timeout` | integer | any; seconds before an unused signed-in browser closes; 0 turns it off | within a minute |
 | `browser-saved-logins` | `browser.saved_logins` | boolean | yes / no; off stops the agent from saving or using saved logins; existing saved logins stay on disk until deleted | next start of the agent's browser |
 | `browser-software-webgl` | `browser.software_webgl` | boolean | yes / no; render WebGL in software when no GPU is usable; off leaves WebGL sites broken on GPU-less machines | next start of the agent's browser |
+| `browser-executable-path` | `browser.executable_path` | string, nullable | any; absolute path or command name of a Chromium-based browser for the signed-in browser, or 'none' for the bundled Chrome | next start of the agent's browser |
 | `transcription` | `transcription.enabled` | boolean | yes / no; transcribe inbound voice notes | next voice note (Docker image: next hermitd update) |
 | `transcription-echo` | `transcription.echo` | boolean | yes / no; echo transcripts in the same chat | next voice note |
 | `auth-mode` | `auth_mode` | enum, nullable | login / token; login (claude.ai sign-in, renew ~monthly) or token (long-lived, renew yearly) | run /relogin to sign in with the new method |

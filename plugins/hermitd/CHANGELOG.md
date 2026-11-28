@@ -8,6 +8,10 @@
 - Team approvals refuse worker prompts and close unanswered maintainer-chat prompts after 60 seconds on guarded agents.
 - The core mod no longer triggers skipped-hook notices.
 
+### Added
+
+- `browser.executable_path` runs the agent's signed-in browser on a Chromium-based browser you install, given as an absolute path or a command name on `PATH`; the default stays the bundled Chrome.
+
 ## [1.4.45] - 2026-11-27
 
 ### Added
