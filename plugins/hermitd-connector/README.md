@@ -30,8 +30,10 @@ Set up the hermitd connector using https://github.com/gtapps/hermitd/blob/main/p
 2. They sign in and send you the 8-character pairing code. The code is valid for 10 minutes. Run the approval command on the host.
 
    ```bash
-   hermitd connector <name> pair <code> --name Ana
+   hermitd connector pair <code> --name Ana
    ```
+
+   Run it from the agent's folder. From anywhere else, put the agent's name (as listed by `hermitd agents`) after `connector`: `hermitd connector <agent-name> pair <code> --name Ana`. The word after `connector` is never the channel key.
 
    Once you approve the code, their app connects. Follow the same steps to pair yourself.
 
@@ -53,11 +55,13 @@ Each person has their own chat with the agent. Everyone paired with that agent s
 
 ## Manage it
 
+Run these from the agent's folder without `<agent-name>`, or name the agent (see `hermitd agents`) from anywhere else.
+
 ```bash
-hermitd connector <name> status         # server and channel state
-hermitd connector <name> list           # who is paired
-hermitd connector <name> revoke <id>    # remove one person
-hermitd connector <name> disable        # stop at the next restart, pairings kept
+hermitd connector <agent-name> status         # server and channel state
+hermitd connector <agent-name> list           # who is paired
+hermitd connector <agent-name> revoke <id>    # remove one person
+hermitd connector <agent-name> disable        # stop at the next restart, pairings kept
 ```
 
 Use `status` to see whether the server is running, the channel is polling, and any dispatched messages are still unanswered. If something looks wrong, see [Recovery](docs/setup.md#recovery).
