@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.46] - 2026-11-28
 
 ### Fixed
 
@@ -11,6 +11,16 @@
 ### Added
 
 - `browser.executable_path` runs the agent's signed-in browser on a Chromium-based browser you install, given as an absolute path or a command name on `PATH`; the default stays the bundled Chrome.
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Confirm the core update is installed**: no files to migrate.
+
+**Operator action required:** `.hermit/bin/hermitd-docker restart` (or `hermitd-stop && hermitd-start`), so the agent loads the new model-switch and prompt hooks.
+
+No `config.json` changes required.
 
 ## [1.4.45] - 2026-11-27
 
