@@ -305,10 +305,10 @@ function main(source: string | null, sessionId: string | null) {
   sessionStarted(AGENT_DIR, sessionId, source ?? null);
   if (source === 'clear') recordClear(stateDir);
   // Only SessionStart writes this, so a prompt right after cannot erase it: the core mod
-  // confirms a queued clear or compaction from it when the classic events pass it over.
+  // confirms a queued clear or compaction from it.
   try {
     writeFileAtomic(path.join(stateDir, 'session-start.json'), JSON.stringify({ source: source ?? 'startup', at: new Date().toISOString() }) + '\n');
-  } catch { /* fail-open: the mod falls back to the classic events and its deadline */ }
+  } catch { /* fail-open: the mod reports an unknown outcome at its deadline */ }
   seedOperatorActivity(AGENT_DIR);
   if (source === 'compact') {
     emitCompactCapsule();

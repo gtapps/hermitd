@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Chat and deferred model switches complete without a confirmation dialog when the built-in guard is active.
+- Team approvals refuse worker prompts and close unanswered maintainer-chat prompts after 60 seconds on guarded agents.
+- The core mod no longer triggers skipped-hook notices.
+
 ## [1.4.45] - 2026-11-27
 
 ### Added

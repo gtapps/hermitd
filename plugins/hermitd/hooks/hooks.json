@@ -2,6 +2,32 @@
   "description": "Core hermit guardrails and session lifecycle hooks.",
   "modules": ["../mod/register.ts"],
   "hooks": {
+    "PreModelSwitch": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun",
+            "args": ["--no-install", "${CLAUDE_PLUGIN_ROOT}/scripts/model-switch-gate.ts"],
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun",
+            "args": ["--no-install", "${CLAUDE_PLUGIN_ROOT}/scripts/permission-gate.ts"],
+            "timeout": 70
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "^mcp__.*__complete_authentication$",

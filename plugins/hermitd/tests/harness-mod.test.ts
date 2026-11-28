@@ -291,7 +291,7 @@ test('loaded stamps the marker and names the state directory', async () => {
   const { wd, dir } = fixture();
   fs.rmSync(path.join(dir, 'state/harness-mod-loaded.json'));
   expect(await call(wd, 'loaded')).toEqual({ decision: 'ok', state: path.join(dir, 'state'), session_id: 'resident', approvals: 'personal' });
-  expect(JSON.parse(fs.readFileSync(path.join(dir, 'state/harness-mod-loaded.json'), 'utf8'))).toEqual({ session_id: 'resident', queue: QUEUE_PROTOCOL });
+  expect(JSON.parse(fs.readFileSync(path.join(dir, 'state/harness-mod-loaded.json'), 'utf8'))).toEqual({ session_id: 'resident', queue: QUEUE_PROTOCOL, approvals: 'personal' });
 });
 
 function startUpgradeFixture(config: object, runtime: object = { session_pid: 4242 }) {

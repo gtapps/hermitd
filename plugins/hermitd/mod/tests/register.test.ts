@@ -4,9 +4,6 @@ import type { ProcessRunResult } from 'claude-code';
 
 // Complete event inputs, so each test states only the fields the mod reads.
 const ran = (stdout: string): { value: ProcessRunResult } => ({ value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } });
-const switchCost = { context_tokens: 0, prompt_cache_warm: false, cache_ttl: '5m' as const, estimated_cache_write_usd: 0, pricing: 'default' as const };
-const preSwitch = (requested_model: string, to_model: string) => ({ requested_model, to_model, from_model: 'opus', source: 'command' as const, ...switchCost });
-const postSwitch = (from_model: string, to_model: string) => ({ from_model, to_model, requested_model: null, source: 'command' as const, ...switchCost });
 const completed = (turnId: string, agentId?: string) => ({ turnId, agentId, reason: 'answer' as const, answer: '', durationMs: 0, isAborted: false });
 
 const channel = (body: string) => ({ text: `<channel source="telegram" chat_id="12345" user="u1">${body}</channel>`, origin: { kind: 'channel' as const, server: 'telegram' }, wait: false });
@@ -96,48 +93,36 @@ test('non-channel origins cannot submit a channel envelope', async ($, on) => {
   expect(calls).toBe(0);
 });
 
+async function modelRows($: any, door = 'command') {
+  for (const [uuid, content] of [
+    ['command', '<command-name>/model</command-name><command-args>sonnet</command-args>'],
+    ['stdout', '<local-command-stdout>Set model to sonnet</local-command-stdout>'],
+  ]) {
+    await $.session.append({ door, origin: { kind: 'engine' }, message: { type: 'system', content: [{ type: 'text', text: content }] }, uuid });
+  }
+}
+
 test('intake queues through the bridge, then runs and waits for model switch evidence', async ($, on) => {
   const clock = mock.clock(on);
   const r = rig(on, { handlers: { intake: () => { r.queue.push(entry('m1', [{ command: '/model', arg: 'sonnet' }])); return { decision: 'queued', id: 'm1' }; } } });
-  on('command.run', ($, e) => { r.calls.push(e.command); return {}; });
-  on('classic.PreModelSwitch', () => ({}));
-  on('classic.PostModelSwitch', () => ({}));
+  let release!: () => void;
+  on('command.run', ($, e) => { r.calls.push(e.command); return new Promise(resolve => { release = () => resolve({}); }); });
   expect((await $.prompt.submit(channel('!model sonnet'))).drop).toBeDefined();
   expect(r.calls).toEqual(['intake']);
   await clock.settle();
   expect(r.calls).toEqual(['intake', 'loaded', 'recover', 'reconcile', 'claim', 'model']);
-  await $.classic.PreModelSwitch(preSwitch('sonnet', 'claude-sonnet'));
-  await $.classic.PostModelSwitch(postSwitch('opus', 'unrelated'));
+  await modelRows($);
   await clock.settle();
   expect(finalized(r)).toEqual([]);
-  await $.classic.PostModelSwitch(postSwitch('opus', 'claude-sonnet'));
+  release();
   await clock.settle();
-  expect(finalized(r)).toEqual([{ id: 'm1', legs: [{ command: '/model', status: 'ok', text: 'Model switched to sonnet' }] }]);
+  expect(finalized(r)).toEqual([{ id: 'm1', legs: [{ command: '/model', status: 'ok', text: 'Set model to sonnet' }] }]);
 });
-
-for (const decision of ['deny', 'ask', 'none'] as const) {
-  test(`model approval respects ${decision} and is armed for one target only`, async ($, on) => {
-    const clock = mock.clock(on);
-    const r = rig(on);
-    on('command.run', () => ({}));
-    const answer = decision === 'none' ? {} : { permissionDecision: decision, permissionDecisionReason: 'settings decision' };
-    on('classic.PreModelSwitch', () => answer);
-    expect(await $.classic.PreModelSwitch(preSwitch('sonnet', 'claude-sonnet'))).toEqual(answer);
-    r.queue.push(entry('m1', [{ command: '/model', arg: 'sonnet' }]));
-    await boot($);
-    await clock.advance(2000);
-    expect(await $.classic.PreModelSwitch(preSwitch('opus', 'claude-opus'))).toEqual(answer);
-    expect(await $.classic.PreModelSwitch(preSwitch('sonnet', 'claude-sonnet'))).toEqual(decision === 'none' ? { permissionDecision: 'allow' } : answer);
-    if (decision === 'none') expect(await $.classic.PreModelSwitch(preSwitch('sonnet', 'claude-sonnet'))).toEqual({});
-  });
-}
 
 test('one timer; requests run in order and an uncertain model skips the dependent effort', async ($, on) => {
   const clock = mock.clock(on);
   const r = rig(on);
   on('command.run', ($, e) => { r.commands.push(e.command); return {}; });
-  on('classic.PreModelSwitch', () => ({}));
-  on('classic.PostModelSwitch', () => ({}));
   r.queue.push(entry('a', [{ command: '/model', arg: 'bad' }, { command: '/effort', arg: 'high' }]), entry('b', [{ command: '/model', arg: 'sonnet' }]));
   await boot($);
   await boot($);
@@ -148,8 +133,10 @@ test('one timer; requests run in order and an uncertain model skips the dependen
   expect(finalized(r)[0]).toEqual({ id: 'a', legs: [{ command: '/model', status: 'unknown', text: 'deadline reached' }] });
   await clock.advance(2000);
   expect(r.commands).toEqual(['model', 'model']);
-  await $.classic.PreModelSwitch(preSwitch('sonnet', 'claude-sonnet'));
-  await $.classic.PostModelSwitch(postSwitch('opus', 'claude-sonnet'));
+  await modelRows($, 'prompt');
+  await clock.settle();
+  expect(finalized(r)).toHaveLength(1);
+  await modelRows($);
   await clock.settle();
   expect(finalized(r).map(f => f.legs[0].status)).toEqual(['unknown', 'ok']);
 });
@@ -376,7 +363,7 @@ test('a fresh copy loaded while a turn is in flight leaves the wait to the engin
   expect(r.calls.filter(c => c === 'claim')).toHaveLength(1);
 });
 
-test('loaded runs once per session id, retries a pass a bounded number of times, and catches up on SessionStart', async ($, on) => {
+test('loaded follows changed session ids and retries a fork after the resident stamp', async ($, on) => {
   const clock = mock.clock(on);
   let id = 'old';
   let runtime = 'old';
@@ -387,7 +374,6 @@ test('loaded runs once per session id, retries a pass a bounded number of times,
     return { decision: 'ok', state: '/state', session_id: id };
   } } });
   on('session.end', () => ({ sessionId: 'old' }));
-  on('classic.SessionStart', () => ({}));
   await boot($);
   await clock.advance(10000);
   expect(r.calls.filter(c => c === 'loaded')).toHaveLength(1);
@@ -395,25 +381,29 @@ test('loaded runs once per session id, retries a pass a bounded number of times,
   await $.session.end({ reason: 'clear', sessionId: 'old', resume: { id: 'old' } });
   runtime = 'new';
   id = 'new';
-  await $.classic.SessionStart({ source: 'clear' });
   await clock.advance(10000);
   expect(stamped).toEqual(['old', 'new']);
-  // A guest id is attempted, retried a bounded number of times, then left alone.
-  id = 'guest';
-  await clock.advance(70000);
-  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(8);
-  await clock.advance(120000);
-  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(8);
-  expect(r.calls).not.toContain('claim');
-  // A forked resume can start before the resident record names it; SessionStart catches up.
+  // A forked resume can start before the resident record names it; the load retry catches up.
   id = 'fork';
   await boot($);
   expect(stamped).toEqual(['old', 'new']);
   runtime = 'fork';
-  await $.classic.SessionStart({ source: 'fork' });
-  await clock.settle();
+  await clock.advance(2000);
   expect(stamped).toEqual(['old', 'new', 'fork']);
   expect(r.calls.filter(c => c === 'recover')).toHaveLength(1);
+});
+
+test('same-id ticks leave the mod unloaded after its retries are exhausted', async ($, on) => {
+  const clock = mock.clock(on);
+  let ready = false;
+  const r = rig(on, { handlers: { loaded: () => ready ? { decision: 'ok', state: '/state' } : { decision: 'pass' } } });
+  await boot($);
+  await clock.advance(70000);
+  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(6);
+  ready = true;
+  await clock.advance(120000);
+  expect(r.calls.filter(c => c === 'loaded')).toHaveLength(6);
+  expect(r.calls).not.toContain('recover');
 });
 
 test('stdout classification recognizes observed success and failures', () => {
@@ -431,32 +421,7 @@ test('stdout classification recognizes observed success and failures', () => {
 });
 
 for (const command of ['/compact', '/clear']) {
-  test(`${command} finalizes only after its native lifecycle evidence`, async ($, on) => {
-    const clock = mock.clock(on);
-    const r = rig(on);
-    on('command.run', () => ({}));
-    on('session.compact', () => ({ messages: [{ role: 'user', text: 'summary', toolUses: [] }], tokensBefore: 100, tokensAfter: 10, usage: { input_tokens: 100, output_tokens: 10, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } }));
-    on('session.end', () => ({ sessionId: 'resident' }));
-    on('classic.SessionStart', () => ({}));
-    r.queue.push(entry('c', [{ command, arg: null }], { source: 'watchdog' }));
-    await boot($);
-  await clock.advance(2000);
-    expect(finalized(r)).toEqual([]);
-    if (command === '/compact') await $.session.compact({ trigger: 'manual', messages: [{ role: 'user', text: 'summary', toolUses: [] }] });
-    else {
-      // The id is restamped by the SessionStart command hook, after session.end.
-      await $.session.end({ reason: 'clear', sessionId: 'resident', resume: { id: 'resident' } });
-      await clock.settle();
-      expect(finalized(r)).toEqual([]);
-      await $.classic.SessionStart({ source: 'clear' });
-    }
-    await clock.settle();
-    expect(finalized(r)[0].legs[0].status).toBe('ok');
-  });
-}
-
-for (const command of ['/compact', '/clear']) {
-  test(`${command} finalizes from the SessionStart stamp when the classic events never arrive`, async ($, on) => {
+  test(`${command} finalizes from the SessionStart stamp`, async ($, on) => {
     const clock = mock.clock(on);
     const r = rig(on);
     on('command.run', () => ({}));
@@ -635,21 +600,18 @@ test('load during a main turn defers its first reconcile until idle', async ($, 
 
 
 const checkInput = { tool: 'Bash', input: { command: 'docker ps' }, tool_use_id: 'call' };
-const promptInput = { tool_name: 'Bash', tool_input: { command: 'docker ps' }, permission_suggestions: [] };
-function approvalRig(on: any, options: { mode?: string; state?: boolean; park?: (payload: string) => unknown } = {}) {
+function approvalRig(on: any, options: { mode?: string; state?: boolean } = {}) {
   return rig(on, { handlers: {
     loaded: () => ({ decision: options.state === false ? 'pass' : 'ok', state: options.state === false ? undefined : '/state', approvals: options.mode ?? 'team' }),
-    park: options.park ?? (() => ({ decision: 'deny', reason: 'needs admin' })),
+    park: () => ({ decision: 'deny', reason: 'needs admin' }),
   } });
 }
 
 test('personal calls preserve verdicts and never invoke park', async ($, on) => {
   const r = approvalRig(on, { mode: 'personal' });
   on('tool.check', () => ({ decision: 'ask', rule: 'Bash(docker *)' }));
-  on('classic.PermissionRequest', () => ({}));
   await boot($);
   expect((await $.tool.check(checkInput)).decision).toBe('ask');
-  expect(await $.classic.PermissionRequest(promptInput)).toEqual({});
   expect(r.calls.filter(c => c === 'park')).toEqual([]);
 });
 
@@ -667,11 +629,9 @@ test('team subagents and background sessions refuse without park', async ($, on)
   const r = approvalRig(on, { state: false });
   on('env.get', () => ({ value: '/jobs/job' }));
   on('tool.check', () => ({ decision: 'ask', rule: 'Bash(docker *)' }));
-  on('classic.PermissionRequest', () => ({}));
   await boot($);
   expect((await $.tool.check({ ...checkInput, agentId: 'worker' })).decision).toBe('deny');
   expect((await $.tool.check(checkInput)).decision).toBe('deny');
-  expect((await $.classic.PermissionRequest(promptInput)).decision?.behavior).toBe('deny');
   expect(r.calls.filter(c => c === 'park')).toEqual([]);
 });
 
@@ -684,25 +644,10 @@ test('interactive guest keeps its prompt and team pass keeps the ask verdict', a
   expect(r.calls.filter(c => c === 'park')).toEqual([]);
 });
 
-for (const policy of [{ decision: 'pass' }, { decision: 'decline', after_seconds: 60 }, {}, { decision: 'deny', reason: 'refused' }]) {
-  test(`permission prompt applies policy ${JSON.stringify(policy)}`, async ($, on) => {
-    const r = approvalRig(on, { park: () => policy });
-    on('classic.PermissionRequest', () => ({}));
-    await boot($);
-    const result = await $.classic.PermissionRequest(promptInput);
-    if (policy.decision === 'pass') expect(result).toEqual({});
-    else expect(result.decision?.behavior).toBe('deny');
-    expect(r.payloads.park).toEqual([{ event: 'prompt' }]);
-  });
-}
-
-test('existing permission decisions and non-ask checks survive unchanged', async ($, on) => {
+test('non-ask checks preserve the classifier verdict', async ($, on) => {
   const r = approvalRig(on);
-  on('classic.PermissionRequest', () => ({ decision: { behavior: 'deny', message: 'hook decided' } }));
   on('tool.check', () => ({ decision: 'deny', reason: 'classifier' }));
   await boot($);
-  const decision = (await $.classic.PermissionRequest(promptInput)).decision;
-  expect(decision?.behavior === 'deny' && decision.message).toBe('hook decided');
   expect(await $.tool.check(checkInput)).toEqual({ decision: 'deny', reason: 'classifier' });
   expect(r.calls.filter(c => c === 'park')).toEqual([]);
 });

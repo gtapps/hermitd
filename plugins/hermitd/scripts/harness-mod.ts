@@ -134,10 +134,12 @@ export async function run(verb: string, sessionId: string, payload = ''): Promis
         ? { decision: 'queued', id: queued.id }
         : { decision: 'refuse', reason: REFUSALS[queued.reason] ?? queued.reason, reply_to: decision.reply_to };
     }
-    case 'loaded':
-      writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId, queue: QUEUE_PROTOCOL });
+    case 'loaded': {
+      const { approvals } = readSettledConfig(dir);
+      writeModState(dir, MOD_LOADED_FILE, { session_id: sessionId, queue: QUEUE_PROTOCOL, approvals });
       try { queueStartUpgrade(dir); } catch { /* doctor reports a version gap that stays */ }
-      return { decision: 'ok', state: path.join(dir, 'state'), session_id: sessionId, approvals: readSettledConfig(dir).approvals };
+      return { decision: 'ok', state: path.join(dir, 'state'), session_id: sessionId, approvals };
+    }
     case 'reconcile': {
       const options = payload ? JSON.parse(payload) : {};
       const now = Date.now();

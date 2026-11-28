@@ -1,4 +1,5 @@
 import type { EngineInterface, Register, TurnStepInput } from 'claude-code';
+import { APPROVAL_FAILURE, APPROVAL_WORKER } from './approval-messages';
 
 type Command = { command: string; arg: string | null };
 type Leg = { command: string; status: 'ok' | 'failed' | 'unknown' | 'skipped'; text: string; submitted_at?: string };
@@ -9,14 +10,13 @@ type Entry = {
   legs?: Leg[];
 };
 type Decision = Partial<Entry> & {
-  decision: 'pass' | 'run' | 'refuse' | 'ok' | 'queued' | 'send_failed' | 'deny' | 'decline' | 'chat' | 'forward';
+  decision: 'pass' | 'run' | 'refuse' | 'ok' | 'queued' | 'send_failed' | 'deny' | 'chat' | 'forward';
   command?: string;
   args?: string | null;
   to?: string | { sessionId: string };
   helper?: string;
   name?: string;
   approvals?: string;
-  after_seconds?: number;
   reason?: string;
   text?: string;
   silent?: boolean;
@@ -81,11 +81,9 @@ let active: {
   resolved: boolean;
   evidence?: Leg;
   stdoutStarted: boolean;
-  expectedModel: string | null;
   startedAt: number;
   timer: { cancel(): void };
 } | undefined;
-let approval: string | null = null;
 // The resident's chat-set effort, applied per main-thread request; the session's own level stays.
 type Effort = TurnStepInput['effort'];
 let effort: Effort;
@@ -133,7 +131,6 @@ async function finish($: EngineInterface, leg: Leg) {
   if (!active) return;
   active.timer.cancel();
   active = undefined;
-  approval = null;
   await settle($, leg);
 }
 
@@ -153,7 +150,7 @@ async function dispatch($: EngineInterface) {
   if (command.command === '/doctor') return runDoctor($, request);
   if (command.command === '/effort') return setEffort($, command.arg ?? '');
   const current = {
-    command, resolved: false, stdoutStarted: false, expectedModel: null as string | null,
+    command, resolved: false, stdoutStarted: false,
     startedAt: Date.now(),
     evidence: undefined as Leg | undefined,
     timer: $.clock.after(deadlineFor(command), () => {
@@ -162,7 +159,6 @@ async function dispatch($: EngineInterface) {
   };
   active = current;
   running = true;
-  approval = command.command === '/model' ? command.arg : null;
   try {
     const out = await $.command.run({ command: command.command.slice(1), args: command.arg ?? '' });
     if (active !== current) return;
@@ -319,8 +315,7 @@ async function loadSession($: EngineInterface, id: string) {
   if (result.decision !== 'ok' || !result.state) {
     stateDir = undefined;
     effort = undefined;
-    // session.start can run before the SessionStart hook stamps the resident id, and the
-    // classic.SessionStart retry may never run, so a `pass` is retried a few times with backoff.
+    // session.start can run before the SessionStart hook stamps the resident id, so a `pass` is retried a few times with backoff.
     if (loadRetry < LOAD_RETRIES) {
       const delay = 2000 * 2 ** loadRetry++;
       $.clock.after(delay, async () => {
@@ -348,8 +343,7 @@ async function hasPause($: EngineInterface, dir: string, names: string[]): Promi
   return false;
 }
 
-// classic.SessionStart and session.compact never reach the mod when a builtin plugin seats
-// ahead of it, so the SessionStart hook's own stamp confirms the clear or compaction too.
+// The SessionStart hook stamps the source and time of the latest reset.
 const STAMPED: Record<string, { source: string; text: string }> = {
   '/clear': { source: 'clear', text: 'Context cleared' },
   '/compact': { source: 'compact', text: 'Context compacted' },
@@ -362,7 +356,7 @@ async function confirmFromStamp($: EngineInterface, dir: string) {
   try {
     const stamp = JSON.parse(String(await $.fs.read(`${dir}/session-start.json`)));
     if (stamp.source !== expected.source || !(Date.parse(stamp.at) >= current.startedAt)) return;
-    // The classic events may have landed during the read; their evidence is richer.
+    // The active leg may have changed during the read.
     if (active !== current || current.evidence) return;
     current.evidence = { command: current.command.command, status: 'ok', text: expected.text };
     observe($);
@@ -413,9 +407,6 @@ async function tick($: EngineInterface) {
   }
 }
 
-const APPROVAL_FAILURE = 'This step was not run because the approval check failed. Do not retry or reword it. Report the failure; an admin must resolve it.';
-const APPROVAL_WORKER = 'This step was not run. Subagents and background sessions need an admin to run approval-needing work on the main loop. Do not retry or reword it. Say that an admin is needed in your report.';
-
 async function teamApprovals($: EngineInterface): Promise<boolean> {
   if (loadAttempt) await loadAttempt.catch(() => undefined);
   if (approvals === undefined) await loadedFor($, await $.session.id()).catch(() => undefined);
@@ -427,7 +418,6 @@ async function park($: EngineInterface, payload: object): Promise<Decision> {
     const result = await bridge($, 'park', JSON.stringify(payload));
     if (result?.decision === 'pass') return result;
     if (result?.decision === 'deny' && typeof result.reason === 'string' && result.reason) return result;
-    if (result?.decision === 'decline' && result.after_seconds === 60) return result;
   } catch { /* Once team mode is known, policy failures always refuse. */ }
   return { decision: 'deny', reason: APPROVAL_FAILURE };
 }
@@ -442,25 +432,6 @@ export const register: Register = on => {
     if (!stateDir) return result;
     const policy = await park($, { event: 'check', tool: e.tool, source });
     return policy.decision === 'pass' ? result : { decision: 'deny', reason: policy.reason ?? APPROVAL_FAILURE };
-  });
-
-  on('classic.PermissionRequest', async ($, e, next) => {
-    const result = await next(e);
-    if (!await teamApprovals($) || Object.keys(result).length) return result;
-    const deny = (message: string) => ({ decision: { behavior: 'deny' as const, message } });
-    const subagent = ('agent_id' in e && e.agent_id !== undefined) || ('agentId' in e && e.agentId !== undefined);
-    if (subagent || !stateDir && await $.env.get('CLAUDE_JOB_DIR')) return deny(APPROVAL_WORKER);
-    if (!stateDir) return result;
-    const policy = await park($, { event: 'prompt' });
-    if (policy.decision === 'pass') return result;
-    if (policy.decision === 'decline') {
-      try {
-        const wait = await $.process.run(['sleep', String(policy.after_seconds)], { timeoutMs: 65_000 });
-        if (wait.exitCode !== 0) return deny(APPROVAL_FAILURE);
-      } catch { return deny(APPROVAL_FAILURE); }
-      return deny('This step was not run because nobody answered the approval prompt within 60 seconds. Do not retry or reword it; ask an admin to request it again.');
-    }
-    return deny(policy.reason ?? APPROVAL_FAILURE);
   });
 
   on('prompt.submit', async ($, e, next) => {
@@ -522,33 +493,13 @@ export const register: Register = on => {
     return { consumed: 'chat command request' };
   });
 
-  on('classic.PreModelSwitch', async ($, e, next) => {
-    const result = await next(e);
-    if (result.block || result.permissionDecision === 'deny' || result.permissionDecision === 'ask') return result;
-    if (approval !== null && e.requested_model === approval) {
-      if (active) active.expectedModel = e.to_model;
-      approval = null;
-      return { permissionDecision: 'allow' };
-    }
-    return result;
-  });
-
-  on('classic.PostModelSwitch', async ($, e, next) => {
-    const result = await next(e);
-    if (active?.command.command === '/model' && active.expectedModel !== null && e.to_model === active.expectedModel) {
-      active.evidence = { command: '/model', status: 'ok', text: `Model switched to ${active.command.arg}` };
-      observe($);
-    }
-    return result;
-  });
-
-  on('session.append', async ($, e, next) => {
+  on('session.append', { door: 'command' }, async ($, e, next) => {
     const result = await next(e);
     // A rejected command (such as `/model` with an unknown model) appends system rows with
     // engine origin; the command-name and args match below still ties them to this run.
     const own = (e.origin.kind === 'engine' && e.message?.type === 'system')
       || (e.origin.kind === 'plugin' && 'name' in e.origin && e.origin.name === $.plugin.name);
-    if (!active || e.door !== 'command' || !own) return result;
+    if (!active || !own) return result;
     const content = e.message?.content;
     const text = typeof content === 'string' ? content : Array.isArray(content)
       ? content.filter((part: { type: string }) => part.type === 'text').map((part) => String(part.text ?? '')).join('\n') : '';
@@ -563,19 +514,10 @@ export const register: Register = on => {
     if (command === '/compact' || SKILL_RE.test(command)) return result;
     const observed = stdout[1] ?? '';
     const status = classifyStdout(command, observed);
-    // A cleared context is reported from classic.SessionStart or the SessionStart stamp, once the resident id is current.
+    // A cleared context is reported from the SessionStart stamp, once the resident id is current.
     if (command === '/clear' && status === 'ok') return result;
     active.evidence = { command, status, text: observed };
     observe($);
-    return result;
-  });
-
-  on('session.compact', async ($, e, next) => {
-    const result = await next(e);
-    if (active?.command.command === '/compact' && result.skip === undefined && typeof result.tokensBefore === 'number' && typeof result.tokensAfter === 'number') {
-      active.evidence = { command: '/compact', status: 'ok', text: `Compacted ${result.tokensBefore} to ${result.tokensAfter} tokens` };
-      observe($);
-    }
     return result;
   });
 
@@ -583,19 +525,6 @@ export const register: Register = on => {
     const result = await next(e);
     timer ??= $.clock.every(TICK_MS, () => tick($));
     await loadedFor($, await $.session.id()).catch(() => undefined);
-    return result;
-  });
-
-  // A /clear or a forked resume changes the session id, and session.start can run before
-  // the plugin's own SessionStart command hook restamps the resident id. next(e) resolves
-  // after that hook, while session.end and $.command.run resolve before it starts.
-  on('classic.SessionStart', async ($, e, next) => {
-    const result = await next(e);
-    if (e.source === 'clear' && active?.command.command === '/clear') {
-      active.evidence = { command: '/clear', status: 'ok', text: STAMPED['/clear']!.text };
-      observe($);
-    }
-    $.clock.after(0, async () => loadedFor($, await $.session.id()).catch(() => undefined));
     return result;
   });
 
