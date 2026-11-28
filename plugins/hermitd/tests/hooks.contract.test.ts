@@ -1488,11 +1488,23 @@ describe('doctor-check', () => {
     expect(names.sort()).toEqual([
       'skill-guard', 'skill-lint', 'dream-fence', 'mcp-auth-gate', 'mcp-auth-gate',
       'cache-edit-guard', 'settings-gate', 'artifact-backend-guard', 'channel-hook',
-      'channel-responder-invoked',
+      'channel-responder-invoked', 'permission-gate', 'model-switch-gate',
       'validate-config', 'generate-summary', 'usage-track', 'user-prompt-pipeline',
       'startup-context', 'stop-pipeline', 'stop-failure-stamp', 'subagent-cost', 'precompact-stamp',
     ].sort());
   });
+
+  for (const [event, script, timeout] of [
+    ['PreModelSwitch', 'model-switch-gate.ts', 5],
+    ['PermissionRequest', 'permission-gate.ts', 70],
+  ] as const) {
+    test(`hooks: ${event} runs ${script} with its decision timeout`, () => {
+      const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks/hooks.json'), 'utf8'));
+      expect(manifest.hooks[event]).toEqual([{ matcher: '', hooks: [{
+        type: 'command', command: 'bun', args: ['--no-install', '${CLAUDE_PLUGIN_ROOT}/scripts/' + script], timeout,
+      }] }]);
+    });
+  }
 
   test('hooks: user-prompt-pipeline runs on UserPromptSubmit', () => {
     // The pause, status and reply-reminder stages only run from this event.
