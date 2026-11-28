@@ -33,7 +33,7 @@ Set up the hermitd connector using https://github.com/gtapps/hermitd/blob/main/p
    hermitd connector pair <code> --name Ana
    ```
 
-   Run it from the agent's folder. From anywhere else, put the agent's name (as listed by `hermitd agents`) after `connector`: `hermitd connector <agent-name> pair <code> --name Ana`. The word after `connector` is never the channel key.
+   Run it from the agent's folder. From anywhere else, put the agent's name (as listed by `hermitd list`) after `connector`: `hermitd connector <agent-name> pair <code> --name Ana`. The word after `connector` is never the channel key.
 
    Once you approve the code, their app connects. Follow the same steps to pair yourself.
 
@@ -55,7 +55,7 @@ Each person has their own chat with the agent. Everyone paired with that agent s
 
 ## Manage it
 
-Run these from the agent's folder without `<agent-name>`, or name the agent (see `hermitd agents`) from anywhere else.
+Run these from the agent's folder without `<agent-name>`, or name the agent (see `hermitd list`) from anywhere else.
 
 ```bash
 hermitd connector <agent-name> status         # server and channel state
