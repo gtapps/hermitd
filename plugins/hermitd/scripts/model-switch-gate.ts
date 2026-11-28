@@ -24,7 +24,7 @@ if (import.meta.main) await runHook(payload => {
   for (const name of fs.readdirSync(inflight)) {
     if (!name.endsWith('.json')) continue;
     const entry = readJson(path.join(inflight, name));
-    if (entry === null) return;
+    if (entry === null) continue;
     const legs = entry.legs ?? [];
     if (!Array.isArray(entry.commands) || !Array.isArray(legs)) continue;
     const current = entry.commands[legs.length];
