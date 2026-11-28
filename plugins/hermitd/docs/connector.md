@@ -24,7 +24,7 @@ Follow the [connector setup guide](../../hermitd-connector/docs/setup.md) from t
 
 ## How people connect
 
-- **One person.** In their app they add a custom connector with the address `<public url>/mcp` and sign in. The page shows an 8-character pairing code, valid for 10 minutes. They give it to you by whatever means you already use, and you run `hermitd connector <name> pair <code> --name Ana` on the host. Their page then completes.
+- **One person.** In their app they add a custom connector with the address `<public url>/mcp` and sign in. The page shows an 8-character pairing code, valid for 10 minutes. They give it to you by whatever means you already use, and you run `hermitd connector pair <code> --name Ana` on the host from the agent's folder, or `hermitd connector <agent-name> pair <code> --name Ana` from elsewhere, with the name shown by `hermitd list`. Their page then completes.
 - **A team.** On Claude Team and Enterprise plans an Owner adds the custom connector for the organisation once. Each member then connects and signs in individually and is paired one by one.
 - **A spoken or typed turn.** The person speaks or types and their app calls the agent. If the agent answers within the wait, the app relays the words. If it is slow, the app says nothing has arrived yet and can check again. If the agent is offline, the message is held until it is back. If the agent restarted before answering, the next call says the message may not have been received.
 

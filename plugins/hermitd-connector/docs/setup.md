@@ -8,7 +8,7 @@ Run these steps on the host. Substitute the agent's folder, registered name, and
 
    ```bash
    hermitd list
-   hermitd connector <name> status
+   hermitd connector <agent-name> status
    cd "<agent folder>" && .hermit/bin/hermitd-run settings-edit .hermit/config.json get channels.connector
    cd "<agent folder>" && .hermit/bin/hermitd-run settings-edit .hermit/config.json get docker.recommended_plugins
    cd "<agent folder>" && claude plugin list --json
@@ -21,7 +21,7 @@ Run these steps on the host. Substitute the agent's folder, registered name, and
 2. **Enable the server and configure its route.** Use the existing public URL if it belongs to this agent. Otherwise choose an unused HTTPS host name on port 443, with the connector at the root. Core reuses the saved loopback port or chooses a free one on first setup.
 
    ```bash
-   hermitd connector <name> enable --public-url https://agent.example.com
+   hermitd connector <agent-name> enable --public-url https://agent.example.com
    ```
 
    If the installed core answers `invalid_port` without `--port`, check current connector port assignments and loopback listeners (for example with `ss -ltn` on Linux), then pass an unused `--port` explicitly. If the address or port is refused, see [Recovery](#recovery). Point the tunnel at `http://127.0.0.1:<port>` using the returned port. Keep any existing route intact. If a route already points at this exact service, reuse it.
@@ -29,7 +29,7 @@ Run these steps on the host. Substitute the agent's folder, registered name, and
    - **Tailscale Funnel.** Use the node's `https://<machine>.<tailnet>.ts.net` address. If the node is signed out, have the operator sign in, then rerun `tailscale status --json` and confirm the node's DNS name. If its public root route is free, run `tailscale funnel --bg --https=443 <port>`. For first-time Funnel enablement, hand the operator the approval URL Tailscale prints and retry after they approve. Check `tailscale funnel status --json` for the expected route. [Tailscale Funnel](https://tailscale.com/kb/1223/funnel)
    - **Cloudflare Tunnel.** If `cloudflared tunnel list` needs authorization, have the operator complete the browser sign-in from `cloudflared tunnel login`, then rerun the list. Use an existing named tunnel or create one with `cloudflared tunnel create <tunnel>`. For a locally managed tunnel, add a hostname ingress rule for `agent.example.com` with service `http://127.0.0.1:<port>` before the catch-all, validate with `cloudflared tunnel ingress validate`, and check the match with `cloudflared tunnel ingress rule https://agent.example.com`. Run `cloudflared tunnel route dns <tunnel> agent.example.com` for the new host name, then start or reload the named tunnel through its service manager (or run `cloudflared tunnel run <tunnel>` for a new setup). Keep the named tunnel running to retain its public address. For a dashboard-managed tunnel, add the same public host name and service there. If only the operator has dashboard access, hand them those values and verify the resulting public address after restart. [Cloudflare ingress configuration](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/configuration-file/) · [Cloudflare DNS routing](https://developers.cloudflare.com/tunnel/concepts/routing/#dns-records)
 
-3. **Restart as soon as the connector is enabled.** Run `hermitd restart <name>` to start the trusted server before installing or registering the channel. Check `hermitd connector <name> status` for `server: running`. If you had to pause for tunnel sign-in or approval, restart and check the local server while waiting, then resume the route setup.
+3. **Restart as soon as the connector is enabled.** Run `hermitd restart <name>` to start the trusted server before installing or registering the channel. Check `hermitd connector <agent-name> status` for `server: running`. If you had to pause for tunnel sign-in or approval, restart and check the local server while waiting, then resume the route setup.
 
 4. **Install and register the channel.** On tmux, add the `gtapps/hermitd` marketplace with `claude plugin marketplace add gtapps/hermitd` if it is missing. Install the channel in the target folder if it is missing, or update the installed plugin if needed.
 
@@ -71,11 +71,11 @@ Run these steps on the host. Substitute the agent's folder, registered name, and
 
 Report each checkpoint separately so the next run can pick up where this one stopped.
 
-- **Configured.** `hermitd connector <name> status` shows `enabled: true` with the expected public URL.
+- **Configured.** `hermitd connector <agent-name> status` shows `enabled: true` with the expected public URL.
 - **Server running.** The same command shows `server: running`.
 - **Channel polling.** The same command shows `channel: polling`.
 - **Public address responding.** `curl --fail --silent --show-error https://agent.example.com/.well-known/oauth-protected-resource` returns JSON naming the expected `resource` (`https://agent.example.com/mcp`) and authorization server.
-- **Paired.** Follow [Pair someone](../README.md#pair-someone) to approve a pairing code on the host. Check the expected grant with `hermitd connector <name> list`.
+- **Paired.** Follow [Pair someone](../README.md#pair-someone) to approve a pairing code on the host. Check the expected grant with `hermitd connector <agent-name> list`.
 - **Replies flowing.** If the operator wants to send a test message, check that their app got an answer and that `unanswered` is `0` afterward. Otherwise leave this checkpoint pending until a reply has been observed.
 
 ## Several agents on one host
@@ -86,11 +86,11 @@ Give each agent its own public host name and local port. Funnel provides one pub
 
 `status` shows the bound `port` when the server answers, `channel` as `polling` or `absent`, the number of paired `grants`, and `unanswered` messages dispatched to the channel. `oldest_unanswered_at` is the earliest known dispatch time for those messages, or `null`. Doctor warns when the channel is absent or a message has gone unanswered for more than 10 minutes.
 
-- **Occupied port.** Check the listener and sibling connector assignments. If two stores already share a port, run `hermitd connector <name> enable --port <free port>` on one agent, then update its own tunnel route and restart that agent. An existing store keeps its saved port unless you pass `--port`, so omitting the flag still refuses the collision.
+- **Occupied port.** Check the listener and sibling connector assignments. If two stores already share a port, run `hermitd connector <agent-name> enable --port <free port>` on one agent, then update its own tunnel route and restart that agent. An existing store keeps its saved port unless you pass `--port`, so omitting the flag still refuses the collision.
 - **Tunnel login or coordination fails.** Recheck the account and current routes with step 1. Hand browser sign-in or Funnel enablement to the operator, then recheck the tunnel state. If the host name belongs to another service or agent, choose a new host name and enable with that URL.
 - **Configured server is down.** Run `hermitd restart <name>` and check status again. If it still fails, inspect the host startup output or the Docker connector service log for the listener error.
 - **Running server shows `channel: absent`.** Verify that the channel entry has `plugin` and `marketplace`, the channel plugin is installed, and the agent restarted with the channel. Check the startup notice and the channel policy in step 5.
-- **Public address responds but sign-in fails.** Check that protected-resource and authorization-server discovery name the same public origin and point to the expected agent. Check that the app uses the `/mcp` URL, then request a fresh pairing code and have the operator approve it. Verify the grant with `hermitd connector <name> list`.
+- **Public address responds but sign-in fails.** Check that protected-resource and authorization-server discovery name the same public origin and point to the expected agent. Check that the app uses the `/mcp` URL, then request a fresh pairing code and have the operator approve it. Verify the grant with `hermitd connector <agent-name> list`.
 - **Messages stay unanswered.** Check `unanswered` and `oldest_unanswered_at`, then run `hermitd doctor <name>`. The time is measured from dispatch. If the channel polls but messages stay unanswered, check the startup notice for `allowedChannelPlugins`, `channelsEnabled` or organization policy, then check whether the agent is stuck.
 
 Once the server is running, the channel is polling, and the public address responds, [pair yourself or someone else](../README.md#pair-someone).
