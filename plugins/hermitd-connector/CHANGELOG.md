@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.5] - 2026-11-28
+
+### Upgrade Instructions
+
+Run `/hermitd:hermit-evolve`. The evolve skill handles:
+
+1. **Confirm the connector update is installed**: no files to migrate.
+
+No `config.json` changes required.
+
 ## [0.0.4] - 2026-11-27
 
 ### Changed
